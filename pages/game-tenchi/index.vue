@@ -64,7 +64,6 @@ const unlockedStrategies = computed(() => {
     return Array.from(list);
 });
 
-// 🌟 兵法書：陣型列表與解鎖條件
 const formationsGuide = computed(() => {
     return formationOrder.map((fName, index) => {
         const reqWins = index === 0 ? 0 : index * config.value.winsPerFormation;
@@ -73,7 +72,6 @@ const formationsGuide = computed(() => {
     });
 });
 
-// 🌟 兵法書：策略列表與解鎖條件
 const strategiesGuide = computed(() => {
     return Object.keys(strategies.value).map(sName => {
         const strat = strategies.value[sName];
@@ -185,7 +183,8 @@ onMounted(async () => {
   } catch (e) { console.error(e); }
 });
 
-const getGeneralsData = (isP2) => {
+// 🌟 修改：接收 playerName，並隨機選一個位置替換成玩家姓名
+const getGeneralsData = (isP2, playerName) => {
     const p1Names = ['劉備', '關羽', '張飛', '趙雲', '馬超', '黃忠', '諸葛亮', '魏延', '龐統', '姜維'].sort(() => 0.5 - Math.random());
     const p1Faces = ['👲', '🧔', '👳', '🥷', '💂', '🕵️', '👨‍🎤', '👨‍🎓', '👨‍🏫', '👨‍⚖️'].sort(() => 0.5 - Math.random());
     const p2Names = ['曹操', '夏侯惇', '許褚', '張遼', '曹仁', '徐晃', '司馬懿', '典韋', '龐德', '張郃'].sort(() => 0.5 - Math.random());
@@ -194,8 +193,17 @@ const getGeneralsData = (isP2) => {
     const names = isP2 ? p2Names : p1Names;
     const faces = isP2 ? p2Faces : p1Faces;
 
+    // 隨機選一個陣位讓玩家親自上陣
+    const playerIdx = Math.floor(Math.random() * 5);
+
     return Array.from({ length: 5 }).map((_, i) => ({
-        id: `${isP2 ? 'p2' : 'p1'}_g${i}`, face: faces[i], name: names[i], hp: config.value.hp, maxHp: config.value.hp, isDead: false, posIndex: i 
+        id: `${isP2 ? 'p2' : 'p1'}_g${i}`, 
+        face: faces[i], 
+        name: (i === playerIdx && playerName) ? playerName : names[i], // 🌟 替換玩家姓名
+        hp: config.value.hp, 
+        maxHp: config.value.hp, 
+        isDead: false, 
+        posIndex: i 
     }));
 };
 
@@ -264,8 +272,13 @@ const subscribeToRoom = (roomId) => {
 };
 
 const setupGameData = (p1Id, p1Name, p2Id, p2Name) => {
-    p1.value = { id: p1Id, name: p1Name, score: 0, sp: config.value.sp, maxSp: config.value.sp, formation: '散開之陣', generals: getGeneralsData(false) };
-    p2.value = { id: p2Id, name: p2Name, score: 0, sp: config.value.sp, maxSp: config.value.sp, formation: '散開之陣', generals: getGeneralsData(true) };
+    p1.value = { id: p1Id, name: p1Name, score: 0, sp: config.value.sp, maxSp: config.value.sp, formation: '散開之陣', generals: [] };
+    p2.value = { id: p2Id, name: p2Name, score: 0, sp: config.value.sp, maxSp: config.value.sp, formation: '散開之陣', generals: [] };
+    
+    // 🌟 將玩家名稱傳入武將產生器
+    p1.value.generals = getGeneralsData(false, p1Name);
+    p2.value.generals = getGeneralsData(true, p2Name);
+
     matchStatus.value = 'playing'; gameStartTime.value = Date.now();
     addLog(`📜 戰鬥開始！${p1Name}軍 VS ${p2Name}軍`, 'sys');
     timer = setInterval(() => { timeSpent.value = Math.round((Date.now() - gameStartTime.value) / 1000); }, 1000);
@@ -693,7 +706,6 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
 .spinner { font-size: 3rem; animation: spin 2s linear infinite; }
 @keyframes spin { 100% { transform: rotate(360deg); } }
 
-/* 🌟 兵法書樣式 */
 .manual-dialog { max-width: 500px; width: 95%; padding: 15px; display: flex; flex-direction: column; max-height: 90vh;}
 .manual-tabs { display: flex; gap: 10px; margin-bottom: 10px;}
 .manual-tabs .retro-btn { flex: 1; padding: 10px; font-size: 1.1rem; }
