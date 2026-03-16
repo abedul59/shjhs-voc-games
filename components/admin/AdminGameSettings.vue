@@ -177,29 +177,42 @@ const props = defineProps({ config: Object });
           </div>
         </div>
 
-
         <div style="margin-top: 15px; border-top: 2px dashed #00897b; padding-top: 10px;">
-           <label style="display: block; margin-bottom: 10px; font-weight: bold; color: #00695c;">📜 策略解鎖門檻與威力/補血量：</label>
-           <div v-for="(strat, sName) in config.tenchi_strategies_config" :key="sName" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 0.9rem; background: #fff; padding: 5px; border-radius: 5px; border: 1px solid #ccc;">
+           <label style="display: block; margin-bottom: 10px; font-weight: bold; color: #00695c;">📜 策略門檻、耗SP、威力與兵法書說明：</label>
+           
+           <div v-for="(strat, sName) in config.tenchi_strategies_config" :key="sName" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 0.9rem; background: #fff; padding: 8px; border-radius: 5px; border: 1px solid #ccc;">
+              
               <span style="width: 60px; font-weight: bold; color: #d32f2f;">{{ sName }}</span>
+              
               <span>解鎖需</span>
               <input type="number" min="0" max="999" v-model.number="config.tenchi_strategies_config[sName].unlockWins" class="retro-input" style="width: 50px; padding: 4px; text-align: center;"/>
-              <span>勝 | 耗SP</span>
+              <span>勝</span>
+              
+              <span style="margin-left: 5px;">耗SP</span>
               <input type="number" min="1" max="100" v-model.number="config.tenchi_strategies_config[sName].cost" class="retro-input" style="width: 50px; padding: 4px; text-align: center;"/>
-              <span> | {{ strat.type === 'dispel' ? '無威力' : '威力' }}</span>
-              <input v-if="strat.type !== 'dispel'" type="number" min="1" max="500" v-model.number="config.tenchi_strategies_config[sName].power" class="retro-input" style="width: 50px; padding: 4px; text-align: center;"/>
-              <span style="color: #888; font-size: 0.8rem; margin-left: 5px;">({{ strat.desc }})</span>
+              
+              <template v-if="!['dispel', 'assassinate', 'escape'].includes(strat.type)">
+                  <span style="margin-left: 5px;">威力</span>
+                  <input type="number" min="1" max="500" v-model.number="config.tenchi_strategies_config[sName].power" class="retro-input" style="width: 50px; padding: 4px; text-align: center;"/>
+              </template>
+              <template v-else>
+                  <span style="margin-left: 5px; width: 85px; text-align: center; color: #888; font-size: 0.8rem;">(無威力數值)</span>
+              </template>
+
+              <div style="flex-basis: 100%; display: flex; align-items: center; gap: 5px; margin-top: 5px;">
+                  <span style="color: #00695c; font-weight: bold;">兵法書說明：</span>
+                  <input type="text" v-model="config.tenchi_strategies_config[sName].desc" class="retro-input" style="flex: 1; padding: 6px;"/>
+              </div>
            </div>
         </div>
 
-        <div class="field-row">
+        <div class="field-row" style="margin-top: 15px;">
           <label>🎖️ 解鎖陣型所需勝場：</label>
           <div class="input-group">
             <input type="number" min="1" max="100" v-model="config.tenchi_wins_per_formation" class="retro-input num-input" />
             <span>場 / 每個新陣型</span>
           </div>
         </div>
-
 
         <div style="margin-top: 15px; border-top: 2px dashed #00897b; padding-top: 10px;">
            <label style="display: block; margin-bottom: 10px; font-weight: bold; color: #00695c;">🛡️ 陣型各站位攻擊力倍率 (1~5位)：</label>
@@ -222,4 +235,11 @@ const props = defineProps({ config: Object });
 .multi-input { display: flex; align-items: center; gap: 5px; font-size: 0.9rem; flex-wrap: wrap; }
 .num-input { width: 65px; text-align: center; padding: 5px; font-size: 1rem; background: var(--input-bg); color: var(--text-main); border: var(--border-width) solid var(--border-color); border-radius: 4px; outline: none; }
 .retro-input { padding: 8px; border: var(--border-width) solid var(--border-color); border-radius: var(--radius-element); background: var(--input-bg); color: var(--text-main); font-family: inherit; font-weight: bold; }
+
+.setting-card { background: #fff; border: 3px solid #ccc; border-radius: 12px; padding: 20px; box-shadow: 0 4px 0 #ccc; margin-bottom: 15px;}
+.card-title { margin: -20px -20px 20px -20px; padding: 15px; border-radius: 9px 9px 0 0; border-bottom: 3px solid; font-weight: 900; font-size: 1.2rem; }
+.field-row { margin-bottom: 15px; }
+.field-row label { display: block; font-weight: bold; color: #555; margin-bottom: 5px; font-size: 0.95rem; }
+.input-group { display: flex; align-items: center; gap: 10px; }
+.input-group span { font-weight: bold; color: #777; font-size: 0.9rem; }
 </style>
