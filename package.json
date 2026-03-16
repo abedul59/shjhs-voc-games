@@ -1,0 +1,24 @@
+{
+  "name": "vocab-game",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "@nuxtjs/supabase": "^2.0.4",
+    "canvas-confetti": "^1.9.2",
+    "cnchar": "^3.2.6",
+    "nuxt": "^4.3.1",
+    "papaparse": "^5.5.3",
+    "vue": "^3.5.28",
+    "vue-router": "^4.6.4"
+  },
+  "devDependencies": {
+    "@types/papaparse": "^5.5.2"
+  }
+}
