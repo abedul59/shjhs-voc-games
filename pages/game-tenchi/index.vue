@@ -23,8 +23,11 @@ const myPlayerRole = ref(null);
 const currentRoomId = ref(null);
 
 const myWins = ref(0);
-// 🌟 紀錄從後台手動發送的解鎖資料
 const manualUnlocks = ref({ formations: [], strategies: [] });
+
+// 🌟 兵法書控制狀態
+const showManual = ref(false);
+const manualTab = ref('formations'); // 'formations' 或 'strategies'
 
 const formationOrder = ['散開之陣', '鶴翼之陣', '衝方之陣', '白馬之陣', '魚鱗之陣', '鋒矢之陣', '一文字之陣', '背水之陣', '靜寂之陣', '八卦之陣'];
 
@@ -45,7 +48,6 @@ const strategies = ref({
   "火計": { type: "damage", unlockWins: 0, power: 15, cost: 5, desc: "火焰傷害" }
 });
 
-// 🌟 合併勝場與手動解鎖的陣型
 const unlockedFormations = computed(() => {
     let count = 1 + Math.floor(myWins.value / config.value.winsPerFormation);
     count = Math.min(count, formationOrder.length); 
@@ -54,13 +56,37 @@ const unlockedFormations = computed(() => {
     return formationOrder.filter(f => combinedSet.has(f));
 });
 
-// 🌟 合併勝場與手動解鎖的策略
 const unlockedStrategies = computed(() => {
     const list = new Set(manualUnlocks.value.strategies); 
     for (const [sName, strat] of Object.entries(strategies.value)) {
         if (myWins.value >= strat.unlockWins) list.add(sName);
     }
     return Array.from(list);
+});
+
+// 🌟 兵法書：陣型列表與解鎖條件
+const formationsGuide = computed(() => {
+    return formationOrder.map((fName, index) => {
+        const reqWins = index === 0 ? 0 : index * config.value.winsPerFormation;
+        const isUnlocked = myWins.value >= reqWins || manualUnlocks.value.formations.includes(fName);
+        return { name: fName, desc: formations.value[fName].desc, reqWins, isUnlocked };
+    });
+});
+
+// 🌟 兵法書：策略列表與解鎖條件
+const strategiesGuide = computed(() => {
+    return Object.keys(strategies.value).map(sName => {
+        const strat = strategies.value[sName];
+        const isUnlocked = myWins.value >= strat.unlockWins || manualUnlocks.value.strategies.includes(sName);
+        
+        let icon = '📜';
+        if (sName.includes('火')) icon = '🔥'; if (sName.includes('水')) icon = '🌊';
+        if (sName.includes('石') || sName.includes('砂')) icon = '🪨';
+        if (sName.includes('回復')) icon = '💚'; if (sName.includes('招魂')) icon = '🌟';
+        if (sName.includes('解陣')) icon = '🌪️';
+
+        return { name: sName, icon, desc: strat.desc, cost: strat.cost, reqWins: strat.unlockWins, isUnlocked };
+    }).sort((a, b) => a.reqWins - b.reqWins);
 });
 
 const roomData = ref(null);
@@ -77,7 +103,6 @@ const myTarget = ref({ status: 'typing', word: '', zh: '', targetChars: [], type
 let roomSubscription = null;
 let eventSubscription = null;
 
-// 🔊 音效
 const audioCtx = typeof window !== 'undefined' ? new (window.AudioContext || window.webkitAudioContext)() : null;
 const playTone = (freq, type, duration, vol = 0.1) => {
   if (!audioCtx) return;
@@ -117,7 +142,6 @@ onMounted(async () => {
   try {
     if (!studentCookie.value || !studentCookie.value.id) { errorMsg.value = '⚠️ 請先登入才能進行連線對戰！'; return; }
     
-    // 獲取系統設定
     const { data: settings } = await supabase.from('system_settings').select('*').eq('id', 1).single();
     if (settings) {
       if (settings.tenchi_hp) config.value.hp = settings.tenchi_hp;
@@ -138,14 +162,12 @@ onMounted(async () => {
       }
     }
     
-    // 獲取玩家勝場數
     const { data: winData } = await supabase.from('game_records')
          .select('id, correct_words')
          .eq('student_id', String(studentCookie.value.id))
          .eq('game_type', '單字吞食天地');
     if (winData) myWins.value = winData.filter(r => r.correct_words && r.correct_words.includes('【勝】')).length;
 
-    // 🌟 獲取手動賜予的兵法
     const { data: stuData } = await supabase.from('students')
         .select('tenchi_formations, tenchi_strategies')
         .eq('student_id', String(studentCookie.value.id)).single();
@@ -183,7 +205,6 @@ const getFormationOffsetPx = (index, formationName, isP2) => {
     return isP2 ? -(logicForward * (isMobile ? 0.7 : 1.2)) : (logicForward * (isMobile ? 0.7 : 1.2)); 
 };
 
-// 🌟 動態計算可選指令 (判斷 SP 與條件)
 const getAvailableActions = computed(() => {
     if (!myPlayerRole.value) return [];
     const myArmy = myPlayerRole.value === 'p1' ? p1.value : p2.value;
@@ -197,11 +218,9 @@ const getAvailableActions = computed(() => {
         if (strat.type === 'revive' && deadFriends.length === 0) disabled = true;
         
         let icon = '📜';
-        if (sName.includes('火')) icon = '🔥';
-        if (sName.includes('水')) icon = '🌊';
+        if (sName.includes('火')) icon = '🔥'; if (sName.includes('水')) icon = '🌊';
         if (sName.includes('石') || sName.includes('砂')) icon = '🪨';
-        if (sName.includes('回復')) icon = '💚';
-        if (sName.includes('招魂')) icon = '🌟';
+        if (sName.includes('回復')) icon = '💚'; if (sName.includes('招魂')) icon = '🌟';
         if (sName.includes('解陣')) icon = '🌪️';
 
         actions.push({ name: sName, label: `${icon} ${sName} (${strat.cost})`, cost: strat.cost, disabled: disabled });
@@ -377,7 +396,6 @@ const sendAttackEvent = async (actionName) => {
     }]);
 };
 
-// 🌟 解析網路廣播與播放特效、扣除 SP
 const handleNetworkEvent = (event) => {
     const isP1Attacking = event.attacker_id === p1.value.id;
     const attacker = isP1Attacking ? p1.value : p2.value;
@@ -389,7 +407,6 @@ const handleNetworkEvent = (event) => {
     const actionName = parts[1] || 'attack';
     const isFriendlyTarget = parts[2] === 'true';
 
-    // 扣除 SP
     if (actionName !== 'attack' && strategies.value[actionName]) {
         attacker.sp = Math.max(0, attacker.sp - strategies.value[actionName].cost);
     }
@@ -498,22 +515,52 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
 
     <div v-if="errorMsg" class="error-box retro-element">{{ errorMsg }}</div>
 
+    <div v-else-if="showManual" class="setup-overlay" style="z-index: 110;">
+       <div class="rpg-dialog manual-dialog retro-element">
+          <div class="manual-tabs">
+             <button class="retro-btn" :class="{ 'btn-primary': manualTab === 'formations' }" @click="manualTab = 'formations'">🛡️ 陣形</button>
+             <button class="retro-btn" :class="{ 'btn-primary': manualTab === 'strategies' }" @click="manualTab = 'strategies'">📜 策略</button>
+          </div>
+          
+          <div class="manual-content">
+             <template v-if="manualTab === 'formations'">
+                <div v-for="f in formationsGuide" :key="f.name" class="guide-item" :class="{ 'locked': !f.isUnlocked }">
+                   <h4>
+                      {{ f.name }}
+                      <span class="unlock-req" v-if="!f.isUnlocked">需 {{ f.reqWins }} 勝解鎖</span>
+                      <span class="unlock-req ok" v-else>已解鎖</span>
+                   </h4>
+                   <p>{{ f.desc }}</p>
+                </div>
+             </template>
+             <template v-if="manualTab === 'strategies'">
+                <div v-for="s in strategiesGuide" :key="s.name" class="guide-item" :class="{ 'locked': !s.isUnlocked }">
+                   <h4>
+                      {{ s.icon }} {{ s.name }} (耗SP:{{ s.cost }})
+                      <span class="unlock-req" v-if="!s.isUnlocked">需 {{ s.reqWins }} 勝解鎖</span>
+                      <span class="unlock-req ok" v-else>已解鎖</span>
+                   </h4>
+                   <p>{{ s.desc }}</p>
+                </div>
+             </template>
+          </div>
+          <button class="retro-btn btn-danger" @click="showManual = false" style="margin-top: 15px; width: 100%;">關閉兵法書</button>
+       </div>
+    </div>
+
     <div v-else-if="matchStatus === 'setup'" class="setup-overlay">
       <div class="rpg-dialog retro-element">
         <div class="icon-big">🐎</div>
         <h2>討伐大廳</h2>
-        <p style="margin-bottom:20px;">募集義勇軍！點擊下方尋找同單元的對手，若無人則會為您建立營帳等待。</p>
+        <p style="margin-bottom:10px;">募集義勇軍！點擊下方尋找同單元的對手，若無人則會為您建立營帳等待。</p>
         
-        <div style="background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px; border: 1px dashed #ffeb3b; margin-bottom: 10px;">
-           <span style="color:#ffeb3b; font-weight:bold; font-size:1.1rem;">🏆 你的戰功：{{ myWins }} 勝</span><br>
-           <small style="color:#ccc;">陣型解鎖 {{ unlockedFormations.length }}/10</small>
+        <div style="background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px; border: 1px dashed #ffeb3b; margin-bottom: 15px;">
+           <span style="color:#ffeb3b; font-weight:bold; font-size:1.1rem;">🏆 你的戰功：{{ myWins }} 勝</span>
         </div>
         
-        <div v-if="unlockedStrategies.length > 0" style="font-size:0.85rem; color:#81c784; margin-bottom:15px; border-top:1px solid #555; padding-top:5px;">
-           已習得策略：{{ unlockedStrategies.join('、') }}
-        </div>
+        <button class="retro-btn" style="margin-bottom:15px; width:100%; border-color:#81c784; color:#81c784;" @click="showManual = true">📖 觀看兵法書 (陣形/策略)</button>
 
-        <button class="retro-btn btn-primary" @click="findMatch">出陣 (尋找對手)</button>
+        <button class="retro-btn btn-primary" style="width: 100%;" @click="findMatch">出陣 (尋找對手)</button>
       </div>
     </div>
 
@@ -630,7 +677,7 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
 <style scoped>
 .tenchi-root { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #000; display: flex; flex-direction: column; overflow: hidden; font-family: 'Courier New', Courier, 'Noto Sans TC', monospace; touch-action: none; user-select: none; color: #fff; }
 .retro-element { background: #0000aa; border: 3px solid #fff; border-radius: 2px; box-shadow: inset 0 0 0 2px #000, 0 0 0 2px #000; color: #fff; padding: 6px; box-sizing: border-box; }
-.retro-btn { background: #000; color: #fff; border: 2px solid #fff; border-radius: 2px; font-family: inherit; font-weight: bold; cursor: pointer; }
+.retro-btn { background: #000; color: #fff; border: 2px solid #fff; border-radius: 2px; font-family: inherit; font-weight: bold; cursor: pointer; padding: 6px; }
 .retro-btn:active:not(.used):not(:disabled) { background: #fff; color: #000; }
 .retro-btn:disabled { opacity: 0.5; border-color: #555; color: #aaa; cursor: not-allowed; }
 .btn-primary { padding: 10px 20px; font-size: 1.2rem; background: #b30000; border-color: #ffcccc;}
@@ -645,6 +692,19 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
 .icon-big { font-size: 4rem; margin-bottom: 10px; }
 .spinner { font-size: 3rem; animation: spin 2s linear infinite; }
 @keyframes spin { 100% { transform: rotate(360deg); } }
+
+/* 🌟 兵法書樣式 */
+.manual-dialog { max-width: 500px; width: 95%; padding: 15px; display: flex; flex-direction: column; max-height: 90vh;}
+.manual-tabs { display: flex; gap: 10px; margin-bottom: 10px;}
+.manual-tabs .retro-btn { flex: 1; padding: 10px; font-size: 1.1rem; }
+.manual-content { flex: 1; overflow-y: auto; background: rgba(0,0,0,0.5); border: 2px solid #555; padding: 10px; text-align: left;}
+.guide-item { border-bottom: 1px dashed #555; padding-bottom: 10px; margin-bottom: 10px;}
+.guide-item:last-child { border-bottom: none; margin-bottom: 0;}
+.guide-item h4 { margin: 0 0 5px 0; color: #ffeb3b; font-size: 1.1rem; display: flex; justify-content: space-between; align-items: center;}
+.guide-item p { margin: 0; font-size: 0.9rem; color: #ddd; }
+.guide-item.locked { opacity: 0.4; filter: grayscale(100%); }
+.unlock-req { font-size: 0.8rem; background: #d32f2f; color: #fff; padding: 2px 6px; border-radius: 4px;}
+.unlock-req.ok { background: #4caf50; }
 
 .battlefield { flex: 1; display: flex; flex-direction: column; padding: 2px; gap: 2px; min-height: 0;}
 .rpg-log-box { height: 65px; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; padding: 4px 8px; margin-bottom: 2px; }
