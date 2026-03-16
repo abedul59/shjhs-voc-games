@@ -65,6 +65,15 @@ const config = ref({
   tenchi_escape_rate: 50, // 撤退成功率預設 50%
   tenchi_wins_per_formation: 8, // 🌟 新增：每 8 勝解鎖一個陣型
   tenchi_blank_count: 3, // 🌟 新增：預設挖空 3 個字母
+  tenchi_base_atk: 10,
+  tenchi_base_def: 10,
+  tenchi_base_int: 10,
+  tenchi_base_eva: 10,
+
+  tenchi_player_atk: 15,
+  tenchi_player_def: 15,
+  tenchi_player_int: 15,
+  tenchi_player_eva: 10,  
   tenchi_formations_config: {
       '散開之陣': [1.0, 1.0, 1.0, 1.0, 1.0],
       '鶴翼之陣': [1.1, 1.2, 1.4, 1.2, 1.1],
