@@ -103,7 +103,8 @@ const endReason = ref('');
 const battleLog = ref([]); 
 const effects = ref([]); 
 
-const myTarget = ref({ status: 'typing', word: '', zh: '', targetChars: [], typedCount: 0, slots: [], options: [], attackerIndex: 0 });
+// 🌟 attackerIndex 初始化為 -1
+const myTarget = ref({ status: 'typing', word: '', zh: '', targetChars: [], typedCount: 0, slots: [], options: [], attackerIndex: -1, attackerName: '' });
 
 let roomSubscription = null;
 let eventSubscription = null;
@@ -214,12 +215,21 @@ const getFormationOffsetPx = (index, formationName, isP2) => {
     return isP2 ? -(logicForward * (isMobile ? 0.7 : 1.2)) : (logicForward * (isMobile ? 0.7 : 1.2)); 
 };
 
+// 🌟 動態讀取目前的倍率顯示在按鈕上
+const getCurrentGeneralMultiplier = computed(() => {
+    if (!myPlayerRole.value || myTarget.value.attackerIndex === -1) return 1.0;
+    const myArmy = myPlayerRole.value === 'p1' ? p1.value : p2.value;
+    return formations.value[myArmy.formation].mults[myTarget.value.attackerIndex];
+});
+
 const getAvailableActions = computed(() => {
     if (!myPlayerRole.value) return [];
     const myArmy = myPlayerRole.value === 'p1' ? p1.value : p2.value;
     const deadFriends = myArmy.generals.filter(g => g.isDead);
     
-    const actions = [{ name: 'attack', label: '🗡️ 普通攻擊 (0)', cost: 0, disabled: false }];
+    // 顯示普通攻擊與其對應的倍率
+    const mult = getCurrentGeneralMultiplier.value;
+    const actions = [{ name: 'attack', label: `🗡️ 攻擊 (x${mult})`, cost: 0, disabled: false }];
     
     unlockedStrategies.value.forEach(sName => {
         const strat = strategies.value[sName];
@@ -276,6 +286,8 @@ const subscribeToRoom = (roomId) => {
 const setupGameData = (p1Id, p1Name, p2Id, p2Name) => {
     p1.value = { id: p1Id, name: p1Name, score: 0, sp: config.value.sp, maxSp: config.value.sp, formation: '散開之陣', generals: getGeneralsData(false, p1Name) };
     p2.value = { id: p2Id, name: p2Name, score: 0, sp: config.value.sp, maxSp: config.value.sp, formation: '散開之陣', generals: getGeneralsData(true, p2Name) };
+    myTarget.value.attackerIndex = -1; // 歸零準備
+
     matchStatus.value = 'playing'; gameStartTime.value = Date.now();
     addLog(`📜 戰鬥開始！${p1Name}軍 VS ${p2Name}軍`, 'sys');
     timer = setInterval(() => { timeSpent.value = Math.round((Date.now() - gameStartTime.value) / 1000); }, 1000);
@@ -283,13 +295,25 @@ const setupGameData = (p1Id, p1Name, p2Id, p2Name) => {
 };
 
 // =====================================
-// 📱 戰鬥輸入與指令選擇
+// 📱 回合制戰鬥與指令選擇
 // =====================================
 const assignNewTarget = () => {
     const myArmy = myPlayerRole.value === 'p1' ? p1.value : p2.value;
     const aliveMyGenerals = myArmy.generals.filter(g => !g.isDead);
     if (aliveMyGenerals.length === 0) return; 
 
+    // 🌟 尋找下一位存活的武將
+    let nextIdx = (myTarget.value.attackerIndex + 1) % 5;
+    if (myTarget.value.word === '') nextIdx = 0; // 第一次開局
+    while (myArmy.generals[nextIdx] && myArmy.generals[nextIdx].isDead) {
+        nextIdx = (nextIdx + 1) % 5;
+    }
+
+    const currentMyGeneral = myArmy.generals[nextIdx];
+    myTarget.value.attackerIndex = nextIdx;
+    myTarget.value.attackerName = currentMyGeneral.name;
+
+    // 🌟 隨機選題
     const randomWordObj = allWords.value[Math.floor(Math.random() * allWords.value.length)];
     const wordStr = randomWordObj.en_us.toLowerCase();
     
@@ -297,9 +321,6 @@ const assignNewTarget = () => {
     myTarget.value.word = wordStr;
     myTarget.value.zh = randomWordObj.zh_tw;
     myTarget.value.typedCount = 0;
-    
-    const randomMyGeneral = aliveMyGenerals[Math.floor(Math.random() * aliveMyGenerals.length)];
-    myTarget.value.attackerIndex = randomMyGeneral.posIndex; 
     
     let numBlanks = Math.max(1, Math.min(config.value.blankCount || 3, wordStr.length));
     let indices = [];
@@ -350,24 +371,6 @@ const changeFormation = async () => {
     await supabase.from('tenchi_events').insert([{ room_id: currentRoomId.value, attacker_id: String(studentCookie.value.id), target_index: -1, damage: 0, word_typed: myArmy.formation }]);
 };
 
-// 一般撤退機制 (按鈕)
-const attemptEscape = async () => {
-    if (matchStatus.value !== 'playing') return;
-    const myArmy = myPlayerRole.value === 'p1' ? p1.value : p2.value;
-    if (Math.random() * 100 < config.value.escapeRate) {
-        sfx.defeat(); addLog(`🏃‍♂️ ${myArmy.name}軍 撤退成功！`, myPlayerRole.value);
-        await supabase.from('tenchi_events').insert([{ room_id: currentRoomId.value, attacker_id: String(studentCookie.value.id), target_index: -2, damage: 0, word_typed: 'escape_success' }]);
-        endGame(null, '主動撤退逃走', true);
-    } else {
-        sfx.error(); addLog(`❌ ${myArmy.name}軍 撤退失敗！全軍受創！`, myPlayerRole.value);
-        myArmy.generals.forEach(g => {
-            if(!g.isDead) { g.hp -= 10; spawnEffect(g.id, '-10', 'dmg', 'fire-fx'); if(g.hp <= 0) { g.hp = 0; g.isDead = true; sfx.defeat(); addLog(`💀 敵將 ${g.name} 敗退了！`, 'sys'); } }
-        });
-        await supabase.from('tenchi_events').insert([{ room_id: currentRoomId.value, attacker_id: String(studentCookie.value.id), target_index: -3, damage: 10, word_typed: 'escape_failed' }]);
-        if (myArmy.generals.every(g => g.isDead)) endGame(myPlayerRole.value === 'p1' ? p2.value.name : p1.value.name, '撤退失敗導致全軍覆沒');
-    }
-};
-
 const sendAttackEvent = async (actionName) => {
     const attackerArmy = myPlayerRole.value === 'p1' ? p1.value : p2.value;
     const defenderArmy = myPlayerRole.value === 'p1' ? p2.value : p1.value;
@@ -382,16 +385,11 @@ const sendAttackEvent = async (actionName) => {
         } else if (stratConfig.type === 'revive') {
             const deadFriends = attackerArmy.generals.map((g,i)=>g.isDead?i:-1).filter(i=>i!==-1);
             if (deadFriends.length > 0) { targetIndex = deadFriends[Math.floor(Math.random()*deadFriends.length)]; isFriendly = true; finalDamage = stratConfig.power; }
-        } else if (stratConfig.type === 'dispel') { 
-            targetIndex = -4; 
-        } else if (stratConfig.type === 'escape') {
-            targetIndex = -5; // 🌟 煙遁計專用指令
-        } else if (stratConfig.type === 'assassinate') {
+        } else if (stratConfig.type === 'dispel') { targetIndex = -4; }
+        else if (stratConfig.type === 'escape') { targetIndex = -5; }
+        else if (stratConfig.type === 'assassinate') {
             const aliveEnemies = defenderArmy.generals.map((g,i)=>g.isDead?-1:i).filter(i=>i!==-1);
-            if (aliveEnemies.length > 0) { 
-                targetIndex = aliveEnemies[Math.floor(Math.random()*aliveEnemies.length)]; 
-                finalDamage = (Math.random() < 0.5) ? 9999 : 0; // 50%一擊必殺
-            }
+            if (aliveEnemies.length > 0) { targetIndex = aliveEnemies[Math.floor(Math.random()*aliveEnemies.length)]; finalDamage = (Math.random() < 0.5) ? 9999 : 0; }
         } else if (stratConfig.type === 'damage') {
             const aliveEnemies = defenderArmy.generals.map((g,i)=>g.isDead?-1:i).filter(i=>i!==-1);
             if (aliveEnemies.length > 0) { targetIndex = aliveEnemies[Math.floor(Math.random()*aliveEnemies.length)]; finalDamage = stratConfig.power + Math.floor(Math.random()*10); }
@@ -409,14 +407,15 @@ const sendAttackEvent = async (actionName) => {
         }
     }
 
-    const payloadWord = `${myTarget.value.word}|${actionName}|${isFriendly}`;
+    // 🌟 將當前攻擊者的 index 也封裝傳送
+    const payloadWord = `${myTarget.value.word}|${actionName}|${isFriendly}|${myTarget.value.attackerIndex}`;
     await supabase.from('tenchi_events').insert([{
         room_id: currentRoomId.value, attacker_id: String(studentCookie.value.id),
         target_index: targetIndex, damage: finalDamage, word_typed: payloadWord
     }]);
 };
 
-// 🌟 網路接收與動畫特效
+// 🌟 接收廣播，精確顯示是「誰」攻擊了「誰」
 const handleNetworkEvent = (event) => {
     const isP1Attacking = event.attacker_id === p1.value.id;
     const attacker = isP1Attacking ? p1.value : p2.value;
@@ -424,24 +423,25 @@ const handleNetworkEvent = (event) => {
     const attackerSide = isP1Attacking ? 'p1' : 'p2';
 
     const parts = (event.word_typed || '').split('|');
-    const wordTyped = parts[0] || event.word_typed;
     const actionName = parts[1] || 'attack';
     const isFriendlyTarget = parts[2] === 'true';
+    const attackerPosIndex = parseInt(parts[3] || '0', 10);
+    
+    // 取得發動攻擊的武將名稱
+    const attackingGeneral = attacker.generals[attackerPosIndex];
+    const attackerGeneralName = attackingGeneral ? attackingGeneral.name : attacker.name;
 
     if (actionName !== 'attack' && strategies.value[actionName]) {
         attacker.sp = Math.max(0, attacker.sp - strategies.value[actionName].cost);
     }
 
-    if (event.target_index === -1) { attacker.formation = wordTyped; addLog(`🚩 ${attacker.name}軍 佈下【${attacker.formation}】！`, attackerSide); addLog(`💬 ${formations.value[attacker.formation].desc}`, 'sys'); return; }
-    if (event.target_index === -2) { sfx.win(); addLog(`🏃‍♂️ 敵軍夾著尾巴逃跑了！`, 'sys'); endGame(defender.name, '對方敗戰逃走'); return; }
-    if (event.target_index === -3) { sfx.attack(); addLog(`⚔️ 敵軍撤退失敗！全軍受罰！`, 'sys'); attacker.generals.forEach(g => { if(!g.isDead) { g.hp -= event.damage; spawnEffect(g.id, `-${event.damage}`, 'dmg', 'fire-fx'); if(g.hp <= 0) { g.hp = 0; g.isDead = true; } } }); return; }
-    if (event.target_index === -4) { sfx.dispel(); defender.formation = '散開之陣'; addLog(`🌪️ ${attacker.name}軍 施展【解陣計】！敵軍陣型瓦解！`, attackerSide); defender.generals.forEach(g => { if (!g.isDead) spawnEffect(g.id, '', 'sys', 'dispel-fx'); }); return; }
+    if (event.target_index === -1) { attacker.formation = parts[0]; addLog(`🚩 ${attacker.name}軍 佈下【${attacker.formation}】！`, attackerSide); addLog(`💬 ${formations.value[attacker.formation].desc}`, 'sys'); return; }
     
-    // 🌟 煙遁計處理 (強制撤退成功)
+    // 煙遁計處理
     if (event.target_index === -5) {
         sfx.smoke();
         if (event.attacker_id === String(studentCookie.value.id)) {
-            addLog(`💨 ${attacker.name}軍 施展【煙遁計】！化作一陣煙霧成功撤退！`, attackerSide);
+            addLog(`💨 【${attackerGeneralName}】施展【煙遁計】！化作煙霧成功撤退！`, attackerSide);
             endGame(null, '使用煙遁計成功撤退', true);
         } else {
             addLog(`💨 敵軍施展【煙遁計】，化作一陣煙霧消失了！`, 'sys');
@@ -452,17 +452,24 @@ const handleNetworkEvent = (event) => {
 
     if (event.attacker_id !== String(studentCookie.value.id)) attacker.score += 10;
 
+    if (event.target_index === -4) {
+        sfx.dispel(); defender.formation = '散開之陣';
+        addLog(`🌪️ 【${attackerGeneralName}】施展【解陣計】！敵軍陣型瓦解！`, attackerSide);
+        defender.generals.forEach(g => { if (!g.isDead) spawnEffect(g.id, '', 'sys', 'dispel-fx'); });
+        return;
+    }
+
     if (isFriendlyTarget) {
         const targetGeneral = attacker.generals[event.target_index];
         if (!targetGeneral) return;
         if (actionName === '招魂計') {
             sfx.revive(); targetGeneral.isDead = false; targetGeneral.hp = event.damage;
-            addLog(`✨ ${attacker.name}軍 施展【招魂計】！${targetGeneral.name} 復活了！`, attackerSide);
+            addLog(`✨ 【${attackerGeneralName}】施展【招魂計】！${targetGeneral.name} 復活了！`, attackerSide);
             spawnEffect(targetGeneral.id, `+${targetGeneral.hp}`, 'heal', 'revive-fx');
         } else { 
             sfx.heal(); targetGeneral.hp += event.damage;
             if (targetGeneral.hp > targetGeneral.maxHp) targetGeneral.hp = targetGeneral.maxHp;
-            addLog(`💚 ${attacker.name}軍 施展【回復計】！${targetGeneral.name} 恢復兵力！`, attackerSide);
+            addLog(`💚 【${attackerGeneralName}】施展【回復計】！${targetGeneral.name} 恢復兵力！`, attackerSide);
             spawnEffect(targetGeneral.id, `+${event.damage}`, 'heal', 'heal-fx');
         }
         return;
@@ -473,18 +480,18 @@ const handleNetworkEvent = (event) => {
 
     if (actionName === 'attack') {
         if (event.damage === 0) {
-            sfx.block(); addLog(`🛡️ 敵方攻擊被 ${targetGeneral.name} 輕鬆擋下！`, attackerSide);
+            sfx.block(); addLog(`🛡️ 【${attackerGeneralName}】出擊，被 ${targetGeneral.name} 輕鬆擋下！`, attackerSide);
         } else {
             sfx.attack(); targetGeneral.hp -= event.damage;
-            addLog(`🗡️ 敵方出擊，重創了 ${targetGeneral.name} (-${event.damage})！`, attackerSide);
+            addLog(`🗡️ 【${attackerGeneralName}】出擊，重創了 ${targetGeneral.name} (-${event.damage})！`, attackerSide);
             spawnEffect(targetGeneral.id, `-${event.damage}`, 'dmg', 'attack-fx');
         }
     } else if (actionName === '暗殺計') {
         if (event.damage === 0) {
-            sfx.block(); addLog(`🥷 ${attacker.name}軍 施展【暗殺計】！但是被 ${targetGeneral.name} 識破了！`, attackerSide);
+            sfx.block(); addLog(`🥷 【${attackerGeneralName}】施展【暗殺計】！被 ${targetGeneral.name} 識破了！`, attackerSide);
         } else {
             sfx.assassinate(); targetGeneral.hp = 0;
-            addLog(`🥷 ${attacker.name}軍 施展【暗殺計】！一擊必殺了 ${targetGeneral.name}！`, attackerSide);
+            addLog(`🥷 【${attackerGeneralName}】施展【暗殺計】！一擊必殺了 ${targetGeneral.name}！`, attackerSide);
             spawnEffect(targetGeneral.id, `必殺`, 'strat-dmg', 'assassinate-fx');
         }
     } else {
@@ -494,7 +501,7 @@ const handleNetworkEvent = (event) => {
         else { sfx.fire(); fx = 'fire-fx'; }
 
         targetGeneral.hp -= event.damage;
-        addLog(`📜 ${attacker.name}軍 施展【${actionName}】！重創了 ${targetGeneral.name}！`, attackerSide);
+        addLog(`📜 【${attackerGeneralName}】施展【${actionName}】！重創了 ${targetGeneral.name}！`, attackerSide);
         spawnEffect(targetGeneral.id, `-${event.damage}`, 'strat-dmg', fx);
     }
 
@@ -545,7 +552,6 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
     <header class="t-header retro-element">
       <h2 class="t-title">⚔️ 吞食天地</h2>
       <div v-if="matchStatus === 'playing'" class="t-timer">兵時: {{ timeSpent }}</div>
-      <button v-if="matchStatus === 'playing'" class="retro-btn btn-danger btn-small" @click="attemptEscape">撤退</button>
       <button v-else class="retro-btn btn-small" @click="leaveLobby">離開</button>
     </header>
 
@@ -623,7 +629,10 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
            </div>
            
            <div class="generals-list align-left">
-              <div v-for="(g, i) in p1.generals" :key="g.id" class="rpg-general-card" :class="{'is-dead': g.isDead}" :style="{ transform: `translateX(${getFormationOffsetPx(i, p1.formation, false)}px)` }">
+              <div v-for="(g, i) in p1.generals" :key="g.id" 
+                   class="rpg-general-card" 
+                   :class="{'is-dead': g.isDead, 'active-turn': myPlayerRole === 'p1' && matchStatus === 'playing' && i === myTarget.attackerIndex}" 
+                   :style="{ transform: `translateX(${getFormationOffsetPx(i, p1.formation, false)}px)` }">
                  <div class="fx-layer" v-for="eff in effects.filter(e => e.targetId === g.id)" :key="eff.id">
                      <div v-if="eff.fxClass" class="element-fx" :class="eff.fxClass"></div>
                      <div v-if="eff.text" class="dmg-pop" :class="eff.type">{{ eff.text }}</div>
@@ -651,7 +660,10 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
            </div>
            
            <div class="generals-list align-right">
-              <div v-for="(g, i) in p2.generals" :key="g.id" class="rpg-general-card reverse" :class="{'is-dead': g.isDead}" :style="{ transform: `translateX(${getFormationOffsetPx(i, p2.formation, true)}px)` }">
+              <div v-for="(g, i) in p2.generals" :key="g.id" 
+                   class="rpg-general-card reverse" 
+                   :class="{'is-dead': g.isDead, 'active-turn': myPlayerRole === 'p2' && matchStatus === 'playing' && i === myTarget.attackerIndex}" 
+                   :style="{ transform: `translateX(${getFormationOffsetPx(i, p2.formation, true)}px)` }">
                  <div class="fx-layer" v-for="eff in effects.filter(e => e.targetId === g.id)" :key="eff.id">
                      <div v-if="eff.fxClass" class="element-fx" :class="eff.fxClass"></div>
                      <div v-if="eff.text" class="dmg-pop" :class="eff.type">{{ eff.text }}</div>
@@ -674,7 +686,8 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
       </div>
 
       <div v-if="matchStatus === 'playing'" class="rpg-input-console retro-element">
-          <div class="m-target-zh">軍令：出擊「{{ myTarget.zh }}」</div>
+          <div class="m-target-zh">【{{ myTarget.attackerName }}】的回合：拼出「{{ myTarget.zh }}」</div>
+          
           <div class="m-slots">
               <span v-for="(slot, i) in myTarget.slots" :key="i" class="m-slot" :class="{'is-blank': slot.isBlank, 'filled': slot.filled}">{{ slot.filled ? slot.char : '_' }}</span>
           </div>
@@ -762,6 +775,12 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
 .rpg-general-card { display: inline-flex; align-items: center; background: #000; border: 2px solid #fff; padding: 2px 4px; border-radius: 4px; position: relative; transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: inset 0 0 0 1px #000, 2px 2px 0 rgba(255,255,255,0.2); min-width: 100px; }
 .rpg-general-card.reverse { flex-direction: row-reverse; }
 .rpg-general-card.is-dead { opacity: 0.3; filter: grayscale(100%); border-color: #555;}
+
+/* 🌟 高亮當前出擊武將 */
+.rpg-general-card.active-turn { border-color: #ffeb3b; box-shadow: inset 0 0 5px #ffeb3b, 0 0 8px #ffeb3b; z-index: 10;}
+.rpg-general-card.active-turn .avatar-box { animation: bounceAvatar 0.5s infinite alternate; border-color: #ffeb3b;}
+@keyframes bounceAvatar { from { transform: translateY(0); } to { transform: translateY(-4px); } }
+
 .avatar-box { font-size: 1.2rem; background: #222; border: 1px solid #777; padding: 2px; margin-right: 4px;}
 .reverse .avatar-box { margin-right: 0; margin-left: 4px; }
 .info-box { display: flex; flex-direction: column; justify-content: center;}
@@ -785,7 +804,6 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
 .heal-fx::after { content: '💚'; animation: floatUpFx 0.8s ease-out forwards; filter: drop-shadow(0 0 10px green); }
 .revive-fx::after { content: '🌟'; animation: spinBurst 0.8s ease-out forwards; filter: drop-shadow(0 0 15px gold); }
 .dispel-fx::after { content: '🌪️'; animation: spinBurst 0.6s ease-out forwards; filter: drop-shadow(0 0 10px cyan); }
-/* 🌟 新增暗殺與煙遁動畫 */
 .assassinate-fx::after { content: '🥷'; animation: dropSlash 0.6s ease-in forwards; filter: drop-shadow(0 0 10px purple); }
 .smoke-fx::after { content: '💨'; animation: spinBurst 0.8s ease-out forwards; filter: drop-shadow(0 0 10px gray); }
 
