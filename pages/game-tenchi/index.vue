@@ -28,12 +28,10 @@ const manualUnlocks = ref({ formations: [], strategies: [] });
 const showManual = ref(false);
 const manualTab = ref('formations'); 
 
-// 🌟 陣形下拉選單綁定變數
 const myFormationSelection = ref('散開之陣');
 
 const formationOrder = ['散開之陣', '鶴翼之陣', '衝方之陣', '白馬之陣', '魚鱗之陣', '鋒矢之陣', '一文字之陣', '背水之陣', '靜寂之陣', '八卦之陣'];
 
-// 🌟 重新調整陣形 offsets 數值，拉大前後差距 (正數往前，負數往後)
 const formations = ref({
     '散開之陣': { offsets: [0, 0, 0, 0, 0], mults: [1.0, 1.0, 1.0, 1.0, 1.0], desc: "無特殊效果，各武將處於正常位置。" },
     '鶴翼之陣': { offsets: [20, 5, -15, 5, 20], mults: [1.1, 1.2, 1.4, 1.2, 1.1], desc: "全員攻擊力上升，防禦下降。第三位增減最為明顯！" },
@@ -212,11 +210,10 @@ const getGeneralsData = (isP2, playerName) => {
     }));
 };
 
-// 🌟 拉大畫面位移的 Scale
 const getFormationOffsetPx = (index, formationName, isP2) => {
     const logicForward = formations.value[formationName]?.offsets[index] || 0;
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-    const scale = isMobile ? 1.0 : 1.8; // 增加倍率讓前後更明顯
+    const scale = isMobile ? 1.0 : 1.8; 
     return isP2 ? -(logicForward * scale) : (logicForward * scale); 
 };
 
@@ -249,7 +246,6 @@ const getAvailableActions = computed(() => {
         actions.push({ name: sName, label: `${icon} ${sName} (${strat.cost})`, cost: strat.cost, disabled: disabled });
     });
 
-    // 🌟 將撤退按鈕加入指令清單
     actions.push({ name: 'escape', label: '🏃‍♂️ 撤退 (拚機率)', cost: 0, disabled: false });
 
     return actions;
@@ -376,11 +372,19 @@ const executeAction = (actionName) => {
     setTimeout(assignNewTarget, 500); 
 };
 
-// 🌟 下拉選單觸發的變更陣型
 const changeFormationSelected = async () => {
     const myArmy = myPlayerRole.value === 'p1' ? p1.value : p2.value;
     myArmy.formation = myFormationSelection.value;
     await supabase.from('tenchi_events').insert([{ room_id: currentRoomId.value, attacker_id: String(studentCookie.value.id), target_index: -1, damage: 0, word_typed: myFormationSelection.value }]);
+};
+
+// 🌟 統一的離開/撤退處理邏輯
+const handleLeaveClick = () => {
+    if (matchStatus.value === 'playing') {
+        attemptEscape(); // 戰鬥中點擊離開，視同撤退 (拚機率並結算戰績)
+    } else {
+        leaveLobby(); // 非戰鬥中，直接退出
+    }
 };
 
 const attemptEscape = async () => {
@@ -414,9 +418,11 @@ const sendAttackEvent = async (actionName) => {
         } else if (stratConfig.type === 'revive') {
             const deadFriends = attackerArmy.generals.map((g,i)=>g.isDead?i:-1).filter(i=>i!==-1);
             if (deadFriends.length > 0) { targetIndex = deadFriends[Math.floor(Math.random()*deadFriends.length)]; isFriendly = true; finalDamage = stratConfig.power; }
-        } else if (stratConfig.type === 'dispel') { targetIndex = -4; }
-        else if (stratConfig.type === 'escape') { targetIndex = -5; }
-        else if (stratConfig.type === 'assassinate') {
+        } else if (stratConfig.type === 'dispel') { 
+            targetIndex = -4; 
+        } else if (stratConfig.type === 'escape') {
+            targetIndex = -5; 
+        } else if (stratConfig.type === 'assassinate') {
             const aliveEnemies = defenderArmy.generals.map((g,i)=>g.isDead?-1:i).filter(i=>i!==-1);
             if (aliveEnemies.length > 0) { targetIndex = aliveEnemies[Math.floor(Math.random()*aliveEnemies.length)]; finalDamage = (Math.random() < 0.5) ? 9999 : 0; }
         } else if (stratConfig.type === 'damage') {
@@ -463,7 +469,6 @@ const handleNetworkEvent = (event) => {
 
     if (event.target_index === -1) { 
         attacker.formation = parts[0]; 
-        // 確保自己畫面的選單也能同步
         if (event.attacker_id === String(studentCookie.value.id)) myFormationSelection.value = parts[0];
         addLog(`🚩 ${attacker.name}軍 佈下【${attacker.formation}】！`, attackerSide); 
         addLog(`💬 ${formations.value[attacker.formation].desc}`, 'sys'); 
@@ -489,7 +494,6 @@ const handleNetworkEvent = (event) => {
 
     if (event.target_index === -4) {
         sfx.dispel(); defender.formation = '散開之陣';
-        // 被破陣的人，選單要歸位
         if (event.attacker_id !== String(studentCookie.value.id)) myFormationSelection.value = '散開之陣';
         addLog(`🌪️ 【${attackerGeneralName}】施展【解陣計】！敵軍陣型瓦解！`, attackerSide);
         defender.generals.forEach(g => { if (!g.isDead) spawnEffect(g.id, '', 'sys', 'dispel-fx'); });
@@ -589,7 +593,7 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
     <header class="t-header retro-element">
       <h2 class="t-title">⚔️ 吞食天地</h2>
       <div v-if="matchStatus === 'playing'" class="t-timer">兵時: {{ timeSpent }}</div>
-      <button class="retro-btn btn-small" @click="leaveLobby">離開</button>
+      <button class="retro-btn btn-danger btn-small" @click="handleLeaveClick">離開</button>
     </header>
 
     <div v-if="errorMsg" class="error-box retro-element">{{ errorMsg }}</div>
@@ -813,6 +817,7 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
 .log-entry.p2 { color: #64b5f6; text-align: right;}
 @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 
+/* 🌟 防止位移被切斷 */
 .armies-container { flex: 1; display: flex; flex-direction: row; justify-content: space-between; gap: 4px; min-height: 0; overflow: hidden;}
 .army-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; width: 50%; padding: 0;}
 .army-header { display: flex; justify-content: space-between; align-items: center; padding: 4px; font-size: 0.75rem; font-weight: bold; margin-bottom: 2px; }
@@ -820,7 +825,7 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
 .p2-side .army-header { background: #000066; border-color: #64b5f6;}
 .score-text { color: #ffeb3b; }
 
-.generals-list { flex: 1; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; overflow-x: visible; padding: 5px 30px;}
+.generals-list { flex: 1; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; overflow-x: visible; padding: 5px 30px;}
 .align-left { align-items: flex-start; }
 .align-right { align-items: flex-end; }
 
@@ -884,7 +889,7 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
 .m-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; width: 100%; max-width: 500px;}
 .action-btn { padding: 6px 10px; font-size: 1rem; border-color: #ffeb3b; color: #ffeb3b;}
 .action-btn.disabled-act { border-color: #555; color: #888; opacity: 0.5;}
-.escape-btn { border-color: #e57373; color: #e57373; } /* 撤退按鈕改為紅色 */
+.escape-btn { border-color: #e57373; color: #e57373; }
 
 .winner-text { font-size: 1.5rem; color: #ffeb3b; font-weight: bold;}
 .final-scores { background: #000; padding: 15px; border: 2px solid #777; margin-top: 15px;}
