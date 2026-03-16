@@ -120,7 +120,7 @@ const saveSettings = async () => {
         <NuxtLink to="/admin/teachers" class="retro-btn teacher-btn" style="grid-column: span 2; background: #9c27b0; color: white;">👨‍🏫 教師權限管理</NuxtLink>
         <NuxtLink to="/admin/vocabularies" class="retro-btn vocab-btn">📝 編輯單字庫</NuxtLink>
         <NuxtLink to="/admin/tarot-manager" class="retro-btn tarot-btn">🔮 塔羅牌管理</NuxtLink>
-        <NuxtLink to="/admin/tenchi-manager" class="admin-card retro-element">
+        <NuxtLink to="/admin/tenchi-manager" class="retro-btn test-btn">
         <div class="card-icon">🐎</div>
         <h2>吞食天地兵法庫</h2>
         <p>手動解鎖學生的陣型與策略</p>
