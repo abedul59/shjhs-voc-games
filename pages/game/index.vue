@@ -29,21 +29,28 @@ const wordStats = ref({});
 // 從全域設定取得的遊戲參數
 const gameConfig = ref({ match_card_count: 8, match_penalty_points: 5 });
 
-// 動態網格樣式計算
+// 動態網格樣式計算：根據卡片總數調整欄數，避免過度擁擠
 const gridStyle = computed(() => {
   const totalCards = gameConfig.value.match_card_count * 2;
-  let cols = 4;
-  if (totalCards === 12) cols = 3;      // 6 對 (12 張) -> 3x4
-  else if (totalCards === 16) cols = 4; // 8 對 (16 張) -> 4x4
-  else if (totalCards === 20) cols = 4; // 10 對 (20 張) -> 4x5
-  else if (totalCards === 24) cols = 4; // 12 對 (24 張) -> 4x6
+  let cols = 4; // 預設 4 欄
+  
+  if (typeof window !== 'undefined' && window.innerWidth < 600) {
+     // 手機版：為了避免太擠，最多 3 欄或 2 欄
+     cols = totalCards <= 12 ? 2 : 3; 
+  } else {
+     // 電腦版
+     if (totalCards <= 12) cols = 3;      
+     else if (totalCards <= 16) cols = 4; 
+     else if (totalCards <= 20) cols = 5; 
+     else cols = 6; 
+  }
   
   return {
     gridTemplateColumns: `repeat(${cols}, 1fr)`
   };
 });
 
-// 🌟 輔助函式：標準的 Fisher-Yates 洗牌演算法 (真正的隨機打亂)
+// 🌟 輔助函式：標準的 Fisher-Yates 洗牌演算法
 const shuffleArray = (array) => {
     let currentIndex = array.length,  randomIndex;
     while (currentIndex != 0) {
@@ -73,7 +80,6 @@ onMounted(async () => {
   } catch(e) { console.error("讀取設定失敗", e); }
 
   try {
-    // 查詢目前挑戰次數
     if (currentStudent.value && !currentStudent.value.isAnon) {
       const { data: records } = await supabase.from('game_records')
         .select('attempt_number')
@@ -85,7 +91,6 @@ onMounted(async () => {
       if (records && records.length > 0) attemptNumber.value = records[0].attempt_number + 1;
     }
 
-    // 取得單字資料
     const { data, error } = await supabase.from('vocabularies')
       .select('*')
       .eq('version', version).eq('volume', volume).eq('unit', unit);
@@ -93,7 +98,6 @@ onMounted(async () => {
     if (error) throw error;
     
     if (data && data.length > 0) {
-      // 🌟 關鍵修正：使用 Fisher-Yates 演算法進行真正的隨機打亂
       allVocabs.value = shuffleArray([...data]); 
       startRound();
     } else {
@@ -106,7 +110,6 @@ onMounted(async () => {
 });
 
 const startRound = () => {
-  // 🌟 再次打亂，確保如果有「再來一局」的功能，每次取的字都不一樣
   allVocabs.value = shuffleArray([...allVocabs.value]);
   
   const numPairs = Math.min(gameConfig.value.match_card_count, allVocabs.value.length);
@@ -116,12 +119,11 @@ const startRound = () => {
   selectedVocabs.forEach(vocab => {
     wordStats.value[vocab.en_us] = { totalTime: 0, count: 0, startTime: null };
 
-    // isFlipped 屬性拔除，改用 isSelected 來代表被點擊的狀態
+    // 直接攤開，沒有 isFlipped
     initialCards.push({ id: vocab.id + '-en', text: vocab.en_us, pairId: vocab.id, type: 'en', isSelected: false, isMatched: false, vocab: vocab });
     initialCards.push({ id: vocab.id + '-zh', text: vocab.zh_tw, pairId: vocab.id, type: 'zh', isSelected: false, isMatched: false, vocab: vocab });
   });
 
-  // 🌟 卡片也要用標準演算法打亂
   cards.value = shuffleArray(initialCards);
 
   score.value = 100;
@@ -138,7 +140,7 @@ const flipCard = (index) => {
   const card = cards.value[index];
   if (card.isSelected || card.isMatched || isGameFinished.value) return;
 
-  card.isSelected = true; // 標記為已被選取 (黃色外框提示)
+  card.isSelected = true; 
 
   if (card.type === 'en' && wordStats.value[card.text]) {
       if (!wordStats.value[card.text].startTime) {
@@ -149,10 +151,7 @@ const flipCard = (index) => {
   if (!firstSelection.value) {
     firstSelection.value = { index, card };
   } else {
-    // 判斷是否配對成功
     const isMatch = firstSelection.value.card.pairId === card.pairId;
-    
-    // 找出這個 pair 的英文單字是什麼
     let enWord = card.type === 'en' ? card.text : firstSelection.value.card.text;
 
     if (isMatch) {
@@ -162,12 +161,11 @@ const flipCard = (index) => {
       
       correctWords.value.add(enWord);
 
-      // 計算答題耗時
       if (wordStats.value[enWord] && wordStats.value[enWord].startTime) {
           const timeDiff = (Date.now() - wordStats.value[enWord].startTime) / 1000;
           wordStats.value[enWord].totalTime += timeDiff;
           wordStats.value[enWord].count += 1;
-          wordStats.value[enWord].startTime = null; // 重置
+          wordStats.value[enWord].startTime = null; 
       }
 
       if (matchedPairs.value === gameConfig.value.match_card_count || matchedPairs.value === allVocabs.value.length) {
@@ -177,12 +175,11 @@ const flipCard = (index) => {
       score.value -= gameConfig.value.match_penalty_points;
       wrongWords.value.add(enWord);
       
-      // 點錯了，短暫顯示錯誤狀態後恢復未選取
       const firstIdx = firstSelection.value.index;
       setTimeout(() => {
         cards.value[firstIdx].isSelected = false;
         cards.value[index].isSelected = false;
-      }, 500); // 縮短為 0.5 秒讓節奏更快
+      }, 400); // 縮短為 0.4 秒，加速節奏
     }
     firstSelection.value = null;
   }
@@ -201,7 +198,6 @@ const finishGame = async () => {
   }
 
   if (currentStudent.value && !currentStudent.value.isAnon) {
-      
       const intervalsObj = {};
       for (const word in wordStats.value) {
           const stat = wordStats.value[word];
@@ -265,7 +261,7 @@ onUnmounted(() => { clearInterval(timer); });
 </template>
 
 <style scoped>
-.game-container { padding: 15px; max-width: 800px; margin: 0 auto; min-height: 100vh;}
+.game-container { padding: 15px; max-width: 1000px; margin: 0 auto; min-height: 100vh;}
 .header-bar { display: flex; justify-content: space-between; align-items: center; background-color: var(--box-bg); border: var(--border-width) solid var(--border-color); border-radius: var(--radius-element); padding: 15px 20px; margin-bottom: 20px; box-shadow: var(--shadow-box); flex-wrap: wrap; gap: 10px;}
 .stats { display: flex; gap: 20px; font-size: 1.2rem; font-weight: 900; }
 .score { color: var(--danger-color); }
@@ -273,67 +269,78 @@ onUnmounted(() => { clearInterval(timer); });
 .progress { color: var(--success-color); }
 .back-btn { font-size: 1rem; padding: 8px 15px; background-color: var(--btn-danger-bg); color: var(--text-main); }
 
+/* 🌟 修正後的網格佈局 */
 .card-grid {
   display: grid;
-  gap: 15px;
+  gap: 12px;
+  /* 根據卡片數量動態決定行高，避免全部擠在一起 */
+  grid-auto-rows: minmax(80px, auto); 
 }
 
-/* 🌟 直接攤開的卡片樣式 */
+/* 🌟 修正後的方塊卡片樣式 (兼容復古主題) */
 .card {
-  width: 100%;
-  aspect-ratio: 1 / 1;
   cursor: pointer;
   display: flex;
   justify-content: center;
   align-items: center;
   text-align: center;
-  padding: 10px;
-  word-break: break-word;
+  padding: 10px 15px; /* 增加左右 padding 讓字不會貼邊 */
+  word-break: break-word; /* 允許長單字換行 */
   font-weight: 900;
+  line-height: 1.3;
+  
+  /* 繼承自復古主題的基底設定 */
   background-color: var(--box-bg);
-  color: var(--text-main);
-  box-shadow: var(--shadow-btn);
-  transition: transform 0.1s, box-shadow 0.1s, border-color 0.2s, background-color 0.2s;
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--radius-element);
+  box-shadow: var(--shadow-btn); /* 讓按鈕立體 */
+  
+  transition: transform 0.1s, box-shadow 0.1s, border-color 0.2s, background-color 0.2s, opacity 0.3s;
   user-select: none;
 }
 
-/* 英文卡片專屬樣式 */
+/* 英文卡片字體與顏色 */
 .card.en-card {
   font-family: monospace;
   color: var(--primary-color);
-  font-size: 1.8rem;
+  font-size: 1.4rem;
 }
 
-/* 中文卡片專屬樣式 */
+/* 中文卡片字體與顏色 */
 .card.zh-card {
   font-family: 'Noto Sans TC', sans-serif;
   color: var(--danger-color);
-  font-size: 1.5rem;
+  font-size: 1.2rem;
 }
 
-/* 🖱️ 點擊特效 */
+/* 🖱️ 滑鼠懸停與點擊的物理回饋 */
+.card:hover:not(.matched):not(.selected) {
+  transform: translateY(-2px);
+  filter: brightness(0.95);
+}
 .card:active:not(.matched):not(.selected) {
-  transform: translateY(4px);
-  box-shadow: none;
+  transform: var(--transform-active);
+  box-shadow: var(--shadow-btn-active);
 }
 
-/* ✨ 選取狀態 (等待配對中) */
+/* ✨ 選取狀態 (等待配對中)：明顯高亮 */
 .card.selected {
   background-color: var(--tab-active-bg);
-  border-color: #ff9800;
-  transform: translateY(2px);
-  box-shadow: inset 0 0 10px rgba(255, 152, 0, 0.5);
+  border-color: #ff9800; /* 亮橘色邊框提示 */
+  color: var(--text-main); /* 確保字體在黃底上看清楚 */
+  transform: var(--transform-active);
+  box-shadow: inset 0 3px 5px rgba(0,0,0,0.1); /* 凹下去的感覺 */
 }
 
-/* ✅ 配對成功狀態 (變綠色並淡化) */
+/* ✅ 配對成功狀態：半透明、去色、不可點擊 */
 .card.matched {
   background-color: var(--success-bg);
   border-color: var(--success-color);
   color: var(--success-color);
-  opacity: 0.5; /* 半透明以表示消除 */
+  opacity: 0.3; /* 明顯淡出 */
   pointer-events: none; /* 消除後不可再點擊 */
   box-shadow: none;
-  transform: translateY(4px); /* 凹下去的感覺 */
+  transform: translateY(4px); /* 永久凹陷 */
 }
 
 .result-box {
@@ -355,7 +362,11 @@ onUnmounted(() => { clearInterval(timer); });
 @media (max-width: 600px) {
   .header-bar { flex-direction: column; align-items: stretch; }
   .stats { justify-content: space-between; font-size: 1rem; }
-  .card.en-card { font-size: 1.2rem; }
-  .card.zh-card { font-size: 1.1rem; }
+  
+  /* 手機版稍微縮小字體與方塊高度 */
+  .card-grid { grid-auto-rows: minmax(70px, auto); gap: 10px;}
+  .card { padding: 8px; }
+  .card.en-card { font-size: 1.1rem; }
+  .card.zh-card { font-size: 1rem; }
 }
 </style>
