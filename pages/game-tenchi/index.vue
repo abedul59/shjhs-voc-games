@@ -28,19 +28,23 @@ const manualUnlocks = ref({ formations: [], strategies: [] });
 const showManual = ref(false);
 const manualTab = ref('formations'); 
 
+// 🌟 陣形下拉選單綁定變數
+const myFormationSelection = ref('散開之陣');
+
 const formationOrder = ['散開之陣', '鶴翼之陣', '衝方之陣', '白馬之陣', '魚鱗之陣', '鋒矢之陣', '一文字之陣', '背水之陣', '靜寂之陣', '八卦之陣'];
 
+// 🌟 重新調整陣形 offsets 數值，拉大前後差距 (正數往前，負數往後)
 const formations = ref({
     '散開之陣': { offsets: [0, 0, 0, 0, 0], mults: [1.0, 1.0, 1.0, 1.0, 1.0], desc: "無特殊效果，各武將處於正常位置。" },
-    '鶴翼之陣': { offsets: [5, 10, 20, 10, 5], mults: [1.1, 1.2, 1.4, 1.2, 1.1], desc: "全員攻擊力上升，防禦下降。第三位增減最為明顯！" },
-    '衝方之陣': { offsets: [15, -15, 15, -15, 15], mults: [1.3, 0.7, 1.3, 0.7, 1.3], desc: "一三五主攻，二與四防禦大幅受惠！" },
-    '白馬之陣': { offsets: [5, 5, 5, 5, 5], mults: [1.1, 1.1, 1.1, 1.1, 1.1], desc: "全員速度上升！降低水計的成功率與威力。" },
-    '魚鱗之陣': { offsets: [-20, 10, 20, 10, -20], mults: [0.0, 1.2, 1.4, 1.2, 0.0], desc: "二三四攻防提升；一五退守，攻擊力變零！" },
-    '鋒矢之陣': { offsets: [-20, -5, 25, -5, -20], mults: [0.0, 0.9, 1.5, 0.9, 0.0], desc: "第三位主攻；一五防禦大幅上升，攻擊力變零！" },
-    '一文字之陣': { offsets: [15, 15, 15, 15, 15], mults: [1.3, 1.3, 1.3, 1.3, 1.3], desc: "全員向前突擊！攻擊力上升，防禦力下降！" },
-    '背水之陣': { offsets: [25, 25, 25, 25, 25], mults: [1.5, 1.5, 1.5, 1.5, 1.5], desc: "破釜沉舟！攻擊力大幅上升，易發動奮戰一擊！" },
-    '靜寂之陣': { offsets: [-20, -20, -20, -20, -20], mults: [0.6, 0.6, 0.6, 0.6, 0.6], desc: "全員隱身！防禦力與迴避率大幅地退守上升！" },
-    '八卦之陣': { offsets: [10, -10, 15, -10, 10], mults: [1.2, 0.8, 1.3, 0.8, 1.2], desc: "設有生門與死門，部分武將呈現無敵狀態！" }
+    '鶴翼之陣': { offsets: [20, 5, -15, 5, 20], mults: [1.1, 1.2, 1.4, 1.2, 1.1], desc: "全員攻擊力上升，防禦下降。第三位增減最為明顯！" },
+    '衝方之陣': { offsets: [30, -20, 30, -20, 30], mults: [1.3, 0.7, 1.3, 0.7, 1.3], desc: "一三五主攻，二與四防禦大幅受惠！" },
+    '白馬之陣': { offsets: [15, 15, 15, 15, 15], mults: [1.1, 1.1, 1.1, 1.1, 1.1], desc: "全員速度上升！降低水計的成功率與威力。" },
+    '魚鱗之陣': { offsets: [-35, 20, 30, 20, -35], mults: [0.0, 1.2, 1.4, 1.2, 0.0], desc: "二三四攻防提升；一五退守，攻擊力變零！" },
+    '鋒矢之陣': { offsets: [-35, -10, 45, -10, -35], mults: [0.0, 0.9, 1.5, 0.9, 0.0], desc: "第三位主攻；一五防禦大幅上升，攻擊力變零！" },
+    '一文字之陣': { offsets: [20, 20, 20, 20, 20], mults: [1.3, 1.3, 1.3, 1.3, 1.3], desc: "全員向前突擊！攻擊力上升，防禦力下降！" },
+    '背水之陣': { offsets: [45, 45, 45, 45, 45], mults: [1.5, 1.5, 1.5, 1.5, 1.5], desc: "破釜沉舟！攻擊力大幅上升，易發動奮戰一擊！" },
+    '靜寂之陣': { offsets: [-45, -45, -45, -45, -45], mults: [0.6, 0.6, 0.6, 0.6, 0.6], desc: "全員隱身！防禦力與迴避率大幅地退守上升！" },
+    '八卦之陣': { offsets: [15, -25, 25, -25, 15], mults: [1.2, 0.8, 1.3, 0.8, 1.2], desc: "設有生門與死門，部分武將呈現無敵狀態！" }
 });
 
 const strategies = ref({
@@ -103,7 +107,6 @@ const endReason = ref('');
 const battleLog = ref([]); 
 const effects = ref([]); 
 
-// 🌟 attackerIndex 初始化為 -1
 const myTarget = ref({ status: 'typing', word: '', zh: '', targetChars: [], typedCount: 0, slots: [], options: [], attackerIndex: -1, attackerName: '' });
 
 let roomSubscription = null;
@@ -209,13 +212,14 @@ const getGeneralsData = (isP2, playerName) => {
     }));
 };
 
+// 🌟 拉大畫面位移的 Scale
 const getFormationOffsetPx = (index, formationName, isP2) => {
     const logicForward = formations.value[formationName]?.offsets[index] || 0;
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-    return isP2 ? -(logicForward * (isMobile ? 0.7 : 1.2)) : (logicForward * (isMobile ? 0.7 : 1.2)); 
+    const scale = isMobile ? 1.0 : 1.8; // 增加倍率讓前後更明顯
+    return isP2 ? -(logicForward * scale) : (logicForward * scale); 
 };
 
-// 🌟 動態讀取目前的倍率顯示在按鈕上
 const getCurrentGeneralMultiplier = computed(() => {
     if (!myPlayerRole.value || myTarget.value.attackerIndex === -1) return 1.0;
     const myArmy = myPlayerRole.value === 'p1' ? p1.value : p2.value;
@@ -227,7 +231,6 @@ const getAvailableActions = computed(() => {
     const myArmy = myPlayerRole.value === 'p1' ? p1.value : p2.value;
     const deadFriends = myArmy.generals.filter(g => g.isDead);
     
-    // 顯示普通攻擊與其對應的倍率
     const mult = getCurrentGeneralMultiplier.value;
     const actions = [{ name: 'attack', label: `🗡️ 攻擊 (x${mult})`, cost: 0, disabled: false }];
     
@@ -245,6 +248,10 @@ const getAvailableActions = computed(() => {
 
         actions.push({ name: sName, label: `${icon} ${sName} (${strat.cost})`, cost: strat.cost, disabled: disabled });
     });
+
+    // 🌟 將撤退按鈕加入指令清單
+    actions.push({ name: 'escape', label: '🏃‍♂️ 撤退 (拚機率)', cost: 0, disabled: false });
+
     return actions;
 });
 
@@ -286,7 +293,8 @@ const subscribeToRoom = (roomId) => {
 const setupGameData = (p1Id, p1Name, p2Id, p2Name) => {
     p1.value = { id: p1Id, name: p1Name, score: 0, sp: config.value.sp, maxSp: config.value.sp, formation: '散開之陣', generals: getGeneralsData(false, p1Name) };
     p2.value = { id: p2Id, name: p2Name, score: 0, sp: config.value.sp, maxSp: config.value.sp, formation: '散開之陣', generals: getGeneralsData(true, p2Name) };
-    myTarget.value.attackerIndex = -1; // 歸零準備
+    myTarget.value.attackerIndex = -1; 
+    myFormationSelection.value = '散開之陣';
 
     matchStatus.value = 'playing'; gameStartTime.value = Date.now();
     addLog(`📜 戰鬥開始！${p1Name}軍 VS ${p2Name}軍`, 'sys');
@@ -295,16 +303,15 @@ const setupGameData = (p1Id, p1Name, p2Id, p2Name) => {
 };
 
 // =====================================
-// 📱 回合制戰鬥與指令選擇
+// 📱 戰鬥輸入與指令選擇
 // =====================================
 const assignNewTarget = () => {
     const myArmy = myPlayerRole.value === 'p1' ? p1.value : p2.value;
     const aliveMyGenerals = myArmy.generals.filter(g => !g.isDead);
     if (aliveMyGenerals.length === 0) return; 
 
-    // 🌟 尋找下一位存活的武將
     let nextIdx = (myTarget.value.attackerIndex + 1) % 5;
-    if (myTarget.value.word === '') nextIdx = 0; // 第一次開局
+    if (myTarget.value.word === '') nextIdx = 0; 
     while (myArmy.generals[nextIdx] && myArmy.generals[nextIdx].isDead) {
         nextIdx = (nextIdx + 1) % 5;
     }
@@ -313,7 +320,6 @@ const assignNewTarget = () => {
     myTarget.value.attackerIndex = nextIdx;
     myTarget.value.attackerName = currentMyGeneral.name;
 
-    // 🌟 隨機選題
     const randomWordObj = allWords.value[Math.floor(Math.random() * allWords.value.length)];
     const wordStr = randomWordObj.en_us.toLowerCase();
     
@@ -357,18 +363,41 @@ const handleOptionClick = (opt) => {
 };
 
 const executeAction = (actionName) => {
+    if (actionName === 'escape') {
+        attemptEscape();
+        myTarget.value.status = 'typing'; 
+        setTimeout(assignNewTarget, 500); 
+        return;
+    }
+
     if (myPlayerRole.value === 'p1') p1.value.score += 10; else p2.value.score += 10;
     sendAttackEvent(actionName);
     myTarget.value.status = 'typing'; 
     setTimeout(assignNewTarget, 500); 
 };
 
-const changeFormation = async () => {
+// 🌟 下拉選單觸發的變更陣型
+const changeFormationSelected = async () => {
     const myArmy = myPlayerRole.value === 'p1' ? p1.value : p2.value;
-    const available = unlockedFormations.value;
-    if (available.length <= 1) return; 
-    myArmy.formation = available[(available.indexOf(myArmy.formation) + 1) % available.length];
-    await supabase.from('tenchi_events').insert([{ room_id: currentRoomId.value, attacker_id: String(studentCookie.value.id), target_index: -1, damage: 0, word_typed: myArmy.formation }]);
+    myArmy.formation = myFormationSelection.value;
+    await supabase.from('tenchi_events').insert([{ room_id: currentRoomId.value, attacker_id: String(studentCookie.value.id), target_index: -1, damage: 0, word_typed: myFormationSelection.value }]);
+};
+
+const attemptEscape = async () => {
+    if (matchStatus.value !== 'playing') return;
+    const myArmy = myPlayerRole.value === 'p1' ? p1.value : p2.value;
+    if (Math.random() * 100 < config.value.escapeRate) {
+        sfx.defeat(); addLog(`🏃‍♂️ ${myArmy.name}軍 撤退成功！`, myPlayerRole.value);
+        await supabase.from('tenchi_events').insert([{ room_id: currentRoomId.value, attacker_id: String(studentCookie.value.id), target_index: -2, damage: 0, word_typed: 'escape_success' }]);
+        endGame(null, '主動撤退逃走', true);
+    } else {
+        sfx.error(); addLog(`❌ ${myArmy.name}軍 撤退失敗！全軍受創！`, myPlayerRole.value);
+        myArmy.generals.forEach(g => {
+            if(!g.isDead) { g.hp -= 10; spawnEffect(g.id, '-10', 'dmg', 'fire-fx'); if(g.hp <= 0) { g.hp = 0; g.isDead = true; sfx.defeat(); addLog(`💀 敵將 ${g.name} 敗退了！`, 'sys'); } }
+        });
+        await supabase.from('tenchi_events').insert([{ room_id: currentRoomId.value, attacker_id: String(studentCookie.value.id), target_index: -3, damage: 10, word_typed: 'escape_failed' }]);
+        if (myArmy.generals.every(g => g.isDead)) endGame(myPlayerRole.value === 'p1' ? p2.value.name : p1.value.name, '撤退失敗導致全軍覆沒');
+    }
 };
 
 const sendAttackEvent = async (actionName) => {
@@ -407,7 +436,6 @@ const sendAttackEvent = async (actionName) => {
         }
     }
 
-    // 🌟 將當前攻擊者的 index 也封裝傳送
     const payloadWord = `${myTarget.value.word}|${actionName}|${isFriendly}|${myTarget.value.attackerIndex}`;
     await supabase.from('tenchi_events').insert([{
         room_id: currentRoomId.value, attacker_id: String(studentCookie.value.id),
@@ -415,7 +443,6 @@ const sendAttackEvent = async (actionName) => {
     }]);
 };
 
-// 🌟 接收廣播，精確顯示是「誰」攻擊了「誰」
 const handleNetworkEvent = (event) => {
     const isP1Attacking = event.attacker_id === p1.value.id;
     const attacker = isP1Attacking ? p1.value : p2.value;
@@ -427,17 +454,22 @@ const handleNetworkEvent = (event) => {
     const isFriendlyTarget = parts[2] === 'true';
     const attackerPosIndex = parseInt(parts[3] || '0', 10);
     
-    // 取得發動攻擊的武將名稱
     const attackingGeneral = attacker.generals[attackerPosIndex];
     const attackerGeneralName = attackingGeneral ? attackingGeneral.name : attacker.name;
 
-    if (actionName !== 'attack' && strategies.value[actionName]) {
+    if (actionName !== 'attack' && actionName !== 'escape' && strategies.value[actionName]) {
         attacker.sp = Math.max(0, attacker.sp - strategies.value[actionName].cost);
     }
 
-    if (event.target_index === -1) { attacker.formation = parts[0]; addLog(`🚩 ${attacker.name}軍 佈下【${attacker.formation}】！`, attackerSide); addLog(`💬 ${formations.value[attacker.formation].desc}`, 'sys'); return; }
+    if (event.target_index === -1) { 
+        attacker.formation = parts[0]; 
+        // 確保自己畫面的選單也能同步
+        if (event.attacker_id === String(studentCookie.value.id)) myFormationSelection.value = parts[0];
+        addLog(`🚩 ${attacker.name}軍 佈下【${attacker.formation}】！`, attackerSide); 
+        addLog(`💬 ${formations.value[attacker.formation].desc}`, 'sys'); 
+        return; 
+    }
     
-    // 煙遁計處理
     if (event.target_index === -5) {
         sfx.smoke();
         if (event.attacker_id === String(studentCookie.value.id)) {
@@ -450,10 +482,15 @@ const handleNetworkEvent = (event) => {
         return;
     }
 
+    if (event.target_index === -2) { sfx.win(); addLog(`🏃‍♂️ 敵軍夾著尾巴逃跑了！`, 'sys'); endGame(defender.name, '對方敗戰逃走'); return; }
+    if (event.target_index === -3) { sfx.attack(); addLog(`⚔️ 敵軍撤退失敗！全軍受罰！`, 'sys'); attacker.generals.forEach(g => { if(!g.isDead) { g.hp -= event.damage; spawnEffect(g.id, `-${event.damage}`, 'dmg', 'fire-fx'); if(g.hp <= 0) { g.hp = 0; g.isDead = true; } } }); return; }
+
     if (event.attacker_id !== String(studentCookie.value.id)) attacker.score += 10;
 
     if (event.target_index === -4) {
         sfx.dispel(); defender.formation = '散開之陣';
+        // 被破陣的人，選單要歸位
+        if (event.attacker_id !== String(studentCookie.value.id)) myFormationSelection.value = '散開之陣';
         addLog(`🌪️ 【${attackerGeneralName}】施展【解陣計】！敵軍陣型瓦解！`, attackerSide);
         defender.generals.forEach(g => { if (!g.isDead) spawnEffect(g.id, '', 'sys', 'dispel-fx'); });
         return;
@@ -552,7 +589,7 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
     <header class="t-header retro-element">
       <h2 class="t-title">⚔️ 吞食天地</h2>
       <div v-if="matchStatus === 'playing'" class="t-timer">兵時: {{ timeSpent }}</div>
-      <button v-else class="retro-btn btn-small" @click="leaveLobby">離開</button>
+      <button class="retro-btn btn-small" @click="leaveLobby">離開</button>
     </header>
 
     <div v-if="errorMsg" class="error-box retro-element">{{ errorMsg }}</div>
@@ -647,10 +684,14 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
                  </div>
               </div>
            </div>
-           <template v-if="myPlayerRole === 'p1'">
-               <button class="retro-btn formation-btn" @click="changeFormation" :disabled="unlockedFormations.length <= 1">陣型：{{ p1.formation }} {{ unlockedFormations.length > 1 ? '🔄' : '🔒' }}</button>
-           </template>
-           <div v-else class="formation-tag">陣型：{{ p1.formation }}</div>
+
+           <div v-if="myPlayerRole === 'p1'" class="formation-control">
+               <span style="font-weight:bold; font-size:0.8rem; color:#aaa;">陣形：</span>
+               <select v-model="myFormationSelection" @change="changeFormationSelected" class="retro-select" :disabled="unlockedFormations.length <= 1">
+                   <option v-for="f in unlockedFormations" :key="f" :value="f">{{ f }}</option>
+               </select>
+           </div>
+           <div v-else class="formation-tag">陣形：{{ p1.formation }}</div>
         </div>
 
         <div class="army-panel p2-side">
@@ -678,10 +719,14 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
                  <div class="avatar-box">{{ g.face }}</div>
               </div>
            </div>
-           <template v-if="myPlayerRole === 'p2'">
-               <button class="retro-btn formation-btn" @click="changeFormation" :disabled="unlockedFormations.length <= 1">陣型：{{ p2.formation }} {{ unlockedFormations.length > 1 ? '🔄' : '🔒' }}</button>
-           </template>
-           <div v-else class="formation-tag right-align">陣型：{{ p2.formation }}</div>
+
+           <div v-if="myPlayerRole === 'p2'" class="formation-control right-align">
+               <span style="font-weight:bold; font-size:0.8rem; color:#aaa;">陣形：</span>
+               <select v-model="myFormationSelection" @change="changeFormationSelected" class="retro-select" :disabled="unlockedFormations.length <= 1">
+                   <option v-for="f in unlockedFormations" :key="f" :value="f">{{ f }}</option>
+               </select>
+           </div>
+           <div v-else class="formation-tag right-align">陣形：{{ p2.formation }}</div>
         </div>
       </div>
 
@@ -698,7 +743,7 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
 
           <div v-else-if="myTarget.status === 'selecting_action'" class="m-actions">
               <button v-for="act in getAvailableActions" :key="act.name" 
-                      class="retro-btn action-btn" :class="{ 'disabled-act': act.disabled }"
+                      class="retro-btn action-btn" :class="{ 'disabled-act': act.disabled, 'escape-btn': act.name==='escape' }"
                       :disabled="act.disabled" @click="executeAction(act.name)">
                   {{ act.label }}
               </button>
@@ -732,6 +777,12 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
 .btn-primary { padding: 10px 20px; font-size: 1.2rem; background: #b30000; border-color: #ffcccc;}
 .btn-danger { background: #d32f2f; border-color:#ffcdd2;}
 .btn-small { padding: 5px 10px; font-size: 1rem; }
+
+/* 🌟 下拉選單設計 */
+.formation-control { display: flex; align-items: center; margin-top: 5px; gap: 5px; }
+.formation-control.right-align { justify-content: flex-end; }
+.retro-select { background: #222; color: #fff; border: 2px solid #777; padding: 4px; font-family: inherit; font-weight: bold; outline: none; border-radius: 4px; font-size: 0.9rem;}
+.retro-select:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .t-header { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; border-bottom: none; border-left: none; border-right: none; margin-bottom: 2px; padding: 4px 8px;}
 .t-title { margin: 0; font-size: 1.1rem; font-weight: 900; text-shadow: 2px 2px 0 #000; }
@@ -769,14 +820,13 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
 .p2-side .army-header { background: #000066; border-color: #64b5f6;}
 .score-text { color: #ffeb3b; }
 
-.generals-list { flex: 1; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; overflow-x: visible; padding: 5px 25px;}
+.generals-list { flex: 1; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; overflow-x: visible; padding: 5px 30px;}
 .align-left { align-items: flex-start; }
 .align-right { align-items: flex-end; }
+
 .rpg-general-card { display: inline-flex; align-items: center; background: #000; border: 2px solid #fff; padding: 2px 4px; border-radius: 4px; position: relative; transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: inset 0 0 0 1px #000, 2px 2px 0 rgba(255,255,255,0.2); min-width: 100px; }
 .rpg-general-card.reverse { flex-direction: row-reverse; }
 .rpg-general-card.is-dead { opacity: 0.3; filter: grayscale(100%); border-color: #555;}
-
-/* 🌟 高亮當前出擊武將 */
 .rpg-general-card.active-turn { border-color: #ffeb3b; box-shadow: inset 0 0 5px #ffeb3b, 0 0 8px #ffeb3b; z-index: 10;}
 .rpg-general-card.active-turn .avatar-box { animation: bounceAvatar 0.5s infinite alternate; border-color: #ffeb3b;}
 @keyframes bounceAvatar { from { transform: translateY(0); } to { transform: translateY(-4px); } }
@@ -792,7 +842,7 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
 .g-hp-text { font-size: 0.65rem; color: #fff; font-weight: bold;}
 .hp-bar-bg { width: 35px; height: 5px; background: #333; border: 1px solid #aaa;}
 .hp-bar-fill { height: 100%; transition: width 0.3s ease-out;}
-.formation-btn { width: 100%; margin-top: 5px; padding: 4px; font-size: 0.75rem; background: #222; border-color: #777;}
+
 .formation-tag { font-size: 0.75rem; color: #ffeb3b; margin-top: 5px; text-shadow: 1px 1px 0 #000; font-weight: bold;}
 
 .fx-layer { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; justify-content: center; align-items: center; pointer-events: none; z-index: 20; width: 100%; height: 100%; }
@@ -834,6 +884,7 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
 .m-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; width: 100%; max-width: 500px;}
 .action-btn { padding: 6px 10px; font-size: 1rem; border-color: #ffeb3b; color: #ffeb3b;}
 .action-btn.disabled-act { border-color: #555; color: #888; opacity: 0.5;}
+.escape-btn { border-color: #e57373; color: #e57373; } /* 撤退按鈕改為紅色 */
 
 .winner-text { font-size: 1.5rem; color: #ffeb3b; font-weight: bold;}
 .final-scores { background: #000; padding: 15px; border: 2px solid #777; margin-top: 15px;}
@@ -844,5 +895,6 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
   .generals-list { padding: 10px 40px; gap: 10px;} .rpg-log-box { height: 80px; } .log-entry { font-size: 1rem; }
   .m-slot { font-size: 1.8rem; min-width: 25px;} .m-target-zh { font-size: 1.2rem; }
   .action-btn { font-size: 1.2rem; padding: 8px 12px; }
+  .retro-select { font-size: 1rem; padding: 6px;}
 }
 </style>
