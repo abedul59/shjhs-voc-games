@@ -23,26 +23,21 @@ const attemptNumber = ref(1);
 const correctWords = ref(new Set());
 const wrongWords = ref(new Set());
 
-// 單字統計：總耗時、作答次數與平均時間
 const wordStats = ref({});
-
-// 從全域設定取得的遊戲參數
 const gameConfig = ref({ match_card_count: 8, match_penalty_points: 5 });
 
-// 動態網格樣式計算：根據卡片總數調整欄數，避免過度擁擠
+// 🌟 動態網格樣式：根據總牌數決定欄數，確保排版盡可能接近正方形
 const gridStyle = computed(() => {
   const totalCards = gameConfig.value.match_card_count * 2;
-  let cols = 4; // 預設 4 欄
-  
+  let cols = 4;
+  if (totalCards === 12) cols = 3;      // 3x4 或 4x3
+  else if (totalCards === 16) cols = 4; // 4x4 (完美正方形)
+  else if (totalCards === 20) cols = 4; // 4x5 
+  else if (totalCards === 24) cols = 4; // 4x6 
+
+  // 手機版自適應
   if (typeof window !== 'undefined' && window.innerWidth < 600) {
-     // 手機版：為了避免太擠，最多 3 欄或 2 欄
-     cols = totalCards <= 12 ? 2 : 3; 
-  } else {
-     // 電腦版
-     if (totalCards <= 12) cols = 3;      
-     else if (totalCards <= 16) cols = 4; 
-     else if (totalCards <= 20) cols = 5; 
-     else cols = 6; 
+     cols = totalCards <= 12 ? 3 : 4; 
   }
   
   return {
@@ -50,7 +45,37 @@ const gridStyle = computed(() => {
   };
 });
 
-// 🌟 輔助函式：標準的 Fisher-Yates 洗牌演算法
+// =====================================
+// 🔊 音效與發音系統
+// =====================================
+const audioCtx = typeof window !== 'undefined' ? new (window.AudioContext || window.webkitAudioContext)() : null;
+const playTone = (freq, type, duration, vol = 0.1) => {
+  if (!audioCtx) return;
+  try {
+    const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+    osc.type = type; osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + duration);
+  } catch (e) {}
+};
+
+const sfx = {
+  click: () => playTone(800, 'square', 0.05, 0.05),
+  error: () => playTone(200, 'sawtooth', 0.1, 0.1),
+  match: () => { playTone(600, 'sine', 0.1, 0.1); setTimeout(() => playTone(800, 'sine', 0.15, 0.1), 100); },
+  win: () => { [523, 659, 783, 1046].forEach((f, i) => setTimeout(() => playTone(f, 'sine', 0.3), i * 150)); }
+};
+
+const speakWord = (text) => {
+  if ('speechSynthesis' in window && text) {
+    window.speechSynthesis.cancel(); 
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'en-US'; 
+    utterance.rate = 0.9; 
+    window.speechSynthesis.speak(utterance);
+  }
+};
+
 const shuffleArray = (array) => {
     let currentIndex = array.length,  randomIndex;
     while (currentIndex != 0) {
@@ -70,7 +95,6 @@ onMounted(async () => {
     return;
   }
 
-  // 取得後台設定
   try {
     const { data: settingsData } = await supabase.from('system_settings').select('match_card_count, match_penalty_points').eq('id', 1).single();
     if (settingsData) {
@@ -119,7 +143,6 @@ const startRound = () => {
   selectedVocabs.forEach(vocab => {
     wordStats.value[vocab.en_us] = { totalTime: 0, count: 0, startTime: null };
 
-    // 直接攤開，沒有 isFlipped
     initialCards.push({ id: vocab.id + '-en', text: vocab.en_us, pairId: vocab.id, type: 'en', isSelected: false, isMatched: false, vocab: vocab });
     initialCards.push({ id: vocab.id + '-zh', text: vocab.zh_tw, pairId: vocab.id, type: 'zh', isSelected: false, isMatched: false, vocab: vocab });
   });
@@ -137,13 +160,18 @@ const startRound = () => {
 };
 
 const flipCard = (index) => {
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); // 解除瀏覽器音效限制
+
   const card = cards.value[index];
   if (card.isSelected || card.isMatched || isGameFinished.value) return;
 
   card.isSelected = true; 
+  sfx.click();
 
-  if (card.type === 'en' && wordStats.value[card.text]) {
-      if (!wordStats.value[card.text].startTime) {
+  // 🌟 點到英文方塊時，用語音唸出來
+  if (card.type === 'en') {
+      speakWord(card.text);
+      if (wordStats.value[card.text] && !wordStats.value[card.text].startTime) {
           wordStats.value[card.text].startTime = Date.now();
       }
   }
@@ -155,6 +183,7 @@ const flipCard = (index) => {
     let enWord = card.type === 'en' ? card.text : firstSelection.value.card.text;
 
     if (isMatch) {
+      sfx.match(); // 播放配對成功音效
       cards.value[firstSelection.value.index].isMatched = true;
       card.isMatched = true;
       matchedPairs.value++;
@@ -169,9 +198,11 @@ const flipCard = (index) => {
       }
 
       if (matchedPairs.value === gameConfig.value.match_card_count || matchedPairs.value === allVocabs.value.length) {
+        sfx.win(); // 播放通關音效
         finishGame();
       }
     } else {
+      sfx.error(); // 播放點錯音效
       score.value -= gameConfig.value.match_penalty_points;
       wrongWords.value.add(enWord);
       
@@ -179,7 +210,7 @@ const flipCard = (index) => {
       setTimeout(() => {
         cards.value[firstIdx].isSelected = false;
         cards.value[index].isSelected = false;
-      }, 400); // 縮短為 0.4 秒，加速節奏
+      }, 400); 
     }
     firstSelection.value = null;
   }
@@ -239,15 +270,17 @@ onUnmounted(() => { clearInterval(timer); });
 
     <p v-if="errorMsg" class="error-msg">{{ errorMsg }}</p>
 
-    <div v-if="!isGameFinished" class="card-grid" :style="gridStyle">
-      <div 
-        v-for="(card, index) in cards" 
-        :key="card.id" 
-        class="card retro-element" 
-        :class="{ selected: card.isSelected, matched: card.isMatched, 'en-card': card.type === 'en', 'zh-card': card.type === 'zh' }"
-        @click="flipCard(index)"
-      >
-         {{ card.text }}
+    <div v-if="!isGameFinished" class="card-grid-wrapper">
+      <div class="card-grid" :style="gridStyle">
+        <div 
+          v-for="(card, index) in cards" 
+          :key="card.id" 
+          class="card retro-element" 
+          :class="{ selected: card.isSelected, matched: card.isMatched, 'en-card': card.type === 'en', 'zh-card': card.type === 'zh' }"
+          @click="flipCard(index)"
+        >
+           {{ card.text }}
+        </div>
       </div>
     </div>
 
@@ -261,7 +294,7 @@ onUnmounted(() => { clearInterval(timer); });
 </template>
 
 <style scoped>
-.game-container { padding: 15px; max-width: 1000px; margin: 0 auto; min-height: 100vh;}
+.game-container { padding: 15px; max-width: 900px; margin: 0 auto; min-height: 100vh;}
 .header-bar { display: flex; justify-content: space-between; align-items: center; background-color: var(--box-bg); border: var(--border-width) solid var(--border-color); border-radius: var(--radius-element); padding: 15px 20px; margin-bottom: 20px; box-shadow: var(--shadow-box); flex-wrap: wrap; gap: 10px;}
 .stats { display: flex; gap: 20px; font-size: 1.2rem; font-weight: 900; }
 .score { color: var(--danger-color); }
@@ -269,51 +302,60 @@ onUnmounted(() => { clearInterval(timer); });
 .progress { color: var(--success-color); }
 .back-btn { font-size: 1rem; padding: 8px 15px; background-color: var(--btn-danger-bg); color: var(--text-main); }
 
-/* 🌟 修正後的網格佈局 */
+/* 包裝層用來讓整個 Grid 置中且緊湊 */
+.card-grid-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+}
+
+/* 🌟 強制呈現方塊陣列感 */
 .card-grid {
   display: grid;
   gap: 12px;
-  /* 根據卡片數量動態決定行高，避免全部擠在一起 */
-  grid-auto-rows: minmax(80px, auto); 
+  width: 100%;
+  max-width: 700px; /* 限制最大寬度，讓它在大螢幕上也是個緊湊的正方形 */
 }
 
-/* 🌟 修正後的方塊卡片樣式 (兼容復古主題) */
+/* 🌟 完美的正方形卡片 */
 .card {
+  width: 100%;
+  aspect-ratio: 1 / 1; /* 強制正方形 */
   cursor: pointer;
   display: flex;
   justify-content: center;
   align-items: center;
   text-align: center;
-  padding: 10px 15px; /* 增加左右 padding 讓字不會貼邊 */
+  padding: 5px;
+  box-sizing: border-box; /* 確保邊框不會撐破寬度 */
   word-break: break-word; /* 允許長單字換行 */
+  hyphens: auto; /* 長單字自動加連字符 */
   font-weight: 900;
-  line-height: 1.3;
+  line-height: 1.1;
+  overflow: hidden; /* 防止文字溢出 */
   
-  /* 繼承自復古主題的基底設定 */
   background-color: var(--box-bg);
   border: var(--border-width) solid var(--border-color);
   border-radius: var(--radius-element);
-  box-shadow: var(--shadow-btn); /* 讓按鈕立體 */
+  box-shadow: var(--shadow-btn);
   
-  transition: transform 0.1s, box-shadow 0.1s, border-color 0.2s, background-color 0.2s, opacity 0.3s;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   user-select: none;
 }
 
-/* 英文卡片字體與顏色 */
+/* 🌟 動態文字大小 clamp(最小值, 理想值, 最大值)，防止撐破正方形 */
 .card.en-card {
   font-family: monospace;
   color: var(--primary-color);
-  font-size: 1.4rem;
+  font-size: clamp(0.9rem, 2.5vw, 1.6rem); 
 }
-
-/* 中文卡片字體與顏色 */
 .card.zh-card {
   font-family: 'Noto Sans TC', sans-serif;
   color: var(--danger-color);
-  font-size: 1.2rem;
+  font-size: clamp(0.9rem, 2.2vw, 1.4rem);
 }
 
-/* 🖱️ 滑鼠懸停與點擊的物理回饋 */
 .card:hover:not(.matched):not(.selected) {
   transform: translateY(-2px);
   filter: brightness(0.95);
@@ -323,24 +365,22 @@ onUnmounted(() => { clearInterval(timer); });
   box-shadow: var(--shadow-btn-active);
 }
 
-/* ✨ 選取狀態 (等待配對中)：明顯高亮 */
+/* ✨ 選取狀態 */
 .card.selected {
   background-color: var(--tab-active-bg);
-  border-color: #ff9800; /* 亮橘色邊框提示 */
-  color: var(--text-main); /* 確保字體在黃底上看清楚 */
-  transform: var(--transform-active);
-  box-shadow: inset 0 3px 5px rgba(0,0,0,0.1); /* 凹下去的感覺 */
+  border-color: #ff9800;
+  color: var(--text-main); 
+  transform: scale(0.95);
+  box-shadow: inset 0 3px 5px rgba(0,0,0,0.1); 
 }
 
-/* ✅ 配對成功狀態：半透明、去色、不可點擊 */
+/* 🌟 成功配對後：完全消失！ */
 .card.matched {
-  background-color: var(--success-bg);
-  border-color: var(--success-color);
-  color: var(--success-color);
-  opacity: 0.3; /* 明顯淡出 */
-  pointer-events: none; /* 消除後不可再點擊 */
+  opacity: 0;
+  visibility: hidden; /* 隱藏但保留佔位，維持網格形狀 */
+  transform: scale(0); /* 縮小消失的動畫感 */
+  pointer-events: none;
   box-shadow: none;
-  transform: translateY(4px); /* 永久凹陷 */
 }
 
 .result-box {
@@ -362,11 +402,6 @@ onUnmounted(() => { clearInterval(timer); });
 @media (max-width: 600px) {
   .header-bar { flex-direction: column; align-items: stretch; }
   .stats { justify-content: space-between; font-size: 1rem; }
-  
-  /* 手機版稍微縮小字體與方塊高度 */
-  .card-grid { grid-auto-rows: minmax(70px, auto); gap: 10px;}
-  .card { padding: 8px; }
-  .card.en-card { font-size: 1.1rem; }
-  .card.zh-card { font-size: 1rem; }
+  .card-grid { gap: 8px; }
 }
 </style>
