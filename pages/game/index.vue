@@ -116,8 +116,9 @@ const startRound = () => {
   selectedVocabs.forEach(vocab => {
     wordStats.value[vocab.en_us] = { totalTime: 0, count: 0, startTime: null };
 
-    initialCards.push({ id: vocab.id + '-en', text: vocab.en_us, pairId: vocab.id, type: 'en', isFlipped: false, isMatched: false, vocab: vocab });
-    initialCards.push({ id: vocab.id + '-zh', text: vocab.zh_tw, pairId: vocab.id, type: 'zh', isFlipped: false, isMatched: false, vocab: vocab });
+    // isFlipped 屬性拔除，改用 isSelected 來代表被點擊的狀態
+    initialCards.push({ id: vocab.id + '-en', text: vocab.en_us, pairId: vocab.id, type: 'en', isSelected: false, isMatched: false, vocab: vocab });
+    initialCards.push({ id: vocab.id + '-zh', text: vocab.zh_tw, pairId: vocab.id, type: 'zh', isSelected: false, isMatched: false, vocab: vocab });
   });
 
   // 🌟 卡片也要用標準演算法打亂
@@ -135,17 +136,20 @@ const startRound = () => {
 
 const flipCard = (index) => {
   const card = cards.value[index];
-  if (card.isFlipped || card.isMatched || isGameFinished.value) return;
+  if (card.isSelected || card.isMatched || isGameFinished.value) return;
 
-  card.isFlipped = true;
+  card.isSelected = true; // 標記為已被選取 (黃色外框提示)
 
-  if (card.type === 'en') {
-      wordStats.value[card.text].startTime = Date.now();
+  if (card.type === 'en' && wordStats.value[card.text]) {
+      if (!wordStats.value[card.text].startTime) {
+          wordStats.value[card.text].startTime = Date.now();
+      }
   }
 
   if (!firstSelection.value) {
     firstSelection.value = { index, card };
   } else {
+    // 判斷是否配對成功
     const isMatch = firstSelection.value.card.pairId === card.pairId;
     
     // 找出這個 pair 的英文單字是什麼
@@ -171,14 +175,14 @@ const flipCard = (index) => {
       }
     } else {
       score.value -= gameConfig.value.match_penalty_points;
-      
       wrongWords.value.add(enWord);
       
+      // 點錯了，短暫顯示錯誤狀態後恢復未選取
       const firstIdx = firstSelection.value.index;
       setTimeout(() => {
-        cards.value[firstIdx].isFlipped = false;
-        cards.value[index].isFlipped = false;
-      }, 1000);
+        cards.value[firstIdx].isSelected = false;
+        cards.value[index].isSelected = false;
+      }, 500); // 縮短為 0.5 秒讓節奏更快
     }
     firstSelection.value = null;
   }
@@ -244,13 +248,10 @@ onUnmounted(() => { clearInterval(timer); });
         v-for="(card, index) in cards" 
         :key="card.id" 
         class="card retro-element" 
-        :class="{ flipped: card.isFlipped, matched: card.isMatched }"
+        :class="{ selected: card.isSelected, matched: card.isMatched, 'en-card': card.type === 'en', 'zh-card': card.type === 'zh' }"
         @click="flipCard(index)"
       >
-        <div class="card-inner">
-          <div class="card-front">❓</div>
-          <div class="card-back" :class="card.type">{{ card.text }}</div>
-        </div>
+         {{ card.text }}
       </div>
     </div>
 
@@ -275,70 +276,64 @@ onUnmounted(() => { clearInterval(timer); });
 .card-grid {
   display: grid;
   gap: 15px;
-  perspective: 1000px;
 }
 
+/* 🌟 直接攤開的卡片樣式 */
 .card {
   width: 100%;
   aspect-ratio: 1 / 1;
   cursor: pointer;
-  position: relative;
-  background-color: transparent;
-  border: none;
-  box-shadow: none;
-  border-radius: var(--radius-element);
-}
-
-.card-inner {
-  width: 100%;
-  height: 100%;
-  position: relative;
-  transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  transform-style: preserve-3d;
-}
-
-.card.flipped .card-inner, .card.matched .card-inner { transform: rotateY(180deg); }
-
-.card-front, .card-back {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  backface-visibility: hidden;
   display: flex;
   justify-content: center;
   align-items: center;
-  font-size: 1.5rem;
-  font-weight: 900;
-  border: var(--border-width) solid var(--border-color);
-  border-radius: var(--radius-element);
-  box-sizing: border-box;
   text-align: center;
   padding: 10px;
   word-break: break-word;
-}
-
-.card-front {
-  background-color: var(--primary-color);
-  color: white;
-  font-size: 3rem;
-  box-shadow: inset -4px -4px 0px rgba(0,0,0,0.2);
-}
-
-.card-back {
-  background-color: #fff;
+  font-weight: 900;
+  background-color: var(--box-bg);
   color: var(--text-main);
-  transform: rotateY(180deg);
   box-shadow: var(--shadow-btn);
+  transition: transform 0.1s, box-shadow 0.1s, border-color 0.2s, background-color 0.2s;
+  user-select: none;
 }
-.card-back.en { font-family: monospace; color: var(--primary-color); font-size: 1.8rem; }
-.card-back.zh { font-family: 'Noto Sans TC', sans-serif; color: var(--danger-color); font-size: 1.5rem;}
 
-.card.matched .card-back {
+/* 英文卡片專屬樣式 */
+.card.en-card {
+  font-family: monospace;
+  color: var(--primary-color);
+  font-size: 1.8rem;
+}
+
+/* 中文卡片專屬樣式 */
+.card.zh-card {
+  font-family: 'Noto Sans TC', sans-serif;
+  color: var(--danger-color);
+  font-size: 1.5rem;
+}
+
+/* 🖱️ 點擊特效 */
+.card:active:not(.matched):not(.selected) {
+  transform: translateY(4px);
+  box-shadow: none;
+}
+
+/* ✨ 選取狀態 (等待配對中) */
+.card.selected {
+  background-color: var(--tab-active-bg);
+  border-color: #ff9800;
+  transform: translateY(2px);
+  box-shadow: inset 0 0 10px rgba(255, 152, 0, 0.5);
+}
+
+/* ✅ 配對成功狀態 (變綠色並淡化) */
+.card.matched {
   background-color: var(--success-bg);
   border-color: var(--success-color);
   color: var(--success-color);
-  opacity: 0.8;
+  opacity: 0.5; /* 半透明以表示消除 */
+  pointer-events: none; /* 消除後不可再點擊 */
   box-shadow: none;
+  transform: translateY(4px); /* 凹下去的感覺 */
 }
 
 .result-box {
@@ -360,8 +355,7 @@ onUnmounted(() => { clearInterval(timer); });
 @media (max-width: 600px) {
   .header-bar { flex-direction: column; align-items: stretch; }
   .stats { justify-content: space-between; font-size: 1rem; }
-  .card-front { font-size: 2rem; }
-  .card-back.en { font-size: 1.2rem; }
-  .card-back.zh { font-size: 1.1rem; }
+  .card.en-card { font-size: 1.2rem; }
+  .card.zh-card { font-size: 1.1rem; }
 }
 </style>
