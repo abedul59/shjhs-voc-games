@@ -25,9 +25,8 @@ const currentRoomId = ref(null);
 const myWins = ref(0);
 const manualUnlocks = ref({ formations: [], strategies: [] });
 
-// 🌟 兵法書控制狀態
 const showManual = ref(false);
-const manualTab = ref('formations'); // 'formations' 或 'strategies'
+const manualTab = ref('formations'); 
 
 const formationOrder = ['散開之陣', '鶴翼之陣', '衝方之陣', '白馬之陣', '魚鱗之陣', '鋒矢之陣', '一文字之陣', '背水之陣', '靜寂之陣', '八卦之陣'];
 
@@ -45,7 +44,14 @@ const formations = ref({
 });
 
 const strategies = ref({
-  "火計": { type: "damage", unlockWins: 0, power: 15, cost: 5, desc: "火焰傷害" }
+    "火計": { type: "damage", unlockWins: 0, power: 15, cost: 5, desc: "火焰傷害" },
+    "水計": { type: "damage", unlockWins: 5, power: 25, cost: 6, desc: "水淹傷害" },
+    "石計": { type: "damage", unlockWins: 10, power: 40, cost: 7, desc: "砂石重擊" },
+    "回復計": { type: "heal", unlockWins: 15, power: 40, cost: 5, desc: "恢復兵力" },
+    "暗殺計": { type: "assassinate", unlockWins: 17, power: 0, cost: 15, desc: "50%機率一擊必殺" },
+    "招魂計": { type: "revive", unlockWins: 20, power: 50, cost: 8, desc: "復活武將" },
+    "煙遁計": { type: "escape", unlockWins: 23, power: 0, cost: 20, desc: "100%無損撤退" },
+    "解陣計": { type: "dispel", unlockWins: 25, power: 0, cost: 6, desc: "破除敵方陣型" }
 });
 
 const unlockedFormations = computed(() => {
@@ -82,6 +88,7 @@ const strategiesGuide = computed(() => {
         if (sName.includes('石') || sName.includes('砂')) icon = '🪨';
         if (sName.includes('回復')) icon = '💚'; if (sName.includes('招魂')) icon = '🌟';
         if (sName.includes('解陣')) icon = '🌪️';
+        if (sName.includes('暗殺')) icon = '🥷'; if (sName.includes('煙遁')) icon = '💨';
 
         return { name: sName, icon, desc: strat.desc, cost: strat.cost, reqWins: strat.unlockWins, isUnlocked };
     }).sort((a, b) => a.reqWins - b.reqWins);
@@ -125,7 +132,9 @@ const sfx = {
   water: () => { playTone(300, 'sine', 0.1, 0.15); setTimeout(() => playTone(400, 'sine', 0.2, 0.15), 100); setTimeout(() => playTone(200, 'sine', 0.2, 0.15), 200); },
   stone: () => { playTone(80, 'square', 0.3, 0.25); },
   dispel: () => { playTone(800, 'triangle', 0.1, 0.1); setTimeout(() => playTone(400, 'triangle', 0.2, 0.1), 100); },
-  revive: () => { [440, 554, 659, 880].forEach((f, i) => setTimeout(() => playTone(f, 'sine', 0.3, 0.1), i * 150)); }
+  revive: () => { [440, 554, 659, 880].forEach((f, i) => setTimeout(() => playTone(f, 'sine', 0.3, 0.1), i * 150)); },
+  assassinate: () => { playTone(900, 'square', 0.1, 0.1); setTimeout(() => playTone(150, 'sawtooth', 0.3, 0.2), 100); },
+  smoke: () => { playTone(200, 'sine', 0.3, 0.2); setTimeout(() => playTone(100, 'sine', 0.4, 0.1), 200); }
 };
 
 const speakWord = (text) => {
@@ -183,7 +192,6 @@ onMounted(async () => {
   } catch (e) { console.error(e); }
 });
 
-// 🌟 修改：接收 playerName，並隨機選一個位置替換成玩家姓名
 const getGeneralsData = (isP2, playerName) => {
     const p1Names = ['劉備', '關羽', '張飛', '趙雲', '馬超', '黃忠', '諸葛亮', '魏延', '龐統', '姜維'].sort(() => 0.5 - Math.random());
     const p1Faces = ['👲', '🧔', '👳', '🥷', '💂', '🕵️', '👨‍🎤', '👨‍🎓', '👨‍🏫', '👨‍⚖️'].sort(() => 0.5 - Math.random());
@@ -192,18 +200,11 @@ const getGeneralsData = (isP2, playerName) => {
 
     const names = isP2 ? p2Names : p1Names;
     const faces = isP2 ? p2Faces : p1Faces;
-
-    // 隨機選一個陣位讓玩家親自上陣
     const playerIdx = Math.floor(Math.random() * 5);
 
     return Array.from({ length: 5 }).map((_, i) => ({
-        id: `${isP2 ? 'p2' : 'p1'}_g${i}`, 
-        face: faces[i], 
-        name: (i === playerIdx && playerName) ? playerName : names[i], // 🌟 替換玩家姓名
-        hp: config.value.hp, 
-        maxHp: config.value.hp, 
-        isDead: false, 
-        posIndex: i 
+        id: `${isP2 ? 'p2' : 'p1'}_g${i}`, face: faces[i], name: (i === playerIdx && playerName) ? playerName : names[i], 
+        hp: config.value.hp, maxHp: config.value.hp, isDead: false, posIndex: i 
     }));
 };
 
@@ -230,6 +231,7 @@ const getAvailableActions = computed(() => {
         if (sName.includes('石') || sName.includes('砂')) icon = '🪨';
         if (sName.includes('回復')) icon = '💚'; if (sName.includes('招魂')) icon = '🌟';
         if (sName.includes('解陣')) icon = '🌪️';
+        if (sName.includes('暗殺')) icon = '🥷'; if (sName.includes('煙遁')) icon = '💨';
 
         actions.push({ name: sName, label: `${icon} ${sName} (${strat.cost})`, cost: strat.cost, disabled: disabled });
     });
@@ -272,13 +274,8 @@ const subscribeToRoom = (roomId) => {
 };
 
 const setupGameData = (p1Id, p1Name, p2Id, p2Name) => {
-    p1.value = { id: p1Id, name: p1Name, score: 0, sp: config.value.sp, maxSp: config.value.sp, formation: '散開之陣', generals: [] };
-    p2.value = { id: p2Id, name: p2Name, score: 0, sp: config.value.sp, maxSp: config.value.sp, formation: '散開之陣', generals: [] };
-    
-    // 🌟 將玩家名稱傳入武將產生器
-    p1.value.generals = getGeneralsData(false, p1Name);
-    p2.value.generals = getGeneralsData(true, p2Name);
-
+    p1.value = { id: p1Id, name: p1Name, score: 0, sp: config.value.sp, maxSp: config.value.sp, formation: '散開之陣', generals: getGeneralsData(false, p1Name) };
+    p2.value = { id: p2Id, name: p2Name, score: 0, sp: config.value.sp, maxSp: config.value.sp, formation: '散開之陣', generals: getGeneralsData(true, p2Name) };
     matchStatus.value = 'playing'; gameStartTime.value = Date.now();
     addLog(`📜 戰鬥開始！${p1Name}軍 VS ${p2Name}軍`, 'sys');
     timer = setInterval(() => { timeSpent.value = Math.round((Date.now() - gameStartTime.value) / 1000); }, 1000);
@@ -353,6 +350,7 @@ const changeFormation = async () => {
     await supabase.from('tenchi_events').insert([{ room_id: currentRoomId.value, attacker_id: String(studentCookie.value.id), target_index: -1, damage: 0, word_typed: myArmy.formation }]);
 };
 
+// 一般撤退機制 (按鈕)
 const attemptEscape = async () => {
     if (matchStatus.value !== 'playing') return;
     const myArmy = myPlayerRole.value === 'p1' ? p1.value : p2.value;
@@ -384,8 +382,17 @@ const sendAttackEvent = async (actionName) => {
         } else if (stratConfig.type === 'revive') {
             const deadFriends = attackerArmy.generals.map((g,i)=>g.isDead?i:-1).filter(i=>i!==-1);
             if (deadFriends.length > 0) { targetIndex = deadFriends[Math.floor(Math.random()*deadFriends.length)]; isFriendly = true; finalDamage = stratConfig.power; }
-        } else if (stratConfig.type === 'dispel') { targetIndex = -4; }
-        else if (stratConfig.type === 'damage') {
+        } else if (stratConfig.type === 'dispel') { 
+            targetIndex = -4; 
+        } else if (stratConfig.type === 'escape') {
+            targetIndex = -5; // 🌟 煙遁計專用指令
+        } else if (stratConfig.type === 'assassinate') {
+            const aliveEnemies = defenderArmy.generals.map((g,i)=>g.isDead?-1:i).filter(i=>i!==-1);
+            if (aliveEnemies.length > 0) { 
+                targetIndex = aliveEnemies[Math.floor(Math.random()*aliveEnemies.length)]; 
+                finalDamage = (Math.random() < 0.5) ? 9999 : 0; // 50%一擊必殺
+            }
+        } else if (stratConfig.type === 'damage') {
             const aliveEnemies = defenderArmy.generals.map((g,i)=>g.isDead?-1:i).filter(i=>i!==-1);
             if (aliveEnemies.length > 0) { targetIndex = aliveEnemies[Math.floor(Math.random()*aliveEnemies.length)]; finalDamage = stratConfig.power + Math.floor(Math.random()*10); }
         }
@@ -409,6 +416,7 @@ const sendAttackEvent = async (actionName) => {
     }]);
 };
 
+// 🌟 網路接收與動畫特效
 const handleNetworkEvent = (event) => {
     const isP1Attacking = event.attacker_id === p1.value.id;
     const attacker = isP1Attacking ? p1.value : p2.value;
@@ -427,15 +435,22 @@ const handleNetworkEvent = (event) => {
     if (event.target_index === -1) { attacker.formation = wordTyped; addLog(`🚩 ${attacker.name}軍 佈下【${attacker.formation}】！`, attackerSide); addLog(`💬 ${formations.value[attacker.formation].desc}`, 'sys'); return; }
     if (event.target_index === -2) { sfx.win(); addLog(`🏃‍♂️ 敵軍夾著尾巴逃跑了！`, 'sys'); endGame(defender.name, '對方敗戰逃走'); return; }
     if (event.target_index === -3) { sfx.attack(); addLog(`⚔️ 敵軍撤退失敗！全軍受罰！`, 'sys'); attacker.generals.forEach(g => { if(!g.isDead) { g.hp -= event.damage; spawnEffect(g.id, `-${event.damage}`, 'dmg', 'fire-fx'); if(g.hp <= 0) { g.hp = 0; g.isDead = true; } } }); return; }
-
-    if (event.attacker_id !== String(studentCookie.value.id)) attacker.score += 10;
-
-    if (event.target_index === -4) {
-        sfx.dispel(); defender.formation = '散開之陣';
-        addLog(`🌪️ ${attacker.name}軍 施展【解陣計】！敵軍陣型瓦解！`, attackerSide);
-        defender.generals.forEach(g => { if (!g.isDead) spawnEffect(g.id, '', 'sys', 'dispel-fx'); });
+    if (event.target_index === -4) { sfx.dispel(); defender.formation = '散開之陣'; addLog(`🌪️ ${attacker.name}軍 施展【解陣計】！敵軍陣型瓦解！`, attackerSide); defender.generals.forEach(g => { if (!g.isDead) spawnEffect(g.id, '', 'sys', 'dispel-fx'); }); return; }
+    
+    // 🌟 煙遁計處理 (強制撤退成功)
+    if (event.target_index === -5) {
+        sfx.smoke();
+        if (event.attacker_id === String(studentCookie.value.id)) {
+            addLog(`💨 ${attacker.name}軍 施展【煙遁計】！化作一陣煙霧成功撤退！`, attackerSide);
+            endGame(null, '使用煙遁計成功撤退', true);
+        } else {
+            addLog(`💨 敵軍施展【煙遁計】，化作一陣煙霧消失了！`, 'sys');
+            endGame(defender.name, '對方使用煙遁計逃脫');
+        }
         return;
     }
+
+    if (event.attacker_id !== String(studentCookie.value.id)) attacker.score += 10;
 
     if (isFriendlyTarget) {
         const targetGeneral = attacker.generals[event.target_index];
@@ -463,6 +478,14 @@ const handleNetworkEvent = (event) => {
             sfx.attack(); targetGeneral.hp -= event.damage;
             addLog(`🗡️ 敵方出擊，重創了 ${targetGeneral.name} (-${event.damage})！`, attackerSide);
             spawnEffect(targetGeneral.id, `-${event.damage}`, 'dmg', 'attack-fx');
+        }
+    } else if (actionName === '暗殺計') {
+        if (event.damage === 0) {
+            sfx.block(); addLog(`🥷 ${attacker.name}軍 施展【暗殺計】！但是被 ${targetGeneral.name} 識破了！`, attackerSide);
+        } else {
+            sfx.assassinate(); targetGeneral.hp = 0;
+            addLog(`🥷 ${attacker.name}軍 施展【暗殺計】！一擊必殺了 ${targetGeneral.name}！`, attackerSide);
+            spawnEffect(targetGeneral.id, `必殺`, 'strat-dmg', 'assassinate-fx');
         }
     } else {
         let fx = 'fire-fx';
@@ -762,12 +785,16 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
 .heal-fx::after { content: '💚'; animation: floatUpFx 0.8s ease-out forwards; filter: drop-shadow(0 0 10px green); }
 .revive-fx::after { content: '🌟'; animation: spinBurst 0.8s ease-out forwards; filter: drop-shadow(0 0 15px gold); }
 .dispel-fx::after { content: '🌪️'; animation: spinBurst 0.6s ease-out forwards; filter: drop-shadow(0 0 10px cyan); }
+/* 🌟 新增暗殺與煙遁動畫 */
+.assassinate-fx::after { content: '🥷'; animation: dropSlash 0.6s ease-in forwards; filter: drop-shadow(0 0 10px purple); }
+.smoke-fx::after { content: '💨'; animation: spinBurst 0.8s ease-out forwards; filter: drop-shadow(0 0 10px gray); }
 
 @keyframes burst { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(2); opacity: 0; } }
 @keyframes waveSplash { 0% { transform: translateY(20px) scale(0.8); opacity: 1; } 100% { transform: translateY(-40px) scale(2); opacity: 0; } }
 @keyframes rockDrop { 0% { transform: translateY(-50px) scale(2); opacity: 1; } 100% { transform: translateY(0) scale(1.5); opacity: 0; } }
 @keyframes floatUpFx { 0% { transform: translateY(0) scale(1); opacity: 1; } 100% { transform: translateY(-50px) scale(1.8); opacity: 0; } }
 @keyframes spinBurst { 0% { transform: scale(0) rotate(0deg); opacity: 1; } 100% { transform: scale(2.5) rotate(180deg); opacity: 0; } }
+@keyframes dropSlash { 0% { transform: translateY(-50px) scale(2); opacity: 0; } 50% { transform: translateY(0) scale(1.5); opacity: 1; } 100% { transform: translate(30px, 30px) scale(1) rotate(45deg); opacity: 0; } }
 
 .dmg-pop { position: absolute; top: -10px; font-size: 1.2rem; font-weight: 900; color: #ff3333; text-shadow: 1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff; animation: floatTxt 0.8s ease-out forwards; }
 .dmg-pop.heal { color: #4caf50; text-shadow: 1px 1px 0 #fff, -1px -1px 0 #fff; animation: floatTxt 1s ease-out forwards; font-size: 1.5rem;}

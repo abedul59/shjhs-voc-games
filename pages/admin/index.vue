@@ -77,7 +77,16 @@ const config = ref({
       '靜寂之陣': [0.6, 0.6, 0.6, 0.6, 0.6],
       '八卦之陣': [1.2, 0.8, 1.3, 0.8, 1.2]
   },
-  tenchi_strategies_config: {}, // 🌟 新增策略預設空物件
+  tenchi_strategies_config: {
+      "火計": { "type": "damage", "unlockWins": 0, "power": 15, "cost": 5, "desc": "火焰傷害" },
+      "水計": { "type": "damage", "unlockWins": 5, "power": 25, "cost": 6, "desc": "水淹傷害" },
+      "石計": { "type": "damage", "unlockWins": 10, "power": 40, "cost": 7, "desc": "砂石重擊" },
+      "回復計": { "type": "heal", "unlockWins": 15, "power": 40, "cost": 5, "desc": "恢復兵力" },
+      "暗殺計": { "type": "assassinate", "unlockWins": 17, "power": 0, "cost": 15, "desc": "50%機率一擊必殺" },
+      "招魂計": { "type": "revive", "unlockWins": 20, "power": 50, "cost": 8, "desc": "復活武將" },
+      "煙遁計": { "type": "escape", "unlockWins": 23, "power": 0, "cost": 20, "desc": "100%無損撤退" },
+      "解陣計": { "type": "dispel", "unlockWins": 25, "power": 0, "cost": 6, "desc": "破除敵方陣型" }
+  }
 });
 
 onMounted(async () => {
