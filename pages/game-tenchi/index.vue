@@ -18,16 +18,20 @@ const gameStartTime = ref(0);
 const timeSpent = ref(0);
 let timer = null;
 
-const config = ref({ hp: 100, sp: 40, minDmg: 5, maxDmg: 15, escapeRate: 50, winsPerFormation: 8, blankCount: 3 });
+// 🌟 新增能力值設定
+const config = ref({ 
+  hp: 100, sp: 40, minDmg: 5, maxDmg: 15, escapeRate: 50, winsPerFormation: 8, blankCount: 3,
+  baseAtk: 10, baseDef: 10, baseInt: 10, baseEva: 10,
+  playerAtk: 15, playerDef: 15, playerInt: 15, playerEva: 10
+});
+
 const myPlayerRole = ref(null); 
 const currentRoomId = ref(null);
-
 const myWins = ref(0);
 const manualUnlocks = ref({ formations: [], strategies: [] });
 
 const showManual = ref(false);
 const manualTab = ref('formations'); 
-
 const myFormationSelection = ref('散開之陣');
 
 const formationOrder = ['散開之陣', '鶴翼之陣', '衝方之陣', '白馬之陣', '魚鱗之陣', '鋒矢之陣', '一文字之陣', '背水之陣', '靜寂之陣', '八卦之陣'];
@@ -37,7 +41,7 @@ const formations = ref({
     '鶴翼之陣': { offsets: [20, 5, -15, 5, 20], mults: [1.1, 1.2, 1.4, 1.2, 1.1], desc: "全員攻擊力上升，防禦下降。第三位增減最為明顯！" },
     '衝方之陣': { offsets: [30, -20, 30, -20, 30], mults: [1.3, 0.7, 1.3, 0.7, 1.3], desc: "一三五主攻，二與四防禦大幅受惠！" },
     '白馬之陣': { offsets: [15, 15, 15, 15, 15], mults: [1.1, 1.1, 1.1, 1.1, 1.1], desc: "全員速度上升！降低水計的成功率與威力。" },
-    '魚鱗之陣': { offsets: [-35, 20, 30, 20, -35], mults: [0.0, 1.2, 1.4, 1.2, 0.0], desc: "二三四攻防提升；一五退守，攻擊力變零！" },
+    '魚鱗之陣': { offsets: [-35, 20, 30, 20, -35], mults: [0.0, 1.2, 1.4, 1.2, 0.0], desc: "二三四攻防提升；一五退守，攻擊力變零！提升迴避率。" },
     '鋒矢之陣': { offsets: [-35, -10, 45, -10, -35], mults: [0.0, 0.9, 1.5, 0.9, 0.0], desc: "第三位主攻；一五防禦大幅上升，攻擊力變零！" },
     '一文字之陣': { offsets: [20, 20, 20, 20, 20], mults: [1.3, 1.3, 1.3, 1.3, 1.3], desc: "全員向前突擊！攻擊力上升，防禦力下降！" },
     '背水之陣': { offsets: [45, 45, 45, 45, 45], mults: [1.5, 1.5, 1.5, 1.5, 1.5], desc: "破釜沉舟！攻擊力大幅上升，易發動奮戰一擊！" },
@@ -161,6 +165,17 @@ onMounted(async () => {
       if (settings.tenchi_wins_per_formation) config.value.winsPerFormation = settings.tenchi_wins_per_formation;
       if (settings.tenchi_blank_count) config.value.blankCount = settings.tenchi_blank_count;
       
+      // 🌟 讀取屬性設定
+      if (settings.tenchi_base_atk) config.value.baseAtk = settings.tenchi_base_atk;
+      if (settings.tenchi_base_def) config.value.baseDef = settings.tenchi_base_def;
+      if (settings.tenchi_base_int) config.value.baseInt = settings.tenchi_base_int;
+      if (settings.tenchi_base_eva) config.value.baseEva = settings.tenchi_base_eva;
+      
+      if (settings.tenchi_player_atk) config.value.playerAtk = settings.tenchi_player_atk;
+      if (settings.tenchi_player_def) config.value.playerDef = settings.tenchi_player_def;
+      if (settings.tenchi_player_int) config.value.playerInt = settings.tenchi_player_int;
+      if (settings.tenchi_player_eva) config.value.playerEva = settings.tenchi_player_eva;
+
       if (settings.tenchi_formations_config && Object.keys(settings.tenchi_formations_config).length > 0) {
           for (const [key, mults] of Object.entries(settings.tenchi_formations_config)) {
               if (formations.value[key]) formations.value[key].mults = mults;
@@ -204,10 +219,23 @@ const getGeneralsData = (isP2, playerName) => {
     const faces = isP2 ? p2Faces : p1Faces;
     const playerIdx = Math.floor(Math.random() * 5);
 
-    return Array.from({ length: 5 }).map((_, i) => ({
-        id: `${isP2 ? 'p2' : 'p1'}_g${i}`, face: faces[i], name: (i === playerIdx && playerName) ? playerName : names[i], 
-        hp: config.value.hp, maxHp: config.value.hp, isDead: false, posIndex: i 
-    }));
+    return Array.from({ length: 5 }).map((_, i) => {
+        const isPlayer = (i === playerIdx && playerName);
+        return {
+            id: `${isP2 ? 'p2' : 'p1'}_g${i}`, 
+            face: faces[i], 
+            name: isPlayer ? playerName : names[i], 
+            hp: config.value.hp, 
+            maxHp: config.value.hp, 
+            // 🌟 寫入基礎能力值
+            atk: isPlayer ? config.value.playerAtk : config.value.baseAtk,
+            def: isPlayer ? config.value.playerDef : config.value.baseDef,
+            int: isPlayer ? config.value.playerInt : config.value.baseInt,
+            eva: isPlayer ? config.value.playerEva : config.value.baseEva,
+            isDead: false, 
+            posIndex: i 
+        };
+    });
 };
 
 const getFormationOffsetPx = (index, formationName, isP2) => {
@@ -378,12 +406,11 @@ const changeFormationSelected = async () => {
     await supabase.from('tenchi_events').insert([{ room_id: currentRoomId.value, attacker_id: String(studentCookie.value.id), target_index: -1, damage: 0, word_typed: myFormationSelection.value }]);
 };
 
-// 🌟 統一的離開/撤退處理邏輯
 const handleLeaveClick = () => {
     if (matchStatus.value === 'playing') {
-        attemptEscape(); // 戰鬥中點擊離開，視同撤退 (拚機率並結算戰績)
+        attemptEscape(); 
     } else {
-        leaveLobby(); // 非戰鬥中，直接退出
+        leaveLobby(); 
     }
 };
 
@@ -404,51 +431,91 @@ const attemptEscape = async () => {
     }
 };
 
+// 🌟 發送攻擊事件 (包含新版傷害運算與迴避判定)
 const sendAttackEvent = async (actionName) => {
     const attackerArmy = myPlayerRole.value === 'p1' ? p1.value : p2.value;
     const defenderArmy = myPlayerRole.value === 'p1' ? p2.value : p1.value;
+    const attackerGen = attackerArmy.generals[myTarget.value.attackerIndex];
     
-    let targetIndex = -1; let finalDamage = 0; let isFriendly = false;
+    let targetIndex = -1; 
+    let finalDamage = 0; 
+    let isFriendly = false;
+    let isEvaded = false; // 記錄是否閃避
 
     if (actionName !== 'attack') {
         const stratConfig = strategies.value[actionName];
         if (stratConfig.type === 'heal') {
             const aliveFriends = attackerArmy.generals.map((g,i)=>g.isDead?-1:i).filter(i=>i!==-1);
-            if (aliveFriends.length > 0) { targetIndex = aliveFriends[Math.floor(Math.random()*aliveFriends.length)]; isFriendly = true; finalDamage = stratConfig.power; }
+            if (aliveFriends.length > 0) { targetIndex = aliveFriends[Math.floor(Math.random()*aliveFriends.length)]; isFriendly = true; finalDamage = stratConfig.power + attackerGen.int; }
         } else if (stratConfig.type === 'revive') {
             const deadFriends = attackerArmy.generals.map((g,i)=>g.isDead?i:-1).filter(i=>i!==-1);
-            if (deadFriends.length > 0) { targetIndex = deadFriends[Math.floor(Math.random()*deadFriends.length)]; isFriendly = true; finalDamage = stratConfig.power; }
-        } else if (stratConfig.type === 'dispel') { 
-            targetIndex = -4; 
-        } else if (stratConfig.type === 'escape') {
-            targetIndex = -5; 
-        } else if (stratConfig.type === 'assassinate') {
+            if (deadFriends.length > 0) { targetIndex = deadFriends[Math.floor(Math.random()*deadFriends.length)]; isFriendly = true; finalDamage = stratConfig.power + attackerGen.int; }
+        } else if (stratConfig.type === 'dispel') { targetIndex = -4; }
+        else if (stratConfig.type === 'escape') { targetIndex = -5; }
+        else if (stratConfig.type === 'assassinate') {
             const aliveEnemies = defenderArmy.generals.map((g,i)=>g.isDead?-1:i).filter(i=>i!==-1);
-            if (aliveEnemies.length > 0) { targetIndex = aliveEnemies[Math.floor(Math.random()*aliveEnemies.length)]; finalDamage = (Math.random() < 0.5) ? 9999 : 0; }
+            if (aliveEnemies.length > 0) { targetIndex = aliveEnemies[Math.floor(Math.random()*aliveEnemies.length)]; }
         } else if (stratConfig.type === 'damage') {
             const aliveEnemies = defenderArmy.generals.map((g,i)=>g.isDead?-1:i).filter(i=>i!==-1);
-            if (aliveEnemies.length > 0) { targetIndex = aliveEnemies[Math.floor(Math.random()*aliveEnemies.length)]; finalDamage = stratConfig.power + Math.floor(Math.random()*10); }
+            if (aliveEnemies.length > 0) { targetIndex = aliveEnemies[Math.floor(Math.random()*aliveEnemies.length)]; }
         }
-    }
-
-    if (actionName === 'attack') {
+    } else {
         const aliveEnemies = defenderArmy.generals.map((g,i)=>g.isDead?-1:i).filter(i=>i!==-1);
         if (aliveEnemies.length > 0) {
             targetIndex = aliveEnemies[Math.floor(Math.random()*aliveEnemies.length)];
-            const baseDamage = Math.floor(Math.random() * (config.value.maxDmg - config.value.minDmg + 1)) + config.value.minDmg;
-            const multiplier = formations.value[attackerArmy.formation].mults[myTarget.value.attackerIndex];
-            finalDamage = Math.round(baseDamage * multiplier);
-            isFriendly = false;
         }
     }
 
-    const payloadWord = `${myTarget.value.word}|${actionName}|${isFriendly}|${myTarget.value.attackerIndex}`;
+    // 🌟 敵軍迴避判定 (只有攻擊敵軍時才算)
+    if (!isFriendly && targetIndex >= 0 && targetIndex < 5 && actionName !== 'dispel' && actionName !== 'escape') {
+        const targetGen = defenderArmy.generals[targetIndex];
+        let evadeChance = targetGen.eva;
+        // 陣型額外迴避加成
+        if (defenderArmy.formation === '靜寂之陣') evadeChance += 30;
+        if (defenderArmy.formation === '魚鱗之陣') evadeChance += 10;
+        
+        if (Math.random() * 100 < evadeChance) {
+            isEvaded = true;
+            finalDamage = 0;
+        }
+    }
+
+    // 🌟 如果沒被閃避，計算實際傷害
+    if (!isEvaded && targetIndex >= 0 && targetIndex < 5 && !isFriendly) {
+        const targetGen = defenderArmy.generals[targetIndex];
+        
+        if (actionName === 'attack') {
+            // 普通攻擊 = (隨機基礎 + 攻防差) * 陣型倍率
+            const baseDmg = Math.floor(Math.random() * (config.value.maxDmg - config.value.minDmg + 1)) + config.value.minDmg;
+            const statDiff = attackerGen.atk - targetGen.def;
+            const mult = formations.value[attackerArmy.formation].mults[myTarget.value.attackerIndex];
+            finalDamage = Math.max(1, Math.round((baseDmg + statDiff) * mult));
+            
+        } else if (actionName === '暗殺計') {
+            // 暗殺獨立 50% 成功率 (就算沒被閃避也可能失敗)
+            if (Math.random() < 0.5) finalDamage = 9999;
+            else isEvaded = true; 
+            
+        } else {
+            // 策略攻擊 = 策略基礎 + 智力差 (若白馬陣對水計有減傷)
+            const stratConfig = strategies.value[actionName];
+            const intDiff = attackerGen.int - targetGen.int;
+            finalDamage = Math.max(1, stratConfig.power + intDiff);
+            if (defenderArmy.formation === '白馬之陣' && actionName.includes('水')) {
+                finalDamage = Math.max(1, finalDamage - 10);
+            }
+        }
+    }
+
+    // 將是否閃避的旗標也包裝傳送出去
+    const payloadWord = `${myTarget.value.word}|${actionName}|${isFriendly}|${myTarget.value.attackerIndex}|${isEvaded}`;
     await supabase.from('tenchi_events').insert([{
         room_id: currentRoomId.value, attacker_id: String(studentCookie.value.id),
         target_index: targetIndex, damage: finalDamage, word_typed: payloadWord
     }]);
 };
 
+// 🌟 解析網路廣播與播放特效
 const handleNetworkEvent = (event) => {
     const isP1Attacking = event.attacker_id === p1.value.id;
     const attacker = isP1Attacking ? p1.value : p2.value;
@@ -459,6 +526,7 @@ const handleNetworkEvent = (event) => {
     const actionName = parts[1] || 'attack';
     const isFriendlyTarget = parts[2] === 'true';
     const attackerPosIndex = parseInt(parts[3] || '0', 10);
+    const isEvaded = parts[4] === 'true'; // 解析是否閃避
     
     const attackingGeneral = attacker.generals[attackerPosIndex];
     const attackerGeneralName = attackingGeneral ? attackingGeneral.name : attacker.name;
@@ -519,22 +587,29 @@ const handleNetworkEvent = (event) => {
     const targetGeneral = defender.generals[event.target_index];
     if (!targetGeneral || targetGeneral.isDead) return;
 
+    // 🌟 閃避無敵處理
+    if (isEvaded) {
+        sfx.block();
+        if (actionName === 'attack') {
+            addLog(`💨 【${attackerGeneralName}】的攻擊被 ${targetGeneral.name} 靈巧地閃避了！`, attackerSide);
+        } else if (actionName === '暗殺計') {
+            addLog(`🥷 【${attackerGeneralName}】的暗殺行動被 ${targetGeneral.name} 識破了！`, attackerSide);
+        } else {
+            addLog(`💨 【${attackerGeneralName}】的【${actionName}】被 ${targetGeneral.name} 閃避了！`, attackerSide);
+        }
+        spawnEffect(targetGeneral.id, '閃避', 'sys', 'smoke-fx');
+        return;
+    }
+
+    // 🌟 命中處理
     if (actionName === 'attack') {
-        if (event.damage === 0) {
-            sfx.block(); addLog(`🛡️ 【${attackerGeneralName}】出擊，被 ${targetGeneral.name} 輕鬆擋下！`, attackerSide);
-        } else {
-            sfx.attack(); targetGeneral.hp -= event.damage;
-            addLog(`🗡️ 【${attackerGeneralName}】出擊，重創了 ${targetGeneral.name} (-${event.damage})！`, attackerSide);
-            spawnEffect(targetGeneral.id, `-${event.damage}`, 'dmg', 'attack-fx');
-        }
+        sfx.attack(); targetGeneral.hp -= event.damage;
+        addLog(`🗡️ 【${attackerGeneralName}】出擊，重創了 ${targetGeneral.name} (-${event.damage})！`, attackerSide);
+        spawnEffect(targetGeneral.id, `-${event.damage}`, 'dmg', 'attack-fx');
     } else if (actionName === '暗殺計') {
-        if (event.damage === 0) {
-            sfx.block(); addLog(`🥷 【${attackerGeneralName}】施展【暗殺計】！被 ${targetGeneral.name} 識破了！`, attackerSide);
-        } else {
-            sfx.assassinate(); targetGeneral.hp = 0;
-            addLog(`🥷 【${attackerGeneralName}】施展【暗殺計】！一擊必殺了 ${targetGeneral.name}！`, attackerSide);
-            spawnEffect(targetGeneral.id, `必殺`, 'strat-dmg', 'assassinate-fx');
-        }
+        sfx.assassinate(); targetGeneral.hp = 0;
+        addLog(`🥷 【${attackerGeneralName}】施展【暗殺計】！一擊必殺了 ${targetGeneral.name}！`, attackerSide);
+        spawnEffect(targetGeneral.id, `必殺`, 'strat-dmg', 'assassinate-fx');
     } else {
         let fx = 'fire-fx';
         if (actionName.includes('水')) { sfx.water(); fx = 'water-fx'; }
@@ -542,7 +617,7 @@ const handleNetworkEvent = (event) => {
         else { sfx.fire(); fx = 'fire-fx'; }
 
         targetGeneral.hp -= event.damage;
-        addLog(`📜 【${attackerGeneralName}】施展【${actionName}】！重創了 ${targetGeneral.name}！`, attackerSide);
+        addLog(`📜 【${attackerGeneralName}】施展【${actionName}】！重創了 ${targetGeneral.name} (-${event.damage})！`, attackerSide);
         spawnEffect(targetGeneral.id, `-${event.damage}`, 'strat-dmg', fx);
     }
 
@@ -685,6 +760,7 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
                         <span class="g-hp-text">兵:{{ g.hp }}</span>
                         <div class="hp-bar-bg"><div class="hp-bar-fill" :style="{ width: `${(g.hp/g.maxHp)*100}%`, background: g.hp > g.maxHp*0.3 ? '#4caf50' : '#f44336' }"></div></div>
                     </div>
+                    <div class="stat-row">攻{{g.atk}} 防{{g.def}} 智{{g.int}} 避{{g.eva}}%</div>
                  </div>
               </div>
            </div>
@@ -719,6 +795,7 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
                         <span class="g-hp-text">兵:{{ g.hp }}</span>
                         <div class="hp-bar-bg"><div class="hp-bar-fill" :style="{ width: `${(g.hp/g.maxHp)*100}%`, background: g.hp > g.maxHp*0.3 ? '#2196f3' : '#f44336' }"></div></div>
                     </div>
+                    <div class="stat-row">攻{{g.atk}} 防{{g.def}} 智{{g.int}} 避{{g.eva}}%</div>
                  </div>
                  <div class="avatar-box">{{ g.face }}</div>
               </div>
@@ -817,7 +894,6 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
 .log-entry.p2 { color: #64b5f6; text-align: right;}
 @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 
-/* 🌟 防止位移被切斷 */
 .armies-container { flex: 1; display: flex; flex-direction: row; justify-content: space-between; gap: 4px; min-height: 0; overflow: hidden;}
 .army-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; width: 50%; padding: 0;}
 .army-header { display: flex; justify-content: space-between; align-items: center; padding: 4px; font-size: 0.75rem; font-weight: bold; margin-bottom: 2px; }
@@ -825,7 +901,7 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
 .p2-side .army-header { background: #000066; border-color: #64b5f6;}
 .score-text { color: #ffeb3b; }
 
-.generals-list { flex: 1; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; overflow-x: visible; padding: 5px 30px;}
+.generals-list { flex: 1; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; overflow-x: visible; padding: 5px 30px;}
 .align-left { align-items: flex-start; }
 .align-right { align-items: flex-end; }
 
@@ -847,6 +923,9 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
 .g-hp-text { font-size: 0.65rem; color: #fff; font-weight: bold;}
 .hp-bar-bg { width: 35px; height: 5px; background: #333; border: 1px solid #aaa;}
 .hp-bar-fill { height: 100%; transition: width 0.3s ease-out;}
+
+/* 🌟 能力值小列樣式 */
+.stat-row { font-size: 0.55rem; color: #aaa; margin-top: 2px; white-space: nowrap; font-family: monospace; letter-spacing: -0.5px;}
 
 .formation-tag { font-size: 0.75rem; color: #ffeb3b; margin-top: 5px; text-shadow: 1px 1px 0 #000; font-weight: bold;}
 
@@ -889,7 +968,7 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
 .m-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; width: 100%; max-width: 500px;}
 .action-btn { padding: 6px 10px; font-size: 1rem; border-color: #ffeb3b; color: #ffeb3b;}
 .action-btn.disabled-act { border-color: #555; color: #888; opacity: 0.5;}
-.escape-btn { border-color: #e57373; color: #e57373; }
+.escape-btn { border-color: #e57373; color: #e57373; } 
 
 .winner-text { font-size: 1.5rem; color: #ffeb3b; font-weight: bold;}
 .final-scores { background: #000; padding: 15px; border: 2px solid #777; margin-top: 15px;}
@@ -901,5 +980,6 @@ onUnmounted(() => { clearInterval(timer); cleanupSubscriptions(); });
   .m-slot { font-size: 1.8rem; min-width: 25px;} .m-target-zh { font-size: 1.2rem; }
   .action-btn { font-size: 1.2rem; padding: 8px 12px; }
   .retro-select { font-size: 1rem; padding: 6px;}
+  .stat-row { font-size: 0.7rem; }
 }
 </style>

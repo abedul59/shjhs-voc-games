@@ -86,7 +86,7 @@ const props = defineProps({ config: Object });
       </div>
     </div>
 
-<div class="setting-item highlight-item" style="background: #ffe0b2; border-color: #ff9800;">
+    <div class="setting-item highlight-item" style="background: #ffe0b2; border-color: #ff9800;">
       <label style="color: #e65100;">⚔️ 單字方塊陣 (對戰):</label>
       <div class="multi-input">
         🏆 獲勝條件: 先拼出 <input type="number" min="1" v-model="config.pvp_target_score" class="retro-input num-input" style="width: 50px;" /> 個單字<br>
@@ -129,102 +129,85 @@ const props = defineProps({ config: Object });
             <span>分 (拼對固定得10分)</span>
           </div>
         </div>
-      </div>
+    </div>
 
-      <div class="setting-card">
-        <h3 class="card-title tenchi" style="background: #e0f2f1; color: #00695c; border-color: #00897b;">⚔️ 單字吞食天地 (連線對戰)</h3>
+    <div class="setting-card highlight-item" style="background: #e0f2f1; border-color: #00897b; padding: 20px;">
+        <h3 class="card-title tenchi" style="color: #00695c; font-size:1.4rem; margin-top:0;">⚔️ 單字吞食天地 (連線對戰)</h3>
         
-        <div class="field-row">
-          <label>❤️ 武將/單字初始血量：</label>
-          <div class="input-group">
-            <input type="number" min="10" max="500" v-model="config.tenchi_hp" class="retro-input num-input" />
-            <span>點</span>
-          </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div class="field-row">
+              <label>❤️ 初始血量：</label>
+              <div class="input-group"><input type="number" v-model="config.tenchi_hp" class="retro-input num-input" />點</div>
+            </div>
+            <div class="field-row">
+              <label>✨ 初始SP：</label>
+              <div class="input-group"><input type="number" v-model="config.tenchi_sp" class="retro-input num-input" />點</div>
+            </div>
+            <div class="field-row">
+              <label>🗡️ 基礎傷害亂數範圍：</label>
+              <div class="input-group">
+                <input type="number" v-model="config.tenchi_min_dmg" class="retro-input num-input" style="width: 50px;"/> ~
+                <input type="number" v-model="config.tenchi_max_dmg" class="retro-input num-input" style="width: 50px;"/> 點
+              </div>
+            </div>
+            <div class="field-row">
+              <label>🏃 撤退成功機率：</label>
+              <div class="input-group"><input type="number" v-model="config.tenchi_escape_rate" class="retro-input num-input" />%</div>
+            </div>
+            <div class="field-row">
+              <label>🔠 單字挖空數：</label>
+              <div class="input-group"><input type="number" v-model="config.tenchi_blank_count" class="retro-input num-input" />個</div>
+            </div>
+            <div class="field-row">
+              <label>🎖️ 陣型解鎖需：</label>
+              <div class="input-group"><input type="number" v-model="config.tenchi_wins_per_formation" class="retro-input num-input" />勝</div>
+            </div>
         </div>
 
-        <div class="field-row">
-          <label>✨ 初始策略值 (SP)：</label>
-          <div class="input-group">
-            <input type="number" min="10" max="999" v-model="config.tenchi_sp" class="retro-input num-input" />
-            <span>點</span>
-          </div>
+        <div style="margin-top: 20px; border-top: 3px dashed #00897b; padding-top: 15px;">
+           <label style="display: block; margin-bottom: 10px; font-weight: bold; color: #00695c; font-size: 1.1rem;">👤 武將基礎能力值設定 (攻/防/智/迴避%)：</label>
+           <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+               <div style="background: #fff; padding: 10px; border: 2px solid #ccc; border-radius: 8px;">
+                  <strong style="display:block; margin-bottom: 5px;">🤖 一般武將</strong>
+                  攻 <input type="number" v-model="config.tenchi_base_atk" class="retro-input" style="width:50px"/>
+                  防 <input type="number" v-model="config.tenchi_base_def" class="retro-input" style="width:50px"/>
+                  智 <input type="number" v-model="config.tenchi_base_int" class="retro-input" style="width:50px"/>
+                  避 <input type="number" v-model="config.tenchi_base_eva" class="retro-input" style="width:50px"/>%
+               </div>
+               <div style="background: #fff; padding: 10px; border: 2px solid #d32f2f; border-radius: 8px;">
+                  <strong style="display:block; margin-bottom: 5px; color: #d32f2f;">👑 玩家親自上陣專屬</strong>
+                  攻 <input type="number" v-model="config.tenchi_player_atk" class="retro-input" style="width:50px"/>
+                  防 <input type="number" v-model="config.tenchi_player_def" class="retro-input" style="width:50px"/>
+                  智 <input type="number" v-model="config.tenchi_player_int" class="retro-input" style="width:50px"/>
+                  避 <input type="number" v-model="config.tenchi_player_eva" class="retro-input" style="width:50px"/>%
+               </div>
+           </div>
         </div>
 
-        <div class="field-row">
-          <label>🗡️ 基礎傷害範圍：</label>
-          <div class="input-group" style="display: flex; gap: 5px; align-items: center;">
-            <input type="number" min="1" max="100" v-model="config.tenchi_min_dmg" class="retro-input num-input" style="width: 70px;"/>
-            <span>~</span>
-            <input type="number" min="1" max="100" v-model="config.tenchi_max_dmg" class="retro-input num-input" style="width: 70px;"/>
-            <span>點</span>
-          </div>
-        </div>
-        
-        <div class="field-row">
-          <label>🏃 撤退成功機率：</label>
-          <div class="input-group">
-            <input type="number" min="0" max="100" v-model="config.tenchi_escape_rate" class="retro-input num-input" />
-            <span>% (失敗將全軍扣 10 滴血)</span>
-          </div>
-        </div>
-
-
-        <div class="field-row">
-          <label>🔠 單字挖空數量：</label>
-          <div class="input-group">
-            <input type="number" min="1" max="10" v-model="config.tenchi_blank_count" class="retro-input num-input" />
-            <span>個字母 (加速戰鬥節奏)</span>
-          </div>
-        </div>
-
-        <div style="margin-top: 15px; border-top: 2px dashed #00897b; padding-top: 10px;">
-           <label style="display: block; margin-bottom: 10px; font-weight: bold; color: #00695c;">📜 策略門檻、耗SP、威力與兵法書說明：</label>
-           
-           <div v-for="(strat, sName) in config.tenchi_strategies_config" :key="sName" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 0.9rem; background: #fff; padding: 8px; border-radius: 5px; border: 1px solid #ccc;">
-              
+        <div style="margin-top: 20px; border-top: 3px dashed #00897b; padding-top: 15px;">
+           <label style="display: block; margin-bottom: 10px; font-weight: bold; color: #00695c; font-size: 1.1rem;">📜 策略門檻、耗SP、威力與兵法書說明：</label>
+           <div v-for="(strat, sName) in config.tenchi_strategies_config" :key="sName" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; background: #fff; padding: 8px; border-radius: 5px; border: 1px solid #ccc;">
               <span style="width: 60px; font-weight: bold; color: #d32f2f;">{{ sName }}</span>
-              
-              <span>解鎖需</span>
-              <input type="number" min="0" max="999" v-model.number="config.tenchi_strategies_config[sName].unlockWins" class="retro-input" style="width: 50px; padding: 4px; text-align: center;"/>
-              <span>勝</span>
-              
-              <span style="margin-left: 5px;">耗SP</span>
-              <input type="number" min="1" max="100" v-model.number="config.tenchi_strategies_config[sName].cost" class="retro-input" style="width: 50px; padding: 4px; text-align: center;"/>
-              
+              <span>解鎖需</span><input type="number" v-model.number="config.tenchi_strategies_config[sName].unlockWins" class="retro-input" style="width: 50px; padding: 4px; text-align: center;"/><span>勝</span>
+              <span style="margin-left: 5px;">耗SP</span><input type="number" v-model.number="config.tenchi_strategies_config[sName].cost" class="retro-input" style="width: 50px; padding: 4px; text-align: center;"/>
               <template v-if="!['dispel', 'assassinate', 'escape'].includes(strat.type)">
-                  <span style="margin-left: 5px;">威力</span>
-                  <input type="number" min="1" max="500" v-model.number="config.tenchi_strategies_config[sName].power" class="retro-input" style="width: 50px; padding: 4px; text-align: center;"/>
+                  <span style="margin-left: 5px;">威力</span><input type="number" v-model.number="config.tenchi_strategies_config[sName].power" class="retro-input" style="width: 50px; padding: 4px; text-align: center;"/>
               </template>
-              <template v-else>
-                  <span style="margin-left: 5px; width: 85px; text-align: center; color: #888; font-size: 0.8rem;">(無威力數值)</span>
-              </template>
-
+              <template v-else><span style="margin-left: 5px; width: 85px; text-align: center; color: #888; font-size: 0.8rem;">(無威力數值)</span></template>
               <div style="flex-basis: 100%; display: flex; align-items: center; gap: 5px; margin-top: 5px;">
-                  <span style="color: #00695c; font-weight: bold;">兵法書說明：</span>
-                  <input type="text" v-model="config.tenchi_strategies_config[sName].desc" class="retro-input" style="flex: 1; padding: 6px;"/>
+                  <span style="color: #00695c; font-weight: bold;">說明：</span><input type="text" v-model="config.tenchi_strategies_config[sName].desc" class="retro-input" style="flex: 1; padding: 6px;"/>
               </div>
            </div>
         </div>
 
-        <div class="field-row" style="margin-top: 15px;">
-          <label>🎖️ 解鎖陣型所需勝場：</label>
-          <div class="input-group">
-            <input type="number" min="1" max="100" v-model="config.tenchi_wins_per_formation" class="retro-input num-input" />
-            <span>場 / 每個新陣型</span>
-          </div>
-        </div>
-
-        <div style="margin-top: 15px; border-top: 2px dashed #00897b; padding-top: 10px;">
-           <label style="display: block; margin-bottom: 10px; font-weight: bold; color: #00695c;">🛡️ 陣型各站位攻擊力倍率 (1~5位)：</label>
-           <div v-for="(mults, fName) in config.tenchi_formations_config" :key="fName" style="display: flex; align-items: center; gap: 5px; margin-bottom: 6px; font-size: 0.9rem;">
+        <div style="margin-top: 20px; border-top: 3px dashed #00897b; padding-top: 15px;">
+           <label style="display: block; margin-bottom: 10px; font-weight: bold; color: #00695c; font-size: 1.1rem;">🛡️ 陣型各站位基礎倍率 (1~5位)：</label>
+           <div v-for="(mults, fName) in config.tenchi_formations_config" :key="fName" style="display: flex; align-items: center; gap: 5px; margin-bottom: 6px; background: #fff; padding: 6px; border-radius: 5px; border: 1px solid #ccc;">
               <span style="width: 90px; font-weight: bold;">{{ fName }}</span>
-              <input v-for="(val, idx) in mults" :key="idx" type="number" step="0.1" min="0" max="3" v-model.number="config.tenchi_formations_config[fName][idx]" class="retro-input" style="width: 50px; padding: 4px; font-size: 0.8rem; text-align: center;"/>
+              <input v-for="(val, idx) in mults" :key="idx" type="number" step="0.1" min="0" max="3" v-model.number="config.tenchi_formations_config[fName][idx]" class="retro-input" style="width: 50px; padding: 4px; text-align: center;"/>
            </div>
         </div>
-      </div>
-
-
-    
+    </div>
   </div>
 </template>
 
