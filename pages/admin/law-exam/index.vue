@@ -13,10 +13,12 @@ const isUploading = ref(false);
 const selectedSubject = ref('ALL');
 const selectedYear = ref('ALL');
 
+// 🌟 新增：批次選取的 ID 陣列
+const selectedIds = ref([]);
+
 const editingQ = ref({
   subject: '', exam_year: '', question_text: '',
-  opt_a: '', opt_b: '', opt_c: '', opt_d: '',
-  answer: 'A',
+  opt_a: '', opt_b: '', opt_c: '', opt_d: '', answer: 'A',
   exp_a_text: '', exp_a_url: '', exp_b_text: '', exp_b_url: '',
   exp_c_text: '', exp_c_url: '', exp_d_text: '', exp_d_url: ''
 });
@@ -26,20 +28,14 @@ const fetchQuestions = async () => {
   const { data } = await supabase.from('law_exam_questions').select('*').order('created_at', { ascending: false });
   if (data) questions.value = data;
   isLoading.value = false;
+  selectedIds.value = []; // 重新載入時清空選取
 };
 
 onMounted(fetchQuestions);
 
-// 🌟 產生可選的科目與年份清單
-const subjects = computed(() => {
-  return ['ALL', ...new Set(questions.value.map(q => q.subject))];
-});
+const subjects = computed(() => ['ALL', ...new Set(questions.value.map(q => q.subject))]);
+const years = computed(() => ['ALL', ...new Set(questions.value.map(q => q.exam_year))]);
 
-const years = computed(() => {
-  return ['ALL', ...new Set(questions.value.map(q => q.exam_year))];
-});
-
-// 🌟 篩選後的題目陣列
 const filteredQuestions = computed(() => {
   return questions.value.filter(q => {
     const matchSubject = selectedSubject.value === 'ALL' || q.subject === selectedSubject.value;
@@ -48,10 +44,35 @@ const filteredQuestions = computed(() => {
   });
 });
 
-const openEditModal = (q = null) => {
-  if (q) {
-    editingQ.value = { ...q };
+// 🌟 新增：全選邏輯
+const isAllSelected = computed(() => {
+  return filteredQuestions.value.length > 0 && 
+         filteredQuestions.value.every(q => selectedIds.value.includes(q.id));
+});
+
+const toggleSelectAll = () => {
+  if (isAllSelected.value) {
+    // 如果已經全選，則清空目前畫面上有顯示的項目
+    const filteredIds = filteredQuestions.value.map(q => q.id);
+    selectedIds.value = selectedIds.value.filter(id => !filteredIds.includes(id));
   } else {
+    // 否則，將目前畫面上過濾出來的項目全部加入選取
+    const newSelections = filteredQuestions.value.map(q => q.id);
+    selectedIds.value = [...new Set([...selectedIds.value, ...newSelections])];
+  }
+};
+
+const toggleSelection = (id) => {
+  if (selectedIds.value.includes(id)) {
+    selectedIds.value = selectedIds.value.filter(i => i !== id);
+  } else {
+    selectedIds.value.push(id);
+  }
+};
+
+const openEditModal = (q = null) => {
+  if (q) editingQ.value = { ...q };
+  else {
     editingQ.value = {
       subject: '', exam_year: '', question_text: '',
       opt_a: '', opt_b: '', opt_c: '', opt_d: '', answer: 'A',
@@ -69,16 +90,23 @@ const saveQuestion = async () => {
   else ({ error } = await supabase.from('law_exam_questions').insert([payload]));
 
   if (error) alert('儲存失敗: ' + error.message);
-  else {
-    showEditModal.value = false;
-    fetchQuestions();
-  }
+  else { showEditModal.value = false; fetchQuestions(); }
 };
 
 const deleteQuestion = async (id) => {
   if (!confirm('確定要刪除這道題目嗎？此動作無法復原。')) return;
   const { error } = await supabase.from('law_exam_questions').delete().eq('id', id);
   if (error) alert('刪除失敗: ' + error.message);
+  else fetchQuestions();
+};
+
+// 🌟 新增：批次刪除邏輯
+const batchDelete = async () => {
+  if (selectedIds.value.length === 0) return;
+  if (!confirm(`確定要刪除選取的 ${selectedIds.value.length} 道題目嗎？此動作無法復原。`)) return;
+  
+  const { error } = await supabase.from('law_exam_questions').delete().in('id', selectedIds.value);
+  if (error) alert('批次刪除失敗: ' + error.message);
   else fetchQuestions();
 };
 
@@ -107,9 +135,17 @@ const handleImport = (e) => {
 };
 
 const exportCSV = () => {
-  if (filteredQuestions.value.length === 0) return alert('目前沒有題目可以匯出');
-  // 🌟 只匯出目前篩選出的題目
-  const exportData = filteredQuestions.value.map(q => ({
+  // 🌟 修改：如果有選取題目，就只匯出選取的；否則匯出畫面上過濾出來的
+  let targetQuestions = [];
+  if (selectedIds.value.length > 0) {
+    targetQuestions = questions.value.filter(q => selectedIds.value.includes(q.id));
+  } else {
+    targetQuestions = filteredQuestions.value;
+  }
+
+  if (targetQuestions.length === 0) return alert('目前沒有題目可以匯出');
+
+  const exportData = targetQuestions.map(q => ({
     '科目': q.subject, '年份': q.exam_year, '題目': q.question_text,
     '選項A': q.opt_a, '選項B': q.opt_b, '選項C': q.opt_c, '選項D': q.opt_d,
     '正確答案': q.answer,
@@ -135,32 +171,41 @@ const exportCSV = () => {
         <p>管理法律考試題目、選項與詳細解析</p>
       </div>
       <div class="action-buttons">
-        <NuxtLink to="/admin/law-exam/practice" class="btn btn-primary">🎯 開始刷題練習</NuxtLink>
+        <NuxtLink to="/admin/law-exam/practice" class="btn btn-primary">🎯 開始刷題</NuxtLink>
         <label class="btn btn-warning" :class="{ disabled: isUploading }">
           <span v-if="isUploading">⏳ 處理中...</span>
-          <span v-else>📥 匯入 CSV</span>
+          <span v-else>📥 匯入</span>
           <input type="file" accept=".csv" @change="handleImport" :disabled="isUploading" style="display:none;" />
         </label>
-        <button @click="exportCSV" class="btn btn-success">📤 匯出備份</button>
-        <button @click="openEditModal()" class="btn btn-dark">＋ 新增考試題目</button>
+        <button @click="exportCSV" class="btn btn-success">📤 匯出</button>
+        <button @click="batchDelete" class="btn btn-danger" v-if="selectedIds.length > 0">
+          🗑️ 刪除選取 ({{ selectedIds.length }})
+        </button>
+        <button @click="openEditModal()" class="btn btn-dark">＋ 新增題目</button>
       </div>
     </div>
 
     <div class="filter-bar" v-if="questions.length > 0">
+      <label class="checkbox-container select-all-btn">
+        <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll" />
+        <span class="checkmark"></span>
+        全選目前篩選題目
+      </label>
+
       <div class="filter-item">
-        <label>科目篩選：</label>
+        <label>科目：</label>
         <select v-model="selectedSubject" class="styled-select">
-          <option v-for="s in subjects" :key="s" :value="s">{{ s === 'ALL' ? '全部科目' : s }}</option>
+          <option v-for="s in subjects" :key="s" :value="s">{{ s === 'ALL' ? '全部' : s }}</option>
         </select>
       </div>
       <div class="filter-item">
-        <label>年份篩選：</label>
+        <label>年份：</label>
         <select v-model="selectedYear" class="styled-select">
-          <option v-for="y in years" :key="y" :value="y">{{ y === 'ALL' ? '全部年份' : y }}</option>
+          <option v-for="y in years" :key="y" :value="y">{{ y === 'ALL' ? '全部' : y }}</option>
         </select>
       </div>
       <div class="filter-info">
-        共找到 {{ filteredQuestions.length }} 題
+        共 {{ filteredQuestions.length }} 題
       </div>
     </div>
 
@@ -169,7 +214,13 @@ const exportCSV = () => {
       <div v-else-if="questions.length === 0" class="empty-msg">目前題庫為空，請點擊上方按鈕新增或匯入題目。</div>
       <div v-else-if="filteredQuestions.length === 0" class="empty-msg">找不到符合該篩選條件的題目。</div>
       
-      <div v-else v-for="q in filteredQuestions" :key="q.id" class="q-card">
+      <div v-else v-for="q in filteredQuestions" :key="q.id" class="q-card" :class="{ 'is-selected': selectedIds.includes(q.id) }">
+        
+        <label class="checkbox-container item-checkbox">
+          <input type="checkbox" :checked="selectedIds.includes(q.id)" @change="toggleSelection(q.id)" />
+          <span class="checkmark"></span>
+        </label>
+
         <div class="q-content">
           <div class="q-tags">
             <span class="tag-subject">{{ q.subject }}</span>
@@ -206,7 +257,6 @@ const exportCSV = () => {
             <label>題目內文</label>
             <textarea v-model="editingQ.question_text" rows="4"></textarea>
           </div>
-
           <div class="options-section">
             <div v-for="letter in ['a', 'b', 'c', 'd']" :key="letter" class="option-card" :class="{ active: editingQ.answer === letter.toUpperCase() }">
               <div class="opt-header">
@@ -236,22 +286,32 @@ const exportCSV = () => {
 </template>
 
 <style scoped>
-/* 基礎重置與排版 */
 .law-admin-container { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 20px 40px; background: #f4f6f8; min-height: 100vh; color: #333; }
 .header-section { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 20px; }
 .title-area h1 { margin: 0; font-size: 28px; color: #1e293b; }
 .title-area p { margin: 5px 0 0 0; color: #64748b; font-size: 14px; }
 .action-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
 
-/* 🌟 篩選列樣式 */
-.filter-bar { display: flex; gap: 20px; align-items: center; background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; border: 1px solid #e2e8f0; }
+.filter-bar { display: flex; gap: 20px; align-items: center; background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; border: 1px solid #e2e8f0; flex-wrap: wrap;}
 .filter-item { display: flex; align-items: center; gap: 8px; }
 .filter-item label { font-size: 14px; font-weight: bold; color: #64748b; }
 .styled-select { padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; color: #334155; background: #f8fafc; outline: none; cursor: pointer; }
 .styled-select:focus { border-color: #3b82f6; }
 .filter-info { margin-left: auto; font-size: 14px; font-weight: bold; color: #3b82f6; background: #eff6ff; padding: 6px 12px; border-radius: 6px; }
 
-/* 按鈕樣式 */
+/* 🌟 Checkbox 樣式美化 */
+.checkbox-container { display: flex; align-items: center; position: relative; cursor: pointer; font-size: 14px; font-weight: bold; color: #475569; user-select: none; gap: 10px; padding-left: 30px;}
+.checkbox-container input { position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }
+.checkmark { position: absolute; top: 50%; left: 0; transform: translateY(-50%); height: 22px; width: 22px; background-color: #e2e8f0; border-radius: 6px; transition: 0.2s;}
+.checkbox-container:hover input ~ .checkmark { background-color: #cbd5e1; }
+.checkbox-container input:checked ~ .checkmark { background-color: #3b82f6; }
+.checkmark:after { content: ""; position: absolute; display: none; }
+.checkbox-container input:checked ~ .checkmark:after { display: block; left: 8px; top: 4px; width: 5px; height: 10px; border: solid white; border-width: 0 3px 3px 0; transform: rotate(45deg); }
+
+.select-all-btn { padding: 8px 12px 8px 40px; background: #f8fafc; border-radius: 8px; border: 1px solid #cbd5e1; }
+.select-all-btn:hover { background: #f1f5f9; }
+.item-checkbox { padding-left: 22px; margin-right: 15px;}
+
 .btn { padding: 10px 18px; border-radius: 8px; font-weight: bold; cursor: pointer; border: none; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
 .btn:active { transform: scale(0.96); }
 .btn-primary { background: #3b82f6; color: white; }
@@ -262,18 +322,21 @@ const exportCSV = () => {
 .btn-success:hover { background: #059669; }
 .btn-dark { background: #475569; color: white; }
 .btn-dark:hover { background: #334155; }
+.btn-danger { background: #ef4444; color: white; animation: fadeIn 0.2s; }
+.btn-danger:hover { background: #dc2626; }
 .btn-outline { background: white; border: 1px solid #cbd5e1; color: #475569; }
 .btn-outline:hover { background: #f8fafc; }
+
 .btn-small { padding: 6px 12px; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; font-size: 13px; }
 .btn-edit { background: #eff6ff; color: #2563eb; }
 .btn-edit:hover { background: #dbeafe; }
 .btn-delete { background: #fef2f2; color: #dc2626; }
 .btn-delete:hover { background: #fee2e2; }
 
-/* 列表樣式 */
 .question-list { display: flex; flex-direction: column; gap: 15px; }
-.q-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; border: 1px solid #e2e8f0; }
+.q-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; border: 1px solid #e2e8f0; transition: 0.2s;}
 .q-card:hover { border-color: #cbd5e1; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+.q-card.is-selected { background: #f0fdf4; border-color: #86efac; } /* 選取時背景變淡綠色 */
 .q-content { flex: 1; padding-right: 20px; overflow: hidden; }
 .q-text { margin: 10px 0 0 0; font-size: 16px; font-weight: 500; color: #334155; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .q-tags { display: flex; gap: 8px; align-items: center; }
@@ -284,7 +347,6 @@ const exportCSV = () => {
 .q-actions { display: flex; gap: 8px; flex-shrink: 0; }
 .loading-msg, .empty-msg { text-align: center; padding: 40px; color: #64748b; background: white; border-radius: 12px; border: 2px dashed #cbd5e1; }
 
-/* 彈窗樣式 */
 .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.7); display: flex; justify-content: center; align-items: center; z-index: 100; padding: 20px; }
 .modal-content { background: white; border-radius: 16px; width: 100%; max-width: 800px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
 .modal-header { padding: 20px 24px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border-radius: 16px 16px 0 0; }
@@ -292,8 +354,6 @@ const exportCSV = () => {
 .close-btn { background: none; border: none; font-size: 20px; cursor: pointer; color: #94a3b8; }
 .modal-body { padding: 24px; overflow-y: auto; flex: 1; }
 .modal-footer { padding: 16px 24px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 12px; background: #f8fafc; border-radius: 0 0 16px 16px; }
-
-/* 表單樣式 */
 .form-group { margin-bottom: 20px; }
 .form-group.row { display: flex; gap: 15px; }
 .form-group .col { flex: 1; }
@@ -301,7 +361,6 @@ const exportCSV = () => {
 .modal-body input[type="text"], .modal-body input[type="url"], .modal-body textarea { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fafc; font-family: inherit; font-size: 14px; box-sizing: border-box; }
 .modal-body input:focus, .modal-body textarea:focus { outline: none; border-color: #3b82f6; background: white; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
 
-/* 選項卡片樣式 */
 .options-section { display: flex; flex-direction: column; gap: 15px; border-top: 2px dashed #e2e8f0; padding-top: 20px; }
 .option-card { border: 2px solid #e2e8f0; padding: 15px; border-radius: 12px; transition: all 0.2s; }
 .option-card.active { border-color: #3b82f6; background: #eff6ff; }
@@ -314,4 +373,6 @@ const exportCSV = () => {
 .exp-area { background: rgba(255,255,255,0.6); padding: 12px; border-radius: 8px; border: 1px dashed #cbd5e1; }
 .exp-area label { font-size: 10px; margin-top: 8px; }
 .exp-area label:first-child { margin-top: 0; }
+
+@keyframes fadeIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
 </style>
