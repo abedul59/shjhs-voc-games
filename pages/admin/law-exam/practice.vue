@@ -10,7 +10,8 @@ const selectedAnswer = ref(null);
 const activeExp = ref(null);
 const isLoading = ref(true);
 
-const currentQ = computed(() => questions.value[currentIndex.value]);
+const selectedSubject = ref('ALL');
+const selectedYear = ref('ALL');
 
 const fetchPractice = async () => {
   isLoading.value = true;
@@ -19,12 +20,39 @@ const fetchPractice = async () => {
   isLoading.value = false;
 };
 
+// 🌟 產生可選的科目與年份清單
+const subjects = computed(() => {
+  return ['ALL', ...new Set(questions.value.map(q => q.subject))];
+});
+
+const years = computed(() => {
+  return ['ALL', ...new Set(questions.value.map(q => q.exam_year))];
+});
+
+// 🌟 依照篩選器過濾出要練習的題目
+const filteredQuestions = computed(() => {
+  return questions.value.filter(q => {
+    const matchSubject = selectedSubject.value === 'ALL' || q.subject === selectedSubject.value;
+    const matchYear = selectedYear.value === 'ALL' || q.exam_year === selectedYear.value;
+    return matchSubject && matchYear;
+  });
+});
+
+const currentQ = computed(() => filteredQuestions.value[currentIndex.value]);
+
+// 🌟 當使用者切換科目或年份時，重設刷題進度
+const resetProgress = () => {
+  currentIndex.value = 0;
+  selectedAnswer.value = null;
+  activeExp.value = null;
+};
+
 const toggleExp = (letter) => {
   activeExp.value = activeExp.value === letter ? null : letter;
 };
 
 const nextQuestion = () => {
-  if (currentIndex.value < questions.value.length - 1) {
+  if (currentIndex.value < filteredQuestions.value.length - 1) {
     currentIndex.value++; selectedAnswer.value = null; activeExp.value = null;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -44,14 +72,28 @@ onMounted(fetchPractice);
   <div class="practice-container">
     <div class="top-nav">
       <NuxtLink to="/admin/law-exam" class="back-link">← 回題庫管理</NuxtLink>
-      <div class="progress-text" v-if="questions.length > 0">
-        題目 {{ currentIndex + 1 }} / {{ questions.length }}
+      
+      <div class="filter-group" v-if="questions.length > 0">
+        <select v-model="selectedSubject" @change="resetProgress" class="styled-select">
+          <option v-for="s in subjects" :key="s" :value="s">{{ s === 'ALL' ? '所有科目' : s }}</option>
+        </select>
+        <select v-model="selectedYear" @change="resetProgress" class="styled-select">
+          <option v-for="y in years" :key="y" :value="y">{{ y === 'ALL' ? '所有年份' : y }}</option>
+        </select>
       </div>
-      <div style="width: 100px;"></div>
+
+      <div class="progress-text" v-if="filteredQuestions.length > 0">
+        題目 {{ currentIndex + 1 }} / {{ filteredQuestions.length }}
+      </div>
+      <div class="progress-text empty-alert" v-else-if="questions.length > 0">
+        無符合題目
+      </div>
+      <div v-else style="width: 100px;"></div>
     </div>
 
     <div v-if="isLoading" class="status-box">題庫讀取中...</div>
     <div v-else-if="questions.length === 0" class="status-box">目前沒有可以練習的題目，請先至後台匯入題庫。</div>
+    <div v-else-if="filteredQuestions.length === 0" class="status-box">找不到符合篩選條件的題目，請嘗試調整上方選項。</div>
 
     <div v-else class="exam-card">
       <div class="exam-header">
@@ -91,7 +133,7 @@ onMounted(fetchPractice);
 
       <div class="exam-footer">
         <button @click="prevQuestion" :disabled="currentIndex === 0" class="nav-btn prev-btn">← 上一題</button>
-        <button @click="nextQuestion" :disabled="currentIndex === questions.length - 1" class="nav-btn next-btn">下一題 →</button>
+        <button @click="nextQuestion" :disabled="currentIndex === filteredQuestions.length - 1" class="nav-btn next-btn">下一題 →</button>
       </div>
     </div>
   </div>
@@ -99,10 +141,17 @@ onMounted(fetchPractice);
 
 <style scoped>
 .practice-container { max-width: 800px; margin: 0 auto; padding: 40px 20px; font-family: 'Helvetica Neue', Arial, sans-serif; background: #f0f4f8; min-height: 100vh; color: #333;}
-.top-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
-.back-link { background: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; color: #4338ca; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: 0.2s; }
+.top-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; gap: 15px;}
+.back-link { background: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; color: #4338ca; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: 0.2s; white-space: nowrap;}
 .back-link:hover { box-shadow: 0 4px 6px rgba(0,0,0,0.1); transform: translateY(-1px); }
-.progress-text { font-weight: bold; color: #475569; font-size: 16px; }
+
+/* 🌟 選單樣式 */
+.filter-group { display: flex; gap: 10px; flex: 1; justify-content: center;}
+.styled-select { padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; color: #334155; background: white; outline: none; cursor: pointer; font-weight: bold;}
+.styled-select:focus { border-color: #4f46e5; }
+
+.progress-text { font-weight: bold; color: #475569; font-size: 16px; white-space: nowrap;}
+.empty-alert { color: #dc2626; }
 .status-box { text-align: center; padding: 60px; background: white; border-radius: 16px; font-weight: bold; color: #64748b; font-size: 18px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
 
 /* 卡片主體 */

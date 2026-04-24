@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import Papa from 'papaparse';
 
 definePageMeta({ middleware: ['auth', 'law-auth'] });
@@ -9,6 +9,9 @@ const questions = ref([]);
 const isLoading = ref(true);
 const showEditModal = ref(false);
 const isUploading = ref(false);
+
+const selectedSubject = ref('ALL');
+const selectedYear = ref('ALL');
 
 const editingQ = ref({
   subject: '', exam_year: '', question_text: '',
@@ -26,6 +29,24 @@ const fetchQuestions = async () => {
 };
 
 onMounted(fetchQuestions);
+
+// 🌟 產生可選的科目與年份清單
+const subjects = computed(() => {
+  return ['ALL', ...new Set(questions.value.map(q => q.subject))];
+});
+
+const years = computed(() => {
+  return ['ALL', ...new Set(questions.value.map(q => q.exam_year))];
+});
+
+// 🌟 篩選後的題目陣列
+const filteredQuestions = computed(() => {
+  return questions.value.filter(q => {
+    const matchSubject = selectedSubject.value === 'ALL' || q.subject === selectedSubject.value;
+    const matchYear = selectedYear.value === 'ALL' || q.exam_year === selectedYear.value;
+    return matchSubject && matchYear;
+  });
+});
 
 const openEditModal = (q = null) => {
   if (q) {
@@ -86,8 +107,9 @@ const handleImport = (e) => {
 };
 
 const exportCSV = () => {
-  if (questions.value.length === 0) return alert('目前沒有題目可以匯出');
-  const exportData = questions.value.map(q => ({
+  if (filteredQuestions.value.length === 0) return alert('目前沒有題目可以匯出');
+  // 🌟 只匯出目前篩選出的題目
+  const exportData = filteredQuestions.value.map(q => ({
     '科目': q.subject, '年份': q.exam_year, '題目': q.question_text,
     '選項A': q.opt_a, '選項B': q.opt_b, '選項C': q.opt_c, '選項D': q.opt_d,
     '正確答案': q.answer,
@@ -124,11 +146,30 @@ const exportCSV = () => {
       </div>
     </div>
 
+    <div class="filter-bar" v-if="questions.length > 0">
+      <div class="filter-item">
+        <label>科目篩選：</label>
+        <select v-model="selectedSubject" class="styled-select">
+          <option v-for="s in subjects" :key="s" :value="s">{{ s === 'ALL' ? '全部科目' : s }}</option>
+        </select>
+      </div>
+      <div class="filter-item">
+        <label>年份篩選：</label>
+        <select v-model="selectedYear" class="styled-select">
+          <option v-for="y in years" :key="y" :value="y">{{ y === 'ALL' ? '全部年份' : y }}</option>
+        </select>
+      </div>
+      <div class="filter-info">
+        共找到 {{ filteredQuestions.length }} 題
+      </div>
+    </div>
+
     <div class="question-list">
       <div v-if="isLoading" class="loading-msg">資料載入中...</div>
       <div v-else-if="questions.length === 0" class="empty-msg">目前題庫為空，請點擊上方按鈕新增或匯入題目。</div>
+      <div v-else-if="filteredQuestions.length === 0" class="empty-msg">找不到符合該篩選條件的題目。</div>
       
-      <div v-else v-for="q in questions" :key="q.id" class="q-card">
+      <div v-else v-for="q in filteredQuestions" :key="q.id" class="q-card">
         <div class="q-content">
           <div class="q-tags">
             <span class="tag-subject">{{ q.subject }}</span>
@@ -197,10 +238,18 @@ const exportCSV = () => {
 <style scoped>
 /* 基礎重置與排版 */
 .law-admin-container { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 20px 40px; background: #f4f6f8; min-height: 100vh; color: #333; }
-.header-section { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 25px; }
+.header-section { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 20px; }
 .title-area h1 { margin: 0; font-size: 28px; color: #1e293b; }
 .title-area p { margin: 5px 0 0 0; color: #64748b; font-size: 14px; }
 .action-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* 🌟 篩選列樣式 */
+.filter-bar { display: flex; gap: 20px; align-items: center; background: white; padding: 15px 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; border: 1px solid #e2e8f0; }
+.filter-item { display: flex; align-items: center; gap: 8px; }
+.filter-item label { font-size: 14px; font-weight: bold; color: #64748b; }
+.styled-select { padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; color: #334155; background: #f8fafc; outline: none; cursor: pointer; }
+.styled-select:focus { border-color: #3b82f6; }
+.filter-info { margin-left: auto; font-size: 14px; font-weight: bold; color: #3b82f6; background: #eff6ff; padding: 6px 12px; border-radius: 6px; }
 
 /* 按鈕樣式 */
 .btn { padding: 10px 18px; border-radius: 8px; font-weight: bold; cursor: pointer; border: none; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
@@ -235,7 +284,7 @@ const exportCSV = () => {
 .q-actions { display: flex; gap: 8px; flex-shrink: 0; }
 .loading-msg, .empty-msg { text-align: center; padding: 40px; color: #64748b; background: white; border-radius: 12px; border: 2px dashed #cbd5e1; }
 
-/* 彈窗樣式 (致敬 manage-grammar.vue) */
+/* 彈窗樣式 */
 .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.7); display: flex; justify-content: center; align-items: center; z-index: 100; padding: 20px; }
 .modal-content { background: white; border-radius: 16px; width: 100%; max-width: 800px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
 .modal-header { padding: 20px 24px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border-radius: 16px 16px 0 0; }
