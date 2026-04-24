@@ -14,6 +14,11 @@ const selectedSubject = ref('ALL');
 const selectedYear = ref('ALL');
 const selectedIds = ref([]);
 
+// 🌟 預覽功能專用狀態
+const showPreviewModal = ref(false);
+const previewQ = ref(null);
+const previewActiveExp = ref(null);
+
 const editingQ = ref({
   subject: '', exam_year: '', question_text: '',
   opt_a: '', opt_b: '', opt_c: '', opt_d: '', answer: 'A',
@@ -25,23 +30,18 @@ const fetchQuestions = async () => {
   isLoading.value = true;
   const { data } = await supabase.from('law_exam_questions').select('*');
   if (data) {
-    // 🌟 智慧排序邏輯：提取題目字串開頭的數字來進行數字大小比對
     const getQNum = (text) => {
       const match = text?.match(/^(\d+)/);
       return match ? parseInt(match[1], 10) : 9999;
     };
-
     questions.value = data.sort((a, b) => {
-      // 1. 先按年份排序 (降序：新到舊)
       if (a.exam_year !== b.exam_year) return (b.exam_year || '').localeCompare(a.exam_year || '');
-      // 2. 再按科目排序
       if (a.subject !== b.subject) return (a.subject || '').localeCompare(b.subject || '');
-      // 3. 最後按題號排序 (升序：1 到 80)
       return getQNum(a.question_text) - getQNum(b.question_text);
     });
   }
   isLoading.value = false;
-  selectedIds.value = []; // 重新載入時清空選取
+  selectedIds.value = []; 
 };
 
 onMounted(fetchQuestions);
@@ -78,6 +78,18 @@ const toggleSelection = (id) => {
   } else {
     selectedIds.value.push(id);
   }
+};
+
+// 🌟 開啟預覽彈窗
+const openPreviewModal = (q) => {
+  previewQ.value = q;
+  previewActiveExp.value = null; // 重置展開狀態
+  showPreviewModal.value = true;
+};
+
+// 🌟 預覽彈窗中切換解析
+const togglePreviewExp = (letter) => {
+  previewActiveExp.value = previewActiveExp.value === letter ? null : letter;
 };
 
 const openEditModal = (q = null) => {
@@ -237,13 +249,60 @@ const exportCSV = () => {
           <h3 class="q-text">{{ q.question_text }}</h3>
         </div>
         <div class="q-actions">
+          <button @click="openPreviewModal(q)" class="btn-small btn-preview">👀 預覽</button>
           <button @click="openEditModal(q)" class="btn-small btn-edit">編輯</button>
           <button @click="deleteQuestion(q.id)" class="btn-small btn-delete">刪除</button>
         </div>
       </div>
     </div>
 
-    <div v-if="showEditModal" class="modal-overlay">
+    <div v-if="showPreviewModal" class="modal-overlay" @click.self="showPreviewModal = false">
+      <div class="modal-content preview-content">
+        <div class="modal-header">
+          <h2>👀 題目預覽</h2>
+          <button class="close-btn" @click="showPreviewModal = false">✕</button>
+        </div>
+        
+        <div class="modal-body preview-body">
+          <div class="exam-header">
+            <div class="tags">
+              <span class="subject-tag">{{ previewQ.subject }}</span>
+              <span class="year-tag">{{ previewQ.exam_year }}</span>
+            </div>
+            <h2 class="question-title">{{ previewQ.question_text }}</h2>
+          </div>
+
+          <div class="options-container">
+            <div v-for="letter in ['A', 'B', 'C', 'D']" :key="letter"
+                 class="option-row" :class="{ 'is-correct': previewQ.answer === letter }">
+              
+              <div class="option-main">
+                <div class="option-label">
+                  <span class="opt-radio-mock"></span>
+                  <span class="opt-text"><strong>{{ letter }}.</strong> {{ previewQ['opt_' + letter.toLowerCase()] }}</span>
+                </div>
+                <button @click="togglePreviewExp(letter)" class="toggle-btn">
+                  {{ previewActiveExp === letter ? '隱藏解析' : '看解析' }}
+                </button>
+              </div>
+
+              <div v-if="previewActiveExp === letter" class="explanation-box">
+                <div class="exp-header">
+                  <span class="exp-title">解析 {{ letter }}</span>
+                  <span v-if="previewQ.answer === letter" class="correct-badge">正確解答</span>
+                </div>
+                <p class="exp-text">{{ previewQ['exp_' + letter.toLowerCase() + '_text'] || '（此選項暫無詳細解析）' }}</p>
+                <a v-if="previewQ['exp_' + letter.toLowerCase() + '_url']" :href="previewQ['exp_' + letter.toLowerCase() + '_url']" target="_blank" class="exp-link">
+                  🔗 點此查看法條或實務見解
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showEditModal" class="modal-overlay" @click.self="showEditModal = false">
       <div class="modal-content">
         <div class="modal-header">
           <h2>{{ editingQ.id ? '編輯司律題目' : '新增司律題目' }}</h2>
@@ -293,6 +352,7 @@ const exportCSV = () => {
 </template>
 
 <style scoped>
+/* 基本排版 */
 .law-admin-container { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 20px 40px; background: #f4f6f8; min-height: 100vh; color: #333; }
 .header-section { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 20px; }
 .title-area h1 { margin: 0; font-size: 28px; color: #1e293b; }
@@ -306,6 +366,7 @@ const exportCSV = () => {
 .styled-select:focus { border-color: #3b82f6; }
 .filter-info { margin-left: auto; font-size: 14px; font-weight: bold; color: #3b82f6; background: #eff6ff; padding: 6px 12px; border-radius: 6px; }
 
+/* Checkbox */
 .checkbox-container { display: flex; align-items: center; position: relative; cursor: pointer; font-size: 14px; font-weight: bold; color: #475569; user-select: none; gap: 10px; padding-left: 30px;}
 .checkbox-container input { position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }
 .checkmark { position: absolute; top: 50%; left: 0; transform: translateY(-50%); height: 22px; width: 22px; background-color: #e2e8f0; border-radius: 6px; transition: 0.2s;}
@@ -318,6 +379,7 @@ const exportCSV = () => {
 .select-all-btn:hover { background: #f1f5f9; }
 .item-checkbox { padding-left: 22px; margin-right: 15px;}
 
+/* 按鈕 */
 .btn { padding: 10px 18px; border-radius: 8px; font-weight: bold; cursor: pointer; border: none; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
 .btn:active { transform: scale(0.96); }
 .btn-primary { background: #3b82f6; color: white; }
@@ -333,12 +395,15 @@ const exportCSV = () => {
 .btn-outline { background: white; border: 1px solid #cbd5e1; color: #475569; }
 .btn-outline:hover { background: #f8fafc; }
 
-.btn-small { padding: 6px 12px; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; font-size: 13px; }
-.btn-edit { background: #eff6ff; color: #2563eb; }
+.btn-small { padding: 6px 12px; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; font-size: 13px; transition: 0.2s;}
+.btn-preview { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0;}
+.btn-preview:hover { background: #dcfce3; }
+.btn-edit { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe;}
 .btn-edit:hover { background: #dbeafe; }
-.btn-delete { background: #fef2f2; color: #dc2626; }
+.btn-delete { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca;}
 .btn-delete:hover { background: #fee2e2; }
 
+/* 列表卡片 */
 .question-list { display: flex; flex-direction: column; gap: 15px; }
 .q-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; border: 1px solid #e2e8f0; transition: 0.2s;}
 .q-card:hover { border-color: #cbd5e1; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
@@ -353,6 +418,7 @@ const exportCSV = () => {
 .q-actions { display: flex; gap: 8px; flex-shrink: 0; }
 .loading-msg, .empty-msg { text-align: center; padding: 40px; color: #64748b; background: white; border-radius: 12px; border: 2px dashed #cbd5e1; }
 
+/* 共用彈窗框架 */
 .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.7); display: flex; justify-content: center; align-items: center; z-index: 100; padding: 20px; }
 .modal-content { background: white; border-radius: 16px; width: 100%; max-width: 800px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
 .modal-header { padding: 20px 24px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border-radius: 16px 16px 0 0; }
@@ -360,6 +426,8 @@ const exportCSV = () => {
 .close-btn { background: none; border: none; font-size: 20px; cursor: pointer; color: #94a3b8; }
 .modal-body { padding: 24px; overflow-y: auto; flex: 1; }
 .modal-footer { padding: 16px 24px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 12px; background: #f8fafc; border-radius: 0 0 16px 16px; }
+
+/* 編輯彈窗細節 */
 .form-group { margin-bottom: 20px; }
 .form-group.row { display: flex; gap: 15px; }
 .form-group .col { flex: 1; }
@@ -380,5 +448,28 @@ const exportCSV = () => {
 .exp-area label { font-size: 10px; margin-top: 8px; }
 .exp-area label:first-child { margin-top: 0; }
 
-@keyframes fadeIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+/* 🌟 預覽彈窗專屬 CSS */
+.preview-content { max-width: 750px; background: #f8fafc; }
+.preview-body { padding: 0; background: #f0f4f8; border-radius: 0 0 16px 16px; overflow-y: auto;}
+.exam-header { padding: 25px 30px; background: white; border-bottom: 1px solid #e2e8f0; }
+.question-title { margin: 0; font-size: 18px; line-height: 1.6; color: #1e293b; white-space: pre-wrap; font-weight: 500; }
+.options-container { padding: 20px 30px; display: flex; flex-direction: column; gap: 12px; }
+.option-row { background: white; border: 2px solid #e2e8f0; border-radius: 12px; padding: 15px 20px; transition: all 0.2s ease; }
+.option-row.is-correct { border-color: #22c55e; box-shadow: 0 4px 12px rgba(34, 197, 94, 0.15); }
+.option-main { display: flex; justify-content: space-between; align-items: flex-start; }
+.option-label { display: flex; align-items: flex-start; flex: 1; margin: 0; }
+.opt-radio-mock { display: inline-block; width: 18px; height: 18px; border-radius: 50%; border: 2px solid #cbd5e1; margin-right: 12px; margin-top: 3px; flex-shrink: 0;}
+.option-row.is-correct .opt-radio-mock { border-color: #22c55e; background: #22c55e; box-shadow: inset 0 0 0 3px white; }
+.opt-text { font-size: 15px; line-height: 1.5; color: #334155; }
+.toggle-btn { background: #f1f5f9; border: none; padding: 6px 12px; border-radius: 6px; color: #64748b; font-weight: bold; cursor: pointer; font-size: 12px; margin-left: 15px; flex-shrink: 0; transition: 0.2s;}
+.toggle-btn:hover { background: #e0e7ff; color: #4338ca; }
+.explanation-box { margin-top: 15px; padding: 15px 20px; background: #eef2ff; border-radius: 8px; border-left: 4px solid #4f46e5; animation: fadeIn 0.3s ease; }
+.exp-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.exp-title { font-weight: bold; color: #3730a3; font-size: 14px; }
+.correct-badge { background: #22c55e; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+.exp-text { margin: 0; font-size: 14px; color: #334155; line-height: 1.6; white-space: pre-wrap; }
+.exp-link { display: inline-block; margin-top: 10px; color: #4f46e5; font-size: 13px; font-weight: bold; text-decoration: none; }
+.exp-link:hover { text-decoration: underline; }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
 </style>
