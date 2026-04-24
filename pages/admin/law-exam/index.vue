@@ -12,8 +12,6 @@ const isUploading = ref(false);
 
 const selectedSubject = ref('ALL');
 const selectedYear = ref('ALL');
-
-// 🌟 新增：批次選取的 ID 陣列
 const selectedIds = ref([]);
 
 const editingQ = ref({
@@ -25,8 +23,23 @@ const editingQ = ref({
 
 const fetchQuestions = async () => {
   isLoading.value = true;
-  const { data } = await supabase.from('law_exam_questions').select('*').order('created_at', { ascending: false });
-  if (data) questions.value = data;
+  const { data } = await supabase.from('law_exam_questions').select('*');
+  if (data) {
+    // 🌟 智慧排序邏輯：提取題目字串開頭的數字來進行數字大小比對
+    const getQNum = (text) => {
+      const match = text?.match(/^(\d+)/);
+      return match ? parseInt(match[1], 10) : 9999;
+    };
+
+    questions.value = data.sort((a, b) => {
+      // 1. 先按年份排序 (降序：新到舊)
+      if (a.exam_year !== b.exam_year) return (b.exam_year || '').localeCompare(a.exam_year || '');
+      // 2. 再按科目排序
+      if (a.subject !== b.subject) return (a.subject || '').localeCompare(b.subject || '');
+      // 3. 最後按題號排序 (升序：1 到 80)
+      return getQNum(a.question_text) - getQNum(b.question_text);
+    });
+  }
   isLoading.value = false;
   selectedIds.value = []; // 重新載入時清空選取
 };
@@ -44,7 +57,6 @@ const filteredQuestions = computed(() => {
   });
 });
 
-// 🌟 新增：全選邏輯
 const isAllSelected = computed(() => {
   return filteredQuestions.value.length > 0 && 
          filteredQuestions.value.every(q => selectedIds.value.includes(q.id));
@@ -52,11 +64,9 @@ const isAllSelected = computed(() => {
 
 const toggleSelectAll = () => {
   if (isAllSelected.value) {
-    // 如果已經全選，則清空目前畫面上有顯示的項目
     const filteredIds = filteredQuestions.value.map(q => q.id);
     selectedIds.value = selectedIds.value.filter(id => !filteredIds.includes(id));
   } else {
-    // 否則，將目前畫面上過濾出來的項目全部加入選取
     const newSelections = filteredQuestions.value.map(q => q.id);
     selectedIds.value = [...new Set([...selectedIds.value, ...newSelections])];
   }
@@ -100,7 +110,6 @@ const deleteQuestion = async (id) => {
   else fetchQuestions();
 };
 
-// 🌟 新增：批次刪除邏輯
 const batchDelete = async () => {
   if (selectedIds.value.length === 0) return;
   if (!confirm(`確定要刪除選取的 ${selectedIds.value.length} 道題目嗎？此動作無法復原。`)) return;
@@ -135,7 +144,6 @@ const handleImport = (e) => {
 };
 
 const exportCSV = () => {
-  // 🌟 修改：如果有選取題目，就只匯出選取的；否則匯出畫面上過濾出來的
   let targetQuestions = [];
   if (selectedIds.value.length > 0) {
     targetQuestions = questions.value.filter(q => selectedIds.value.includes(q.id));
@@ -215,7 +223,6 @@ const exportCSV = () => {
       <div v-else-if="filteredQuestions.length === 0" class="empty-msg">找不到符合該篩選條件的題目。</div>
       
       <div v-else v-for="q in filteredQuestions" :key="q.id" class="q-card" :class="{ 'is-selected': selectedIds.includes(q.id) }">
-        
         <label class="checkbox-container item-checkbox">
           <input type="checkbox" :checked="selectedIds.includes(q.id)" @change="toggleSelection(q.id)" />
           <span class="checkmark"></span>
@@ -299,7 +306,6 @@ const exportCSV = () => {
 .styled-select:focus { border-color: #3b82f6; }
 .filter-info { margin-left: auto; font-size: 14px; font-weight: bold; color: #3b82f6; background: #eff6ff; padding: 6px 12px; border-radius: 6px; }
 
-/* 🌟 Checkbox 樣式美化 */
 .checkbox-container { display: flex; align-items: center; position: relative; cursor: pointer; font-size: 14px; font-weight: bold; color: #475569; user-select: none; gap: 10px; padding-left: 30px;}
 .checkbox-container input { position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }
 .checkmark { position: absolute; top: 50%; left: 0; transform: translateY(-50%); height: 22px; width: 22px; background-color: #e2e8f0; border-radius: 6px; transition: 0.2s;}
@@ -336,7 +342,7 @@ const exportCSV = () => {
 .question-list { display: flex; flex-direction: column; gap: 15px; }
 .q-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; border: 1px solid #e2e8f0; transition: 0.2s;}
 .q-card:hover { border-color: #cbd5e1; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-.q-card.is-selected { background: #f0fdf4; border-color: #86efac; } /* 選取時背景變淡綠色 */
+.q-card.is-selected { background: #f0fdf4; border-color: #86efac; } 
 .q-content { flex: 1; padding-right: 20px; overflow: hidden; }
 .q-text { margin: 10px 0 0 0; font-size: 16px; font-weight: 500; color: #334155; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .q-tags { display: flex; gap: 8px; align-items: center; }
