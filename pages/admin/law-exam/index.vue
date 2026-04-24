@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted } from 'vue';
 import Papa from 'papaparse';
 
 definePageMeta({ middleware: ['auth', 'law-auth'] });
@@ -8,6 +8,7 @@ const supabase = useSupabaseClient();
 const questions = ref([]);
 const isLoading = ref(true);
 const showEditModal = ref(false);
+const isUploading = ref(false);
 
 const editingQ = ref({
   subject: '', exam_year: '', question_text: '',
@@ -26,6 +27,7 @@ const fetchQuestions = async () => {
 
 onMounted(fetchQuestions);
 
+// 打開編輯彈窗
 const openEditModal = (q = null) => {
   if (q) {
     editingQ.value = { ...q };
@@ -41,45 +43,115 @@ const openEditModal = (q = null) => {
   showEditModal.value = true;
 };
 
+// 儲存題目
 const saveQuestion = async () => {
   const { id, ...payload } = editingQ.value;
   let error;
   if (id) ({ error } = await supabase.from('law_exam_questions').update(payload).eq('id', id));
   else ({ error } = await supabase.from('law_exam_questions').insert([payload]));
 
-  if (error) alert('儲存失敗');
+  if (error) alert('儲存失敗: ' + error.message);
   else {
     showEditModal.value = false;
     fetchQuestions();
   }
+};
+
+// 🌟 刪除題目功能
+const deleteQuestion = async (id) => {
+  if (!confirm('確定要刪除這道題目嗎？此動作無法復原。')) return;
+  const { error } = await supabase.from('law_exam_questions').delete().eq('id', id);
+  if (error) {
+    alert('刪除失敗: ' + error.message);
+  } else {
+    fetchQuestions();
+  }
+};
+
+// 🌟 CSV 匯入功能
+const handleImport = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  isUploading.value = true;
+  
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: async (results) => {
+      const { error } = await supabase.from('law_exam_questions').insert(results.data);
+      if (error) {
+        alert('匯入失敗: ' + error.message);
+      } else {
+        alert(`成功匯入 ${results.data.length} 筆題目！`);
+        fetchQuestions();
+      }
+      isUploading.value = false;
+      e.target.value = ''; // 清空 input 以便下次能選同一個檔案
+    }
+  });
+};
+
+// 🌟 CSV 匯出功能
+const exportCSV = () => {
+  if (questions.value.length === 0) {
+    alert('目前沒有題目可以匯出');
+    return;
+  }
+  const csv = Papa.unparse(questions.value);
+  const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `law_questions_${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
 };
 </script>
 
 <template>
   <div class="min-h-screen bg-slate-50 p-8">
     <div class="max-w-6xl mx-auto">
-      <div class="flex justify-between items-end mb-8 border-b-2 border-slate-200 pb-4">
+      
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 border-b-2 border-slate-200 pb-4 gap-4">
         <div>
           <h1 class="text-3xl font-black text-slate-800 tracking-tight">司律題庫管理</h1>
           <p class="text-slate-500 mt-1">管理法律考試題目、選項與詳細解析</p>
         </div>
-        <button @click="openEditModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-6 rounded-xl shadow-lg shadow-indigo-200 transition-all active:scale-95">
-          ＋ 新增考試題目
-        </button>
+        
+        <div class="flex flex-wrap gap-3">
+          <label class="bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 px-4 rounded-xl shadow-sm transition-all active:scale-95 cursor-pointer flex items-center gap-2">
+            <span v-if="isUploading">⏳ 處理中...</span>
+            <span v-else>📥 匯入 CSV</span>
+            <input type="file" accept=".csv" class="hidden" @change="handleImport" :disabled="isUploading" />
+          </label>
+          
+          <button @click="exportCSV" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2.5 px-4 rounded-xl shadow-sm transition-all active:scale-95 flex items-center gap-2">
+            📤 匯出備份
+          </button>
+          
+          <button @click="openEditModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-6 rounded-xl shadow-lg shadow-indigo-200 transition-all active:scale-95">
+            ＋ 新增考試題目
+          </button>
+        </div>
       </div>
 
       <div class="grid grid-cols-1 gap-4">
-        <div v-for="q in questions" :key="q.id" class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center hover:border-indigo-200 transition-colors">
-          <div class="flex-1">
+        <div v-if="isLoading" class="text-center py-10 text-slate-400 font-bold">資料載入中...</div>
+        
+        <div v-else-if="questions.length === 0" class="text-center py-10 text-slate-400 font-bold bg-white rounded-2xl border border-dashed border-slate-300">
+          目前題庫為空，請點擊上方按鈕新增或匯入題目。
+        </div>
+
+        <div v-else v-for="q in questions" :key="q.id" class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center hover:border-indigo-200 transition-colors">
+          <div class="flex-1 overflow-hidden pr-4">
             <div class="flex items-center gap-2 mb-1">
               <span class="bg-indigo-50 text-indigo-700 text-xs font-bold px-2 py-0.5 rounded uppercase">{{ q.subject }}</span>
               <span class="text-slate-400 text-xs">{{ q.exam_year }}</span>
+              <span class="bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded">解答: {{ q.answer }}</span>
             </div>
-            <h3 class="text-slate-700 font-medium truncate max-w-2xl">{{ q.question_text }}</h3>
+            <h3 class="text-slate-700 font-medium truncate">{{ q.question_text }}</h3>
           </div>
-          <div class="flex gap-2 ml-4">
+          <div class="flex gap-2 shrink-0">
             <button @click="openEditModal(q)" class="text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg text-sm font-bold transition-colors">編輯</button>
-            <button class="text-rose-500 hover:bg-rose-50 px-3 py-1.5 rounded-lg text-sm font-bold transition-colors">刪除</button>
+            <button @click="deleteQuestion(q.id)" class="text-rose-500 hover:bg-rose-50 px-3 py-1.5 rounded-lg text-sm font-bold transition-colors">刪除</button>
           </div>
         </div>
       </div>
@@ -87,9 +159,8 @@ const saveQuestion = async () => {
 
     <div v-if="showEditModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex justify-center items-center z-50 p-4">
       <div class="bg-white rounded-3xl w-full max-w-4xl shadow-2xl relative flex flex-col max-h-[90vh]">
-        
         <div class="p-6 border-b flex justify-between items-center bg-slate-50 rounded-t-3xl">
-          <h3 class="text-xl font-black text-slate-800">編輯司律題目資訊</h3>
+          <h3 class="text-xl font-black text-slate-800">{{ editingQ.id ? '編輯司律題目資訊' : '新增司律題目' }}</h3>
           <button @click="showEditModal = false" class="text-slate-400 hover:text-slate-600">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -98,7 +169,6 @@ const saveQuestion = async () => {
         </div>
 
         <div class="p-8 overflow-y-auto space-y-8">
-          
           <section>
             <div class="flex items-center gap-2 mb-4">
               <div class="w-1 h-6 bg-indigo-500 rounded-full"></div>
@@ -131,14 +201,14 @@ const saveQuestion = async () => {
                           editingQ.answer === letter.toUpperCase() ? 'border-indigo-500 bg-indigo-50/30' : 'border-slate-100 bg-white']">
               
               <div class="flex items-center justify-between mb-4">
-                <div class="flex items-center gap-3">
-                  <span :class="['w-8 h-8 flex items-center justify-center rounded-lg font-bold text-white', 
+                <div class="flex items-center gap-3 flex-1">
+                  <span :class="['w-8 h-8 flex items-center justify-center rounded-lg font-bold text-white shrink-0', 
                                 editingQ.answer === letter.toUpperCase() ? 'bg-indigo-500' : 'bg-slate-300']">
                     {{ letter.toUpperCase() }}
                   </span>
-                  <input v-model="editingQ['opt_' + letter]" type="text" class="bg-transparent border-b border-slate-300 focus:border-indigo-500 outline-none py-1 w-[400px] font-medium" placeholder="請輸入選項內容" />
+                  <input v-model="editingQ['opt_' + letter]" type="text" class="bg-transparent border-b border-slate-300 focus:border-indigo-500 outline-none py-1 w-full max-w-lg font-medium" placeholder="請輸入選項內容" />
                 </div>
-                <label class="flex items-center gap-2 cursor-pointer group">
+                <label class="flex items-center gap-2 cursor-pointer group ml-4 shrink-0">
                   <input type="radio" v-model="editingQ.answer" :value="letter.toUpperCase()" class="w-4 h-4 text-indigo-600 focus:ring-indigo-500" />
                   <span :class="['text-sm font-bold', editingQ.answer === letter.toUpperCase() ? 'text-indigo-600' : 'text-slate-400 group-hover:text-slate-600']">正確解答</span>
                 </label>
