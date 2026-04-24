@@ -12,43 +12,35 @@ const isUploading = ref(false);
 
 const schoolPhone = ref('');
 
-// 🌟 1. 讀取登入時儲存的權限 Cookie
-// 🌟 修正版：強制轉為陣列，防範 null 或 undefined 造成系統崩潰
 const authCookie = useCookie('teacher_auth');
 const allowedClasses = Array.isArray(authCookie.value?.classes) 
   ? authCookie.value.classes 
   : [];
 const isSuperAdmin = allowedClasses.includes('ALL');
 
-// 🌟 2. 產生全校班級清單 (供總管理員使用，假設為 701~714, 801~814, 901~914)
+// 🌟 修正：加入 000 班與 999 班的選項！
 const generateAllClasses = () => {
-  const list = [];
+  const list = ['000']; // 先放入 000 班
   for (let grade of [7, 8, 9]) {
     for (let i = 1; i <= 14; i++) {
       list.push(`${grade}${String(i).padStart(2, '0')}`);
     }
   }
+  list.push('999'); // 最後放入 999 班
   return list;
 };
 
-// 🌟 3. 計算出「此帳號可以在下拉選單看到的班級」
 const displayClasses = computed(() => {
-  if (isSuperAdmin) {
-    return generateAllClasses();
-  }
-  // 如果是一般老師，只回傳他權限內的班級，並排好序
+  if (isSuperAdmin) return generateAllClasses();
   return [...allowedClasses].sort();
 });
 
-// 預設選擇權限內的第一個班級
 const selectedClass = ref(displayClasses.value.length > 0 ? displayClasses.value[0] : '');
 
-// 編輯或新增學生
 const showModal = ref(false);
 const isEditing = ref(false);
 const formData = ref({ id: null, student_id: '', real_name: '', hidden_name: '', class_name: '', seat_number: '', pin_code: '', unlocked_themes: [] });
 
-// 學生的歷史紀錄與登入儀表板變數
 const showStudentHistoryModal = ref(false);
 const selectedStudent = ref(null);
 const isHistoryLoading = ref(false);
@@ -67,7 +59,6 @@ onMounted(async () => {
   fetchStudents();
 });
 
-// 🌟 4. 依照「選取的班級」載入學生資料
 const fetchStudents = async () => {
   if (!selectedClass.value) {
     students.value = [];
@@ -85,12 +76,8 @@ const fetchStudents = async () => {
   isLoading.value = false;
 };
 
-// 當選擇的班級改變時，自動重新載入
-watch(selectedClass, () => {
-  fetchStudents();
-});
+watch(selectedClass, () => fetchStudents());
 
-// 老師手動輸入名字時自動算筆畫
 watch(() => formData.value.real_name, async (newName) => {
   if (newName && !isEditing.value) {
     const strokesArray = await getStrokeArrayAsync(newName);
@@ -109,9 +96,6 @@ watch([() => formData.value.class_name, () => formData.value.seat_number], ([cls
 const openAddModal = () => { isEditing.value = false; formData.value = { id: null, student_id: '', real_name: '', hidden_name: '', class_name: selectedClass.value, seat_number: '', pin_code: '', unlocked_themes: [] }; showModal.value = true; };
 const openEditModal = (stu) => { isEditing.value = true; formData.value = { ...stu, unlocked_themes: stu.unlocked_themes || [] }; showModal.value = true; };
 
-// ==========================================
-// 點擊名字開啟「學生個人儀表板」的邏輯
-// ==========================================
 const formatDateTime = (dateString) => {
   if (!dateString) return '--';
   const d = new Date(dateString);
@@ -133,12 +117,7 @@ const openStudentHistory = async (student) => {
   isHistoryLoading.value = true;
   showStudentHistoryModal.value = true;
   
-  // 1. 抓取登入紀錄
-  const { data: logs } = await supabase
-    .from('login_logs')
-    .select('*')
-    .eq('student_id', student.student_id)
-    .order('login_time', { ascending: false });
+  const { data: logs } = await supabase.from('login_logs').select('*').eq('student_id', student.student_id).order('login_time', { ascending: false });
     
   studentLoginLogs.value = (logs || []).map(log => {
     let durationStr = '約 10 分鐘 (系統自動登出)';
@@ -154,11 +133,7 @@ const openStudentHistory = async (student) => {
     return { ...log, durationStr, login_time_fmt: formatDateTime(log.login_time) };
   });
 
-  // 2. 抓取遊戲統計紀錄
-  const { data: games } = await supabase
-    .from('game_records')
-    .select('game_type, version, volume, unit_played')
-    .eq('student_id', student.student_id);
+  const { data: games } = await supabase.from('game_records').select('game_type, version, volume, unit_played').eq('student_id', student.student_id);
     
   const stats = {};
   const units = new Set();
@@ -174,9 +149,6 @@ const openStudentHistory = async (student) => {
   isHistoryLoading.value = false;
 };
 
-// ==========================================
-// CSV 匯入/匯出功能
-// ==========================================
 const handleImportCsv = (e) => {
   const file = e.target.files[0]; if (!file) return;
   isUploading.value = true;
@@ -189,7 +161,7 @@ const handleImportCsv = (e) => {
       for (const row of results.data) {
         const rName = row.real_name ? String(row.real_name).trim() : '';
         const seat = row.seat_number ? String(row.seat_number).trim() : '';
-        const cls = selectedClass.value; // 🌟 5. 強制綁定為畫面上選取的班級
+        const cls = selectedClass.value; 
         
         let pCode = ''; let hName = '';
         if (rName && cls && seat) {
@@ -215,10 +187,7 @@ const handleImportCsv = (e) => {
 };
 
 const exportToCSV = () => {
-  if (students.value.length === 0) {
-    alert('沒有資料可匯出！');
-    return;
-  }
+  if (students.value.length === 0) { alert('沒有資料可匯出！'); return; }
   const csvContent = "data:text/csv;charset=utf-8,\uFEFF"
     + "class_name,seat_number,real_name\n"
     + students.value.map(s => `${s.class_name},${s.seat_number},${s.real_name}`).join("\n");
@@ -235,7 +204,6 @@ const exportToCSV = () => {
 const saveStudent = async () => {
   if (!formData.value.student_id || !formData.value.real_name || !formData.value.pin_code) { alert('必填欄位不可為空！'); return; }
   
-  // 🌟 二次防護：一般老師不能修改自己沒權限的班級
   if (!isSuperAdmin && !allowedClasses.includes(formData.value.class_name)) {
     alert('您無權修改此班級的資料！');
     return;
@@ -420,7 +388,6 @@ const deleteStudent = async (id) => {
 
 .empty-msg { text-align: center; padding: 30px; color: var(--text-muted); font-weight: bold;}
 
-/* 🌟 學生姓名點擊按鈕樣式 */
 .student-name-link { background: var(--info-bg); border: var(--border-width) solid var(--border-color); border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 1rem; font-weight: 900; color: var(--text-main); transition: all 0.2s; box-shadow: 2px 2px 0px var(--border-color); }
 .student-name-link:hover { background: var(--tab-active-bg); color: var(--tab-active-text); transform: translate(1px, 1px); box-shadow: 1px 1px 0px var(--border-color); }
 .student-name-link:active { transform: translate(2px, 2px); box-shadow: none; }
@@ -447,7 +414,6 @@ const deleteStudent = async (id) => {
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
 .save-btn { background: var(--btn-primary-bg); color: var(--btn-primary-text); } .cancel-btn { background: var(--tab-bg); color: var(--text-main); }
 
-/* 🌟 個人儀表板專屬樣式 */
 .dashboard-modal { max-width: 800px; }
 .dashboard-section { background: var(--tab-bg); border: 2px solid var(--border-color); border-radius: var(--radius-element); padding: 15px; margin-bottom: 15px; }
 .dashboard-section h3 { margin-top: 0; color: var(--text-main); border-bottom: 1px dashed var(--border-color); padding-bottom: 5px;}

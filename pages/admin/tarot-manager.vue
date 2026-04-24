@@ -5,12 +5,18 @@ const supabase = useSupabaseClient();
 const students = ref([]);
 const selectedStudent = ref(null);
 
-// 🌟 卡包切換
-const adminActiveSet = ref(1);
+// 🌟 版本與卡包切換
+const adminActiveVersion = ref('翰林'); // '翰林' 或 '康軒'
+const adminActiveSet = ref('1'); // 根據版本，可能是 '1', '2', '3' 或 '1k', '2k', '3k', '4k'
 
 const manualUnlocks1 = ref([]);
 const manualUnlocks2 = ref([]);
-const manualUnlocks3 = ref([]); // 🌟 新增第三套
+const manualUnlocks3 = ref([]);
+const manualUnlocks1k = ref([]); // 🌟 康軒第一套
+const manualUnlocks2k = ref([]); // 🌟 康軒第二套
+const manualUnlocks3k = ref([]); // 🌟 康軒第三套
+const manualUnlocks4k = ref([]); // 🌟 康軒第四套
+
 const newWordInput = ref('');
 const isSaving = ref(false);
 
@@ -19,19 +25,16 @@ const unlockCount = ref(10);
 const unlockScore = ref(60);
 const isSavingRules = ref(false);
 
-// 讀取設定 (將這段放進 onMounted 裡面)
 onMounted(async () => {
   const { data: sysData } = await supabase.from('system_settings').select('tarot_unlock_count, tarot_unlock_score').eq('id', 1).single();
   if (sysData) {
     unlockCount.value = sysData.tarot_unlock_count || 10;
     unlockScore.value = sysData.tarot_unlock_score || 0;
   }
-  // 抓學生資料
   const { data } = await supabase.from('students').select('*').order('class_name').order('seat_number');
   if (data) students.value = data;
 });
 
-// 儲存設定功能
 const saveRules = async () => {
   isSavingRules.value = true;
   await supabase.from('system_settings').update({ 
@@ -45,32 +48,56 @@ const selectStudent = (student) => {
   selectedStudent.value = student;
   manualUnlocks1.value = student.unlocked_tarot || [];
   manualUnlocks2.value = student.unlocked_tarot_2 || [];
-  manualUnlocks3.value = student.unlocked_tarot_3 || []; // 🌟 讀取第三套
+  manualUnlocks3.value = student.unlocked_tarot_3 || [];
+  manualUnlocks1k.value = student.unlocked_tarot_1k || [];
+  manualUnlocks2k.value = student.unlocked_tarot_2k || [];
+  manualUnlocks3k.value = student.unlocked_tarot_3k || [];
+  manualUnlocks4k.value = student.unlocked_tarot_4k || [];
   newWordInput.value = '';
 };
 
+// 🌟 動態切換版本時，自動跳轉到對應的預設套牌
+const setVersion = (version) => {
+    adminActiveVersion.value = version;
+    if (version === '翰林') adminActiveSet.value = '1';
+    if (version === '康軒') adminActiveSet.value = '1k';
+};
+
 const currentUnlocks = computed(() => {
-  if (adminActiveSet.value === 1) return manualUnlocks1.value;
-  if (adminActiveSet.value === 2) return manualUnlocks2.value;
-  return manualUnlocks3.value; // 🌟 第三套
+  if (adminActiveSet.value === '1') return manualUnlocks1.value;
+  if (adminActiveSet.value === '2') return manualUnlocks2.value;
+  if (adminActiveSet.value === '3') return manualUnlocks3.value;
+  if (adminActiveSet.value === '1k') return manualUnlocks1k.value;
+  if (adminActiveSet.value === '2k') return manualUnlocks2k.value;
+  if (adminActiveSet.value === '3k') return manualUnlocks3k.value;
+  if (adminActiveSet.value === '4k') return manualUnlocks4k.value;
+  return [];
 });
 
 const addWord = async () => {
   const word = newWordInput.value.trim().toLowerCase();
   if (!word || currentUnlocks.value.includes(word)) return;
   
-  if (adminActiveSet.value === 1) manualUnlocks1.value.push(word);
-  else if (adminActiveSet.value === 2) manualUnlocks2.value.push(word);
-  else manualUnlocks3.value.push(word); // 🌟 寫入第三套
+  if (adminActiveSet.value === '1') manualUnlocks1.value.push(word);
+  else if (adminActiveSet.value === '2') manualUnlocks2.value.push(word);
+  else if (adminActiveSet.value === '3') manualUnlocks3.value.push(word);
+  else if (adminActiveSet.value === '1k') manualUnlocks1k.value.push(word);
+  else if (adminActiveSet.value === '2k') manualUnlocks2k.value.push(word);
+  else if (adminActiveSet.value === '3k') manualUnlocks3k.value.push(word);
+  else if (adminActiveSet.value === '4k') manualUnlocks4k.value.push(word);
   
   newWordInput.value = '';
   await saveToSupabase();
 };
 
 const removeWord = async (index) => {
-  if (adminActiveSet.value === 1) manualUnlocks1.value.splice(index, 1);
-  else if (adminActiveSet.value === 2) manualUnlocks2.value.splice(index, 1);
-  else manualUnlocks3.value.splice(index, 1); // 🌟 刪除第三套
+  if (adminActiveSet.value === '1') manualUnlocks1.value.splice(index, 1);
+  else if (adminActiveSet.value === '2') manualUnlocks2.value.splice(index, 1);
+  else if (adminActiveSet.value === '3') manualUnlocks3.value.splice(index, 1);
+  else if (adminActiveSet.value === '1k') manualUnlocks1k.value.splice(index, 1);
+  else if (adminActiveSet.value === '2k') manualUnlocks2k.value.splice(index, 1);
+  else if (adminActiveSet.value === '3k') manualUnlocks3k.value.splice(index, 1);
+  else if (adminActiveSet.value === '4k') manualUnlocks4k.value.splice(index, 1);
   await saveToSupabase();
 };
 
@@ -79,16 +106,18 @@ const saveToSupabase = async () => {
   const payload = { 
     unlocked_tarot: manualUnlocks1.value,
     unlocked_tarot_2: manualUnlocks2.value,
-    unlocked_tarot_3: manualUnlocks3.value // 🌟 存檔第三套
+    unlocked_tarot_3: manualUnlocks3.value,
+    unlocked_tarot_1k: manualUnlocks1k.value,
+    unlocked_tarot_2k: manualUnlocks2k.value,
+    unlocked_tarot_3k: manualUnlocks3k.value,
+    unlocked_tarot_4k: manualUnlocks4k.value
   };
   
   await supabase.from('students').update(payload).eq('student_id', selectedStudent.value.student_id);
   
   const sIndex = students.value.findIndex(s => s.student_id === selectedStudent.value.student_id);
   if (sIndex !== -1) {
-    students.value[sIndex].unlocked_tarot = [...manualUnlocks1.value];
-    students.value[sIndex].unlocked_tarot_2 = [...manualUnlocks2.value];
-    students.value[sIndex].unlocked_tarot_3 = [...manualUnlocks3.value]; // 🌟 更新本地資料
+    students.value[sIndex] = { ...students.value[sIndex], ...payload };
   }
   setTimeout(() => isSaving.value = false, 500);
 };
@@ -129,13 +158,26 @@ const saveToSupabase = async () => {
           </a>
         </div>
 
-        <div class="admin-tabs">
-          <button :class="['admin-tab-btn', { active: adminActiveSet === 1 }]" @click="adminActiveSet = 1">🌙 經典</button>
-          <button :class="['admin-tab-btn', { active: adminActiveSet === 2 }]" @click="adminActiveSet = 2">✨ 幻境</button>
-          <button :class="['admin-tab-btn', { active: adminActiveSet === 3 }]" @click="adminActiveSet = 3">🔥 第三彈</button> </div>
+        <div class="version-tabs">
+            <button :class="['version-btn', { active: adminActiveVersion === '翰林' }]" @click="setVersion('翰林')">📘 翰林版 / 其他</button>
+            <button :class="['version-btn', { active: adminActiveVersion === '康軒' }]" @click="setVersion('康軒')">📗 康軒版專屬</button>
+        </div>
+
+        <div class="admin-tabs" v-if="adminActiveVersion === '翰林'">
+          <button :class="['admin-tab-btn', { active: adminActiveSet === '1' }]" @click="adminActiveSet = '1'">🌙 經典 (1)</button>
+          <button :class="['admin-tab-btn', { active: adminActiveSet === '2' }]" @click="adminActiveSet = '2'">✨ 幻境 (2)</button>
+          <button :class="['admin-tab-btn', { active: adminActiveSet === '3' }]" @click="adminActiveSet = '3'">🔥 第三彈 (3)</button> 
+        </div>
+
+        <div class="admin-tabs" v-if="adminActiveVersion === '康軒'">
+          <button :class="['admin-tab-btn', { active: adminActiveSet === '1k' }]" @click="adminActiveSet = '1k'">🌙 第一彈 (1k)</button>
+          <button :class="['admin-tab-btn', { active: adminActiveSet === '2k' }]" @click="adminActiveSet = '2k'">✨ 第二彈 (2k)</button>
+          <button :class="['admin-tab-btn', { active: adminActiveSet === '3k' }]" @click="adminActiveSet = '3k'">🔥 第三彈 (3k)</button> 
+          <button :class="['admin-tab-btn', { active: adminActiveSet === '4k' }]" @click="adminActiveSet = '4k'">⚡ 第四彈 (4k)</button> 
+        </div>
 
         <div class="add-box">
-          <input v-model="newWordInput" @keyup.enter="addWord" :placeholder="`輸入單字贈送至【第 ${adminActiveSet} 彈】`" class="word-input" />
+          <input v-model="newWordInput" @keyup.enter="addWord" :placeholder="`輸入單字贈送至【${adminActiveSet}】`" class="word-input" />
           <button @click="addWord" class="add-btn">➕ 贈送卡片</button>
           <span v-if="isSaving" class="saving-text">儲存中...</span>
         </div>
@@ -185,9 +227,17 @@ const saveToSupabase = async () => {
 .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
 .panel-header h2 { margin: 0; }
 .preview-btn { background: #28a745; color: white; padding: 8px 15px; text-decoration: none; border-radius: 6px; font-weight: bold; display: flex; align-items: center; gap: 5px;}
-.admin-tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px;}
+
+/* 🌟 版本切換 Tabs */
+.version-tabs { display: flex; gap: 10px; margin-bottom: 10px; }
+.version-btn { padding: 8px 20px; border: 2px solid transparent; background: #e0e0e0; color: #333; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s;}
+.version-btn.active { border-color: #333; background: #fff; box-shadow: 0 4px 0 #333; transform: translateY(-4px);}
+
+/* 🌟 卡包切換 Tabs */
+.admin-tabs { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 15px;}
 .admin-tab-btn { padding: 8px 16px; border: none; background: #f0f0f0; color: #555; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s; }
 .admin-tab-btn.active { background: #007bff; color: white; }
+
 .add-box { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; }
 .word-input { flex: 1; padding: 10px; font-size: 1.1rem; border: 1px solid #ccc; border-radius: 6px; }
 .add-btn { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; }

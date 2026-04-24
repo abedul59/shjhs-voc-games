@@ -8,6 +8,20 @@ const unitOptions = ['U1', 'U2', 'U3', 'U4', 'U5', 'U6', 'U7', 'U8', 'U9', 'Revi
 </script>
 
 <template>
+
+<div class="setting-item" style="background: #e3f2fd; border-color: #0277bd;">
+      <label style="color:#01579b;">🎵 背景音樂 (BGM) 讀取來源:</label>
+      <div style="margin-top: 5px;">
+        <select v-model="config.bgm_source" class="retro-input" style="width: 100%; font-size: 1rem;">
+          <option value="github">🟢 GitHub Pages (免費且無流量限制 - 推薦)</option>
+          <option value="supabase">🟠 Supabase Storage (消耗資料庫流量 - 備用)</option>
+        </select>
+        <p style="font-size: 0.85rem; color: #555; margin-top: 5px;">
+          * 若 Supabase 流量吃緊，請務必切換至 GitHub 來源。
+        </p>
+      </div>
+    </div>
+
   <div class="settings-section">
     <div class="setting-item highlight-item bgm-panel" style="border-color: #9c27b0;">
       <label class="panel-title" style="color: #9c27b0; border-bottom-color: #9c27b0;">🎨 介面風格開放模式</label>

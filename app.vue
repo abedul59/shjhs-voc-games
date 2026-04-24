@@ -14,20 +14,17 @@ let timeInterval = null;
 const themeCookie = useCookie('app-theme', { default: () => 'theme-retro', maxAge: 60 * 60 * 24 * 365 });
 const showThemeInfo = ref(false);
 
-// =========================================
-// 🎮 全站選單隱藏邏輯 
-// =========================================
-const isControlsMinimized = ref(true); // 預設縮小為齒輪
+const isControlsMinimized = ref(true); 
 
-// 🌟 新增：這 5 款遊戲中，連齒輪都徹底隱藏！
+// 🌟 更新：在這裡把雙人對戰與經典遊戲都加入隱藏名單
 const hideControlsEntirely = computed(() => {
-  const hiddenRoutes = ['/game-battle', '/game-tenchi', '/game-tetris', '/game-angrybirds', '/game-pinball'];
+  const hiddenRoutes = [
+    '/game-battle', '/game-tenchi', '/game-tarot21', '/game-tarotAlch', '/game-tarotUno', // 對戰遊戲
+    '/game-tetris', '/game-pinball', '/game-angrybirds', '/game-solitaire', '/game-pikavolley', '/game-pacman', 'game-minesweeper', '/game-tarotUno1', '/game-9x9sudoku', // 經典遊戲
+  ];
   return hiddenRoutes.includes(route.path);
 });
 
-// =========================================
-// 🎨 智慧風格權限引擎
-// =========================================
 const availableThemes = computed(() => {
   if (!sysSettings.value) return [allThemes[0]]; 
   const mode = sysSettings.value.theme_mode;
@@ -61,9 +58,6 @@ const toggleTheme = () => {
   themeCookie.value = availableThemes.value[nextIdx].id;
 };
 
-// =========================================
-// 🎵 沉浸式背景音樂引擎
-// =========================================
 const isMusicPlaying = ref(false);
 let bgmAudio = null;
 
@@ -110,9 +104,10 @@ const isBgmAllowed = computed(() => {
   return false;
 });
 
-watch([themeCookie, isBgmAllowed], ([newTheme, allowed]) => {
+// 🌟 監聽主題、音樂開關，以及「資料庫中的音樂來源設定」
+watch([themeCookie, isBgmAllowed, () => sysSettings.value?.bgm_source], ([newTheme, allowed, bgmSource]) => {
   if (allowed) {
-    setAudioSource(newTheme);
+    setAudioSource(newTheme, bgmSource);
     if (isMusicPlaying.value && bgmAudio) bgmAudio.play().catch(e => console.log(e));
   } else {
     if (bgmAudio) bgmAudio.pause();
@@ -120,10 +115,20 @@ watch([themeCookie, isBgmAllowed], ([newTheme, allowed]) => {
   }
 });
 
-const setAudioSource = (themeId) => {
+// 🌟 根據後台設定，動態切換 Supabase 或 GitHub 網址
+const setAudioSource = (themeId, bgmSource = 'github') => {
   if (!bgmAudio) return;
-  const cloudStorageUrl = 'https://arpwmnoykukawkickmiv.supabase.co/storage/v1/object/public/bgm-audio/';
-  bgmAudio.src = `${cloudStorageUrl}/${themeId}.mp3`;
+  
+  const baseUrl = bgmSource === 'supabase' 
+      ? 'https://arpwmnoykukawkickmiv.supabase.co/storage/v1/object/public/bgm-audio'
+      : 'https://pyfbsdk59.github.io/theme_bgm'; // 新的 GitHub 網址
+  
+  const newSrc = `${baseUrl}/${themeId}.mp3`;
+  
+  // 防止重複載入同一首歌導致音樂中斷
+  if (!bgmAudio.src.includes(baseUrl) || !bgmAudio.src.includes(`${themeId}.mp3`)) {
+      bgmAudio.src = newSrc;
+  }
 };
 
 const toggleMusic = () => {
@@ -161,6 +166,8 @@ const toggleMusic = () => {
     <NuxtPage />
   </div>
 </template>
+
+
 
 <style>
 /* =========================================

@@ -5,8 +5,6 @@ const route = useRoute();
 const supabase = useSupabaseClient();
 const studentCookie = useCookie('currentStudent');
 
-const { toggleBgm, setBgmSource } = useBgmUnlock();
-
 const currentStudent = ref(null);
 const allVocabs = ref([]);
 const cards = ref([]);
@@ -221,12 +219,6 @@ const finishGame = async () => {
   isGameFinished.value = true;
   
   if (score.value < 0) score.value = 0;
-  
-  if (score.value === 100) {
-      const targetBgm = route.query.version === '南一' ? '/audio/nani-bgm.mp3' : '/audio/hanlin-bgm.mp3';
-      setBgmSource(targetBgm);
-      toggleBgm();
-  }
 
   if (currentStudent.value && !currentStudent.value.isAnon) {
       const intervalsObj = {};
@@ -237,13 +229,14 @@ const finishGame = async () => {
           }
       }
 
-      await supabase.from('game_records').insert([{
+      // 🌟 已移除舊版會引發崩潰的背景音樂切換程式碼
+      // 🌟 統一使用 time_taken_seconds，避免資料庫欄位報錯
+      const { error } = await supabase.from('game_records').insert([{
           student_id: currentStudent.value.id,
           version: route.query.version,
           volume: route.query.volume,
           unit_played: route.query.unit,
           score: score.value,
-          time_spent: timeSpent.value,
           time_taken_seconds: timeSpent.value, 
           attempt_number: attemptNumber.value,
           correct_words: Array.from(correctWords.value).join(','),
@@ -251,6 +244,10 @@ const finishGame = async () => {
           word_intervals: JSON.stringify(intervalsObj),
           game_type: '單字方塊消消樂' 
       }]);
+      
+      if (error) {
+          console.error("寫入成績失敗：", error);
+      }
   }
 };
 

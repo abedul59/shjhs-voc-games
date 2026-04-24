@@ -87,7 +87,6 @@ const initTesseract = async () => {
 onMounted(async () => {
   const { data: settings } = await supabase.from('system_settings').select('*').eq('id', 1).single();
   if (settings) {
-    // 🌟 關鍵修正：使用 ?? 取代 ||，讓 0 可以被正確讀取；並移除奇怪的除以 10 邏輯！
     config.value.time_limit = settings.voc_review_game_time_limit ?? 60;
     config.value.max_score = settings.voc_review_max_score ?? 10; 
     config.value.penalty = settings.voc_review_penalty ?? 0;
@@ -215,11 +214,11 @@ const checkAnswer = async () => {
     const recognizedLetter = match ? match[0] : '';
     
     if (recognizedLetter === missingChar.value.toLowerCase()) {
-      score.value += config.value.max_score; // 🌟 這裡現在會正確加上您設定的 10 分了！
+      score.value += config.value.max_score; 
       currentQIndex.value++;
       loadNextQuestion();
     } else {
-      score.value = Math.max(0, score.value - config.value.penalty); // 🌟 若設定 0 分，就不會扣分了！
+      score.value = Math.max(0, score.value - config.value.penalty); 
       alert(`AI 看到的是「${recognizedLetter || '空'}」，好像不太對喔！請擦掉重寫。`);
       clearCanvas();
     }
@@ -235,16 +234,27 @@ const endGame = async () => {
   clearInterval(timer);
   gameState.value = 'gameover';
   
-  if (studentCookie.value && !studentCookie.value.isAnon) {
+  // 🌟 修正點：使用正確的 time_taken_seconds 與補上 class_name, real_name 等必須欄位
+  if (studentCookie.value) {
     await supabase.from('game_records').insert([{
       student_id: studentCookie.value.id,
+      real_name: studentCookie.value.real_name || studentCookie.value.name,
+      class_name: studentCookie.value.class || '未分班',
       game_type: '單字複習趣',
       score: Math.round(score.value),
-      time_spent: config.value.time_limit - timeRemaining.value,
+      time_taken_seconds: config.value.time_limit - timeRemaining.value,
       version: route.query.version,
       volume: route.query.volume,
-      unit_played: route.query.unit
+      unit_played: route.query.unit,
+      is_anon: studentCookie.value.isAnon || false,
+      browser_id: studentCookie.value.browserId
     }]);
+
+    // 幫一般登入學生加總分
+    if (!studentCookie.value.isAnon) {
+      const { data } = await supabase.from('students').select('points').eq('id', studentCookie.value.id).single();
+      if (data) await supabase.from('students').update({ points: data.points + Math.round(score.value) }).eq('id', studentCookie.value.id);
+    }
   }
 };
 </script>

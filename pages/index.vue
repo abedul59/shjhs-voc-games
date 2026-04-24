@@ -3,6 +3,8 @@ import { ref, onMounted } from 'vue';
 import StrokeQuery from '~/components/StrokeQuery.vue';
 import LoginBox from '~/components/LoginBox.vue';
 import GameSelector from '~/components/GameSelector.vue';
+// ✨ 記得要 Import 新建的公佈欄組件
+import AnnouncementBoard from '~/components/AnnouncementBoard.vue';
 
 const supabase = useSupabaseClient();
 const studentCookie = useCookie('currentStudent');
@@ -29,6 +31,8 @@ onMounted(async () => {
       <div class="marquee-content">📢 {{ announcement }}</div>
     </div>
 
+    <AnnouncementBoard />
+
     <div class="main-box retro-element">
       <div class="title-box">
         <h1 class="main-title">{{ systemName }}</h1>
@@ -36,20 +40,19 @@ onMounted(async () => {
       </div>
 
       <LoginBox v-if="!studentCookie" :school-phone="schoolPhone" />
-      
       <GameSelector v-else :auto-logout-minutes="autoLogoutMinutes" />
     </div>
 
     <StrokeQuery v-if="!studentCookie" :school-phone="schoolPhone" />
 
-<div class="bottom-links">
-  <NuxtLink to="/leaderboard" class="link-btn">🏆 全校英雄榜</NuxtLink>
-  
-  <NuxtLink v-if="studentCookie" to="/tarot" class="link-btn" style="color: #d4af37; border-color: #d4af37;">🔮 領域牌組圖鑑</NuxtLink>
+    <div class="bottom-links">
+      <NuxtLink to="/leaderboard" class="link-btn">🏆 全校英雄榜</NuxtLink>
+      
+      <NuxtLink v-if="studentCookie" to="/tarot" class="link-btn" style="color: #d4af37; border-color: #d4af37;">🔮 領域牌組圖鑑</NuxtLink>
 
-  <NuxtLink v-if="studentCookie" to="/history" class="link-btn">📊 我的歷史紀錄</NuxtLink>
-  <NuxtLink to="/admin/login" class="link-btn admin">▶ 管理員 / 教師後台</NuxtLink>
-</div>
+      <NuxtLink v-if="studentCookie" to="/history" class="link-btn">📊 我的歷史紀錄</NuxtLink>
+      <NuxtLink to="/admin/login" class="link-btn admin">▶ 管理員 / 教師後台</NuxtLink>
+    </div>
   </div>
 </template>
 

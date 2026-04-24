@@ -42,8 +42,8 @@ const WALL_X = 500;
 const ball = ref({ x: 550, y: 850, vx: 0, vy: 0, r: 22, letter: '', state: 'waiting_selection', targetId: null });
 
 // 🌟 底部可移動球道 (接球籃) 設定
-const catcherWidth = ref(360); // 籃子總寬度
-const catcherOffsetX = ref(70); // 籃子起始 X 偏移 (預設置中：(500-360)/2 = 70)
+const catcherWidth = ref(360); 
+const catcherOffsetX = ref(70); 
 
 const pegs = ref([
   {x: 250, y: 350, r: 25, flash: 0},
@@ -90,7 +90,7 @@ const sfx = {
   barHit: () => playTone(400, 'square', 0.15, 0.1),
   launch: () => playTone(150, 'sawtooth', 0.2, 0.1),
   correct: () => { playTone(880, 'sine', 0.1); setTimeout(() => playTone(1100, 'sine', 0.2), 100); },
-  wrong: () => playTone(200, 'sawtooth', 0.3, 0.2), // 掉進深淵或接錯的音效
+  wrong: () => playTone(200, 'sawtooth', 0.3, 0.2), 
   wordComplete: () => { [523, 659, 783, 1046].forEach((f, i) => setTimeout(() => playTone(f, 'sine', 0.3), i * 150)); }
 };
 
@@ -166,7 +166,7 @@ const startRound = () => {
   }
 
   missingLetters.value.sort(() => Math.random() - 0.5);
-  catcherOffsetX.value = (WALL_X - catcherWidth.value) / 2; // 重置籃子到中間
+  catcherOffsetX.value = (WALL_X - catcherWidth.value) / 2; 
   resetBall();
 
   if (currentWordObj.value && currentWordObj.value.en_us) {
@@ -294,7 +294,6 @@ const updatePhysics = () => {
         }
     });
 
-    // 掉落判定 (包含右側發射道與左側深淵判斷)
     if (ball.value.y > CANVAS_H + ball.value.r) {
         if (ball.value.x > WALL_X) {
             resetBall(); 
@@ -308,25 +307,21 @@ const updatePhysics = () => {
   animationFrameId = requestAnimationFrame(updatePhysics);
 };
 
-// 🌟 全新精準接球判定邏輯
 const handleLaneDrop = (dropX) => {
     ball.value.state = 'evaluating';
 
     const targetObj = missingLetters.value.find(m => m.id === ball.value.targetId);
     const isFake = targetObj ? targetObj.isFake : false;
 
-    // 判斷是否成功落入籃子範圍內
     if (dropX >= catcherOffsetX.value && dropX <= catcherOffsetX.value + catcherWidth.value) {
         
         const numLanes = wordSlots.value.length;
         const laneWidth = catcherWidth.value / numLanes;
-        // 計算掉進哪一個字母洞
         let laneIndex = Math.floor((dropX - catcherOffsetX.value) / laneWidth);
-        laneIndex = Math.min(numLanes - 1, Math.max(0, laneIndex)); // 防呆範圍
+        laneIndex = Math.min(numLanes - 1, Math.max(0, laneIndex)); 
         const slot = wordSlots.value[laneIndex];
 
         if (slot && slot.isBlank && !slot.filled && slot.char === ball.value.letter && !isFake) {
-            // ✅ 真彈珠掉入正確洞
             sfx.correct();
             slot.filled = true;
             missingLetters.value = missingLetters.value.filter(m => m.id !== ball.value.targetId);
@@ -341,7 +336,6 @@ const handleLaneDrop = (dropX) => {
                 setTimeout(resetBall, 500);
             }
         } else {
-            // ❌ 接到了，但進錯洞或是假彈珠
             sfx.wrong();
             mistakesCount.value++;
             score.value = Math.max(0, score.value - penaltyPoints.value);
@@ -360,7 +354,6 @@ const handleLaneDrop = (dropX) => {
             setTimeout(resetBall, 500);
         }
     } else {
-        // ❌ 完蛋！完全沒接住，掉進深淵
         sfx.wrong();
         mistakesCount.value++;
         score.value = Math.max(0, score.value - penaltyPoints.value);
@@ -384,7 +377,6 @@ const drawCanvas = () => {
   if (!ctx) return;
   ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
 
-  // 1. 牆壁繪製
   ctx.beginPath();
   ctx.moveTo(WALL_X, 250);
   ctx.lineTo(WALL_X, CANVAS_H);
@@ -395,7 +387,6 @@ const drawCanvas = () => {
   ctx.quadraticCurveTo(250, -50, 0, 250); 
   ctx.lineWidth = 6; ctx.strokeStyle = '#ff9800'; ctx.stroke();
 
-  // 🌟 2. 底部深淵岩漿特效 (提示沒接住會扣分)
   ctx.beginPath();
   ctx.moveTo(0, CANVAS_H - 5);
   ctx.lineTo(WALL_X, CANVAS_H - 5);
@@ -403,7 +394,6 @@ const drawCanvas = () => {
   ctx.strokeStyle = '#d32f2f'; 
   ctx.stroke();
 
-  // 3. 齒輪
   gears.value.forEach(gear => {
       ctx.save();
       ctx.translate(gear.x, gear.y);
@@ -426,7 +416,6 @@ const drawCanvas = () => {
       ctx.restore();
   });
 
-  // 4. 擋桿
   bars.value.forEach(bar => {
       let ex = bar.cx + Math.cos(bar.angle) * bar.length;
       let ey = bar.cy + Math.sin(bar.angle) * bar.length;
@@ -442,7 +431,6 @@ const drawCanvas = () => {
       ctx.fillStyle = '#e65100'; ctx.fill();
   });
 
-  // 5. 障礙柱
   pegs.value.forEach(peg => {
     if (peg.flash > 0) peg.flash -= 0.04; 
     if (peg.flash < 0) peg.flash = 0;
@@ -462,7 +450,6 @@ const drawCanvas = () => {
     ctx.shadowColor = `rgb(${r}, ${g}, ${b})`; ctx.fill(); ctx.shadowBlur = 0;
   });
 
-  // 6. 發射預備框
   if (ball.value.state === 'waiting_selection') {
       ctx.beginPath();
       ctx.arc(550, 850, 22, 0, Math.PI * 2);
@@ -471,7 +458,6 @@ const drawCanvas = () => {
       ctx.setLineDash([5, 5]); ctx.stroke(); ctx.setLineDash([]);
   }
 
-  // 7. 彈珠本體
   if (ball.value.state !== 'evaluating' && ball.value.state !== 'waiting_selection') {
     const renderY = ball.value.state === 'idle' ? ball.value.y + pullDistance.value : ball.value.y;
     ctx.beginPath();
@@ -575,62 +561,68 @@ onUnmounted(() => {
 
     <div v-else class="p-machine">
       
-      <div class="p-scoreboard retro-element">
-        <div class="meaning-group">
-            <div class="zh-meaning">{{ currentWordObj?.zh_tw }}</div>
-            <button class="speak-btn" @pointerdown.prevent="speakWord(currentWordObj?.en_us)" title="聽發音">🔊</button>
+      <div class="p-panel left-panel">
+        <div class="p-scoreboard retro-element">
+          <div class="meaning-group">
+              <div class="zh-meaning">{{ currentWordObj?.zh_tw }}</div>
+              <button class="speak-btn" @pointerdown.prevent="speakWord(currentWordObj?.en_us)" title="聽發音">🔊</button>
+          </div>
+          <div class="en-length">需填入 {{ missingLetters.filter(m => !m.isFake).length }} 個正確字母</div>
         </div>
-        <div class="en-length">需填入 {{ missingLetters.filter(m => !m.isFake).length }} 個正確字母</div>
       </div>
 
-      <div class="p-board-container">
-        <div class="p-playfield">
-          
-          <canvas ref="canvasRef" :width="CANVAS_W" :height="CANVAS_H" class="physics-canvas"></canvas>
+      <div class="p-panel center-panel">
+        <div class="p-board-container">
+          <div class="p-playfield">
+            
+            <canvas ref="canvasRef" :width="CANVAS_W" :height="CANVAS_H" class="physics-canvas"></canvas>
 
-          <div class="lanes-overlay" :style="{ left: `${(catcherOffsetX / CANVAS_W) * 100}%`, width: `${(catcherWidth / CANVAS_W) * 100}%` }">
-            <div v-for="(slot, i) in wordSlots" :key="i" class="lane" :class="{'is-blank': slot.isBlank, 'filled': slot.filled}">
-              <div class="lane-divider"></div>
-              <div class="lane-letter">{{ slot.filled ? slot.char : '_' }}</div>
+            <div class="lanes-overlay" :style="{ left: `${(catcherOffsetX / CANVAS_W) * 100}%`, width: `${(catcherWidth / CANVAS_W) * 100}%` }">
+              <div v-for="(slot, i) in wordSlots" :key="i" class="lane" :class="{'is-blank': slot.isBlank, 'filled': slot.filled}">
+                <div class="lane-divider"></div>
+                <div class="lane-letter">{{ slot.filled ? slot.char : '_' }}</div>
+              </div>
+            </div>
+
+            <div class="plunger-visual" :style="{ transform: `translateY(${pullDistance}px)` }">
+              <div class="plunger-head"></div>
+              <div class="plunger-rod"></div>
+            </div>
+
+            <div class="plunger-touch-area" 
+                 @mousedown="handlePullStart" @mousemove="handlePullMove" @mouseup="handlePullEnd" @mouseleave="handlePullEnd"
+                 @touchstart.prevent="handlePullStart" @touchmove.prevent="handlePullMove" @touchend.prevent="handlePullEnd" @touchcancel.prevent="handlePullEnd">
             </div>
           </div>
+        </div>
 
-          <div class="plunger-visual" :style="{ transform: `translateY(${pullDistance}px)` }">
-            <div class="plunger-head"></div>
-            <div class="plunger-rod"></div>
-          </div>
-
-          <div class="plunger-touch-area" 
-               @mousedown="handlePullStart" @mousemove="handlePullMove" @mouseup="handlePullEnd" @mouseleave="handlePullEnd"
-               @touchstart.prevent="handlePullStart" @touchmove.prevent="handlePullMove" @touchend.prevent="handlePullEnd" @touchcancel.prevent="handlePullEnd">
-          </div>
+        <div class="catcher-controls retro-element">
+           <span class="icon">👈</span>
+           <input type="range" min="0" :max="WALL_X - catcherWidth" v-model.number="catcherOffsetX" class="c-slider" />
+           <span class="icon">👉</span>
         </div>
       </div>
 
-      <div class="catcher-controls retro-element">
-         <span class="icon">👈</span>
-         <input type="range" min="0" :max="WALL_X - catcherWidth" v-model.number="catcherOffsetX" class="c-slider" />
-         <span class="icon">👉</span>
-      </div>
-
-      <div class="p-controls">
-         <div class="control-panel retro-element">
-             <div class="ball-tray" v-if="missingLetters.length > 0">
-               <div class="tray-title">🎯 選擇發射彈珠：</div>
-               <div class="tray-balls">
-                 <button
-                   v-for="m in missingLetters"
-                   :key="m.id"
-                   class="tray-ball"
-                   :class="{ 'in-play': ball.state !== 'waiting_selection' && ball.targetId === m.id }"
-                   @pointerdown.prevent="selectBall(m)"
-                   :disabled="ball.state !== 'waiting_selection'"
-                 >
-                   {{ m.char }}
-                 </button>
+      <div class="p-panel right-panel">
+        <div class="p-controls">
+           <div class="control-panel retro-element">
+               <div class="ball-tray" v-if="missingLetters.length > 0">
+                 <div class="tray-title">🎯 選擇發射彈珠：</div>
+                 <div class="tray-balls">
+                   <button
+                     v-for="m in missingLetters"
+                     :key="m.id"
+                     class="tray-ball"
+                     :class="{ 'in-play': ball.state !== 'waiting_selection' && ball.targetId === m.id }"
+                     @pointerdown.prevent="selectBall(m)"
+                     :disabled="ball.state !== 'waiting_selection'"
+                   >
+                     {{ m.char }}
+                   </button>
+                 </div>
                </div>
-             </div>
-         </div>
+           </div>
+        </div>
       </div>
 
     </div>
@@ -661,15 +653,20 @@ onUnmounted(() => {
 .p-btn-play { margin-top: 20px; background: #ff9800; color: white; border: 3px solid #e65100; padding: 12px 30px; font-size: 1.4rem; font-weight: bold; border-radius: 10px; box-shadow: 0 6px 0 #e65100; cursor: pointer; }
 .p-btn-play:active { transform: translateY(6px); box-shadow: none; }
 
+/* 🌟 全新響應式排版架構 */
 .p-machine {
   flex: 1; display: flex; flex-direction: column; align-items: center;
-  padding: 10px; gap: 10px; min-height: 0;
+  padding: 5px; gap: 8px; min-height: 0; width: 100%;
 }
 
+.p-panel { display: flex; flex-direction: column; width: 100%; align-items: center; gap: 8px; }
+.left-panel, .right-panel { flex: 0 0 auto; max-width: 500px; }
+.center-panel { flex: 1; min-height: 0; justify-content: center; }
+
 .p-scoreboard {
-  width: 100%; max-width: 500px; background: #000; border: 4px solid #ff9800; border-radius: 10px;
+  width: 100%; background: #000; border: 4px solid #ff9800; border-radius: 10px;
   text-align: center; padding: 10px; box-shadow: inset 0 0 15px rgba(255,152,0,0.5);
-  display: flex; flex-direction: column; align-items: center;
+  display: flex; flex-direction: column; align-items: center; box-sizing: border-box;
 }
 .meaning-group { display: flex; align-items: center; justify-content: center; gap: 10px;}
 .zh-meaning { color: #00e5ff; font-size: 1.5rem; font-weight: 900; text-shadow: 0 0 8px #00e5ff; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
@@ -678,23 +675,23 @@ onUnmounted(() => {
 .en-length { color: #ffeb3b; font-size: 0.9rem; font-weight: bold; font-family: monospace;}
 
 .p-board-container {
-  flex: 1; width: 100%; max-width: 500px; min-height: 0;
-  display: flex; justify-content: center; align-items: stretch;
+  flex: 1; width: 100%; min-height: 0; display: flex; justify-content: center; align-items: stretch;
 }
+
 .p-playfield {
-  height: 100%; aspect-ratio: 6 / 9; 
+  height: 100%; max-height: 100%; aspect-ratio: 6 / 9; 
   background: linear-gradient(135deg, #1e1e1e 0%, #2c3e50 100%);
-  border: 8px solid #5d4037; border-radius: 20px; 
+  border: 6px solid #5d4037; border-radius: 15px; 
   position: relative; overflow: hidden;
   box-shadow: inset 0 0 30px rgba(0,0,0,0.8), 0 10px 20px rgba(0,0,0,0.5);
+  box-sizing: border-box;
 }
 
 .physics-canvas { width: 100%; height: 100%; display: block; position: absolute; top: 0; left: 0; z-index: 1; }
 
-/* 🌟 進化版：動態籃子 */
 .lanes-overlay {
   position: absolute; bottom: 0; height: 12%; display: flex; z-index: 2;
-  background: rgba(21, 101, 192, 0.95); /* 更扎實的藍色籃子感 */
+  background: rgba(21, 101, 192, 0.95); 
   border: 4px solid #64b5f6; border-bottom: none;
   border-radius: 10px 10px 0 0;
   box-shadow: 0 -5px 15px rgba(0,0,0,0.5), inset 0 5px 10px rgba(255,255,255,0.2);
@@ -718,13 +715,11 @@ onUnmounted(() => {
 .plunger-touch-area { position: absolute; bottom: 0; right: 0; width: 25%; height: 45%; z-index: 10; cursor: grab;}
 .plunger-touch-area:active { cursor: grabbing; }
 
-/* 🌟 接球籃控制滑桿 */
 .catcher-controls {
   width: 100%; max-width: 500px;
   background: #1a1a2e; border: 3px solid #64b5f6; border-radius: 10px;
-  padding: 8px 15px; display: flex; align-items: center; gap: 10px;
-  box-shadow: inset 0 0 10px rgba(100,181,246,0.3);
-  margin-top: 5px;
+  padding: 6px 15px; display: flex; align-items: center; gap: 10px;
+  box-shadow: inset 0 0 10px rgba(100,181,246,0.3); box-sizing: border-box;
 }
 .c-slider {
   flex: 1; -webkit-appearance: none; height: 12px; background: #333;
@@ -741,11 +736,10 @@ onUnmounted(() => {
 .p-controls { width: 100%; max-width: 500px; display: flex; justify-content: center;}
 .control-panel {
   width: 100%; background: rgba(0,0,0,0.4); border: 2px solid #555; border-radius: 10px;
-  padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 8px 12px; display: flex; flex-direction: column; gap: 5px; box-sizing: border-box;
 }
-.ball-tray { flex: 1; text-align: left; }
 .tray-title { color: #ffeb3b; font-size: 0.9rem; margin-bottom: 5px; font-weight: bold;}
-.tray-balls { display: flex; gap: 8px; flex-wrap: wrap; }
+.tray-balls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-start;}
 .tray-ball {
   width: 40px; height: 40px; border-radius: 50%;
   background: #ff1744; color: #fff; font-size: 1.4rem; font-weight: 900; font-family: monospace;
@@ -756,14 +750,41 @@ onUnmounted(() => {
 .tray-ball.in-play { opacity: 0.3; pointer-events: none; filter: grayscale(100%); box-shadow: none; transform: translateY(4px); }
 .tray-ball:disabled { opacity: 0.3; cursor: not-allowed; }
 
-@media (min-width: 768px) {
-  .p-machine { gap: 15px; }
-  .p-scoreboard { padding: 20px; }
+/* 🌟 針對橫向筆電/桌機的大型排版優化 (左-中-右 三欄式) */
+@media (min-width: 768px) and (orientation: landscape) {
+  .p-machine {
+    flex-direction: row; justify-content: center; align-items: center; padding: 10px 20px; gap: 20px;
+  }
+  .left-panel, .right-panel {
+    flex: 1; max-width: 300px; height: 100%; justify-content: center;
+  }
+  .center-panel {
+    flex: 0 0 auto; height: 100%; max-width: none; width: auto; 
+  }
+  .p-board-container {
+    height: calc(100% - 55px); flex: none; align-items: center;
+  }
+  .p-playfield {
+    height: 100%; max-height: none; width: auto;
+  }
+  .catcher-controls {
+    max-width: none; /* 滑桿會自動對齊彈珠台的寬度 */
+  }
+  .p-scoreboard { width: 100%; padding: 20px; }
+  .p-controls { width: 100%; }
+  
+  .zh-meaning { font-size: 2.2rem; }
+  .speak-btn { font-size: 2rem; }
+  .en-length { font-size: 1.1rem; }
+  .lane-letter { font-size: 2.2rem; }
+  .tray-ball { width: 50px; height: 50px; font-size: 1.8rem; }
+  .c-slider::-webkit-slider-thumb { width: 40px; height: 40px; }
+}
+
+@media (min-width: 1200px) and (orientation: landscape) {
   .zh-meaning { font-size: 2.5rem; }
   .speak-btn { font-size: 2.2rem; }
   .en-length { font-size: 1.2rem; }
   .lane-letter { font-size: 2.5rem; }
-  .tray-ball { width: 50px; height: 50px; font-size: 1.8rem; }
-  .c-slider::-webkit-slider-thumb { width: 40px; height: 40px; }
 }
 </style>

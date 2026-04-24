@@ -13,6 +13,7 @@
     "@nuxtjs/supabase": "^2.0.4",
     "canvas-confetti": "^1.9.2",
     "cnchar": "^3.2.6",
+    "joy-con-webhid": "^0.11.0",
     "nuxt": "^4.3.1",
     "papaparse": "^5.5.3",
     "vue": "^3.5.28",

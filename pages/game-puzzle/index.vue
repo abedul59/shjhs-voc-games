@@ -12,11 +12,12 @@ const studentCookie = useCookie('currentStudent');
 const timeLimitSetting = ref(30); 
 const maxScoreSetting = ref(20);  
 const penaltySetting = ref(0.5);  
-const puzzleCardSetSetting = ref('1'); // 🌟 新增這一行
+const puzzleCardSetSetting = ref('1'); 
+const puzzleCardSetKangxuanSetting = ref('1k'); // 🌟 新增康軒版設定
 
 const vocabularies = ref([]);
 const currentQuestionIndex = ref(0);
-const questionsCompleted = ref(0); // 記錄實際完成(或失敗)的題數
+const questionsCompleted = ref(0); 
 const totalScore = ref(0);
 const currentQuestionScore = ref(20);
 const isLoading = ref(true);
@@ -48,7 +49,8 @@ onMounted(async () => {
     timeLimitSetting.value = settings.puzzle_game_time_limit ?? 30;
     maxScoreSetting.value = settings.puzzle_max_score ?? 20;
     penaltySetting.value = settings.puzzle_penalty ?? 0.5;
-    puzzleCardSetSetting.value = settings.puzzle_card_set ?? '1'; // 🌟 新增這一行讀取資料庫設定
+    puzzleCardSetSetting.value = settings.puzzle_card_set ?? '1'; 
+    if (settings.puzzle_card_set_kangxuan) puzzleCardSetKangxuanSetting.value = settings.puzzle_card_set_kangxuan; // 🌟 讀取康軒版設定
   }
 
   let query = supabase.from('vocabularies').select('*').eq('version', route.query.version).eq('unit', route.query.unit);
@@ -56,7 +58,6 @@ onMounted(async () => {
   
   const { data } = await query;
   if (data && data.length > 0) {
-    // 🌟 多抓幾題當備胎 (抓 15 題，實際只玩 5 題)
     vocabularies.value = data.sort(() => Math.random() - 0.5).slice(0, 15); 
     gameStartTime.value = Date.now();
     loadQuestion();
@@ -78,16 +79,30 @@ const loadQuestion = () => {
   selectedPiece.value = null;
   currentQuestionScore.value = maxScoreSetting.value;
   
-  const cleanWord = currentWord.value.en_us.replace(/[?()!]/g, '').trim();
+  // 🌟 修復空白與連字號，並轉為小寫URL安全編碼
+  const rawWord = currentWord.value.en_us;
+  const cleanWord = rawWord.replace(/[^a-zA-Z\s-]/g, '').trim().replace(/\s+/g, ' ').toLowerCase();
+  const encodedWord = encodeURIComponent(cleanWord);
   
-  // 🌟 判斷使用哪一套圖片
-  let setNum = puzzleCardSetSetting.value;
-  if (setNum === 'random') {
-    setNum = Math.floor(Math.random() * 3) + 1; // 隨機抽出 1, 2, 或 3
+  // 🌟 判斷使用哪一套圖片與版本切換
+  const version = route.query.version;
+  let setNum = '';
+
+  if (version === '康軒') {
+      setNum = puzzleCardSetKangxuanSetting.value;
+      if (setNum === 'random') {
+          const kSets = ['1k', '2k', '3k'];
+          setNum = kSets[Math.floor(Math.random() * kSets.length)];
+      }
+  } else {
+      setNum = puzzleCardSetSetting.value;
+      if (setNum === 'random') {
+          setNum = Math.floor(Math.random() * 3) + 1;
+      }
   }
   
-  // 動態切換網址的資料夾 (tarot-cards-1, 2, 3)
-  currentImageUrl.value = `https://pyfbsdk59.github.io/tarot-cards-${setNum}/${cleanWord}.webp`;
+  // 動態切換網址的資料夾
+  currentImageUrl.value = `https://pyfbsdk59.github.io/tarot-cards-${setNum}/${encodedWord}.webp`;
   
   initPuzzle();
   startTimer();
@@ -127,7 +142,6 @@ const checkWin = () => {
     feedbackMsg.value = `🎉 拼圖完成！獲得 ${currentQuestionScore.value} 分`;
     showFeedback.value = true;
     
-    // 成功拼完才算完成一題
     questionsCompleted.value++;
     setTimeout(() => { showFeedback.value = false; nextQuestion(); }, 1500);
   }
@@ -152,35 +166,31 @@ const startTimer = () => {
       feedbackMsg.value = '💔 扣分至 0，本題失敗！';
       showFeedback.value = true;
       
-      // 失敗也算完成一題
       questionsCompleted.value++;
       setTimeout(() => { showFeedback.value = false; nextQuestion(); }, 1500);
     }
   }, 1000);
 };
 
-// 🌟 新增：跳過當前題目的功能
 const skipQuestion = () => {
-  if (isSolved.value || currentQuestionScore.value <= 0) return; // 已經贏了或輸了就不能跳
+  if (isSolved.value || currentQuestionScore.value <= 0) return; 
   
   clearInterval(timer);
-  // 跳過不算在 questionsCompleted，也不加分不扣分，直接換下一題的單字
   if (currentQuestionIndex.value < vocabularies.value.length - 1) {
     currentQuestionIndex.value++;
     loadQuestion();
   } else {
-    // 如果備用題庫都跳光了，只能強迫結算
     endGame();
   }
 };
 
 const nextQuestion = () => {
-  if (questionsCompleted.value >= 5) { endGame(); } // 🌟 滿 5 題就結算
+  if (questionsCompleted.value >= 5) { endGame(); } 
   else if (currentQuestionIndex.value < vocabularies.value.length - 1) { 
     currentQuestionIndex.value++; 
     loadQuestion(); 
   } else {
-    endGame(); // 備用題用光
+    endGame(); 
   }
 };
 

@@ -16,7 +16,7 @@ let checkRoomInterval = null;
 // 🌟 遊戲資料與計分系統
 const isLoadingWords = ref(true);
 const words = ref([]);
-const myScore = ref(0); // 這是「已完成的單字數」
+const myScore = ref(0); 
 const opponentScore = ref(0);
 
 // 後台讀取的設定值
@@ -24,7 +24,9 @@ const targetScore = ref(5);
 const pvpCorrectPoints = ref(20);
 const pvpPenaltyPoints = ref(3);
 const spinSpeed = ref(15);
-const mistakesCount = ref(0); // 紀錄拼錯幾次
+const maxEscapes = ref(20); // 🌟 新增：逃跑次數上限
+const todayEscapesCount = ref(0); // 🌟 新增：今日已逃跑次數
+const mistakesCount = ref(0); 
 
 const currentWord = ref(null);
 const gridLetters = ref([]);
@@ -33,7 +35,6 @@ const isWrong = ref(false);
 const winnerId = ref(null);
 const unitInfo = ref('');
 
-// 計算 CSS 動畫樣式字串
 const spinStyle = computed(() => {
   if (spinSpeed.value <= 0) return { animation: 'none' }; 
   return { animationDuration: `${spinSpeed.value}s` };
@@ -42,7 +43,6 @@ const spinStyle = computed(() => {
 const showAttack = ref(false);
 const showDamaged = ref(false);
 
-// === 🔊 音效引擎 ===
 const audioCtx = typeof window !== 'undefined' ? new (window.AudioContext || window.webkitAudioContext)() : null;
 const playTone = (freq, type, duration, vol = 0.1) => {
   if (!audioCtx) return;
@@ -72,28 +72,27 @@ const soundFx = {
 let battleSubscription = null;
 let gameStartTime = 0;
 
-// === 🌟 絕對不漏接的逃跑紀錄系統 ===
 const recordEscape = async () => {
     if (!studentCookie.value || studentCookie.value.isAnon || matchStatus.value !== 'playing') return;
     
     const timeSpent = Math.round((Date.now() - gameStartTime) / 1000);
     const escapeMsg = `【逃】對手: ${opponentData.value?.name || '未知'}`;
-    
-    // 🌟 計算最終得分： (答對數 * 加分) - (拼錯次數 * 扣分)，最低 0 分
     const finalScore = Math.max(0, (myScore.value * pvpCorrectPoints.value) - (mistakesCount.value * pvpPenaltyPoints.value));
 
     try {
         await supabase.from('game_records').insert([{
             student_id: studentCookie.value.id,
             game_type: '單字方塊陣',
-            score: finalScore, // 寫入計算後的分數
-            mistakes: mistakesCount.value, // 寫入錯誤次數
+            score: finalScore, 
+            mistakes: mistakesCount.value, 
             time_taken_seconds: timeSpent,
             version: route.query.version,
             volume: route.query.volume,
             unit_played: route.query.unit,
             correct_words: escapeMsg
         }]);
+        // 🌟 逃跑後，立刻增加本地逃跑計數
+        todayEscapesCount.value++;
     } catch (e) {
         console.error("寫入逃跑紀錄失敗", e);
     }
@@ -129,19 +128,49 @@ const handleBeforeUnload = (event) => {
     }
 };
 
+// 🌟 檢查今天是否逃跑太多次
+const checkEscapeBanStatus = async () => {
+    if (!studentCookie.value || studentCookie.value.isAnon) return;
+
+    // 取得今天的開始與結束時間 (UTC，可依據伺服器時間調整)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const startOfDay = today.toISOString();
+    
+    today.setHours(23, 59, 59, 999);
+    const endOfDay = today.toISOString();
+
+    const { data } = await supabase.from('game_records')
+        .select('id, correct_words')
+        .eq('student_id', studentCookie.value.id)
+        .eq('game_type', '單字方塊陣')
+        .gte('played_at', startOfDay)
+        .lte('played_at', endOfDay);
+
+    if (data) {
+        const escapesToday = data.filter(r => r.correct_words && r.correct_words.includes('【逃】')).length;
+        todayEscapesCount.value = escapesToday;
+        
+        if (escapesToday >= maxEscapes.value) {
+            matchStatus.value = 'banned'; // 🌟 進入禁賽狀態
+        }
+    }
+};
+
 onMounted(async () => {
   try {
     isLoadingWords.value = true;
     await supabase.removeAllChannels();
     window.addEventListener('beforeunload', handleBeforeUnload);
 
-    // 🌟 抓取後台計分與速度設定
-    const { data: settingsData } = await supabase.from('system_settings').select('pvp_spin_speed, pvp_target_score, pvp_correct_points, pvp_penalty_points').eq('id', 1).single();
+    const { data: settingsData } = await supabase.from('system_settings').select('pvp_spin_speed, pvp_target_score, pvp_correct_points, pvp_penalty_points, pvp_max_escapes').eq('id', 1).single();
     if (settingsData) {
       if (settingsData.pvp_spin_speed !== null) spinSpeed.value = Number(settingsData.pvp_spin_speed);
       if (settingsData.pvp_target_score !== null) targetScore.value = Number(settingsData.pvp_target_score);
       if (settingsData.pvp_correct_points !== null) pvpCorrectPoints.value = Number(settingsData.pvp_correct_points);
       if (settingsData.pvp_penalty_points !== null) pvpPenaltyPoints.value = Number(settingsData.pvp_penalty_points);
+      // 🌟 讀取逃跑禁賽門檻 (預設20)
+      maxEscapes.value = settingsData.pvp_max_escapes !== undefined && settingsData.pvp_max_escapes !== null ? Number(settingsData.pvp_max_escapes) : 20;
     }
 
     const { version, volume, unit } = route.query;
@@ -160,6 +189,7 @@ onMounted(async () => {
 
     if (studentCookie.value && !studentCookie.value.isAnon) {
       await supabase.from('game_rooms').delete().eq('host_id', studentCookie.value.id).eq('status', 'waiting');
+      await checkEscapeBanStatus(); // 🌟 檢查禁賽狀態
     }
   } catch (error) {
     console.error("載入失敗:", error);
@@ -173,6 +203,12 @@ const startMatchmaking = async () => {
   if (isLoadingWords.value) return;
   if (!studentCookie.value || studentCookie.value.isAnon) { alert('請先登入！'); return; }
   
+  // 🌟 二次檢查是否已達逃跑上限
+  if (todayEscapesCount.value >= maxEscapes.value) {
+      matchStatus.value = 'banned';
+      return;
+  }
+
   matchStatus.value = 'searching';
 
   const { data: rooms } = await supabase.from('game_rooms')
@@ -221,7 +257,7 @@ const startGameConnection = () => {
     matchStatus.value = 'playing';
     myScore.value = 0;
     opponentScore.value = 0;
-    mistakesCount.value = 0; // 重置錯誤次數
+    mistakesCount.value = 0; 
     gameStartTime = Date.now();
     
     battleSubscription = supabase.channel(`battle_${currentRoomId.value}`);
@@ -271,7 +307,7 @@ const selectLetter = (item) => {
     } else {
       soundFx.wrong();
       isWrong.value = true;
-      mistakesCount.value++; // 🌟 拼錯時增加錯誤次數
+      mistakesCount.value++; 
       setTimeout(() => {
         currentSpelling.value.forEach(i => i.selected = false);
         currentSpelling.value = [];
@@ -314,14 +350,13 @@ const triggerGameOver = async (wId) => {
   if (isWinner) soundFx.win(); else soundFx.lose();
 
   if (studentCookie.value && !studentCookie.value.isAnon) {
-    // 🌟 計算最終得分
     const finalScore = Math.max(0, (myScore.value * pvpCorrectPoints.value) - (mistakesCount.value * pvpPenaltyPoints.value));
 
     await supabase.from('game_records').insert([{
       student_id: studentCookie.value.id,
       game_type: '單字方塊陣',
-      score: finalScore, // 🌟 寫入實質分數
-      mistakes: mistakesCount.value, // 🌟 寫入錯誤次數
+      score: finalScore, 
+      mistakes: mistakesCount.value, 
       time_taken_seconds: timeSpent,
       version: route.query.version,
       volume: route.query.volume,
@@ -350,7 +385,11 @@ const leaveGame = async (isNormalGameOver = false) => {
       await supabase.from('game_rooms').delete().eq('id', currentRoomId.value);
   }
   
-  if (matchStatus.value !== 'gameover') matchStatus.value = 'idle';
+  // 🌟 回到大廳時，再次檢查禁賽狀態
+  if (matchStatus.value !== 'gameover' && matchStatus.value !== 'banned') {
+      if (todayEscapesCount.value >= maxEscapes.value) matchStatus.value = 'banned';
+      else matchStatus.value = 'idle';
+  }
   currentRoomId.value = null;
 };
 
@@ -364,16 +403,33 @@ onUnmounted(() => {
   <div class="battle-container" :class="{ 'damaged-shake': showDamaged }">
     <div class="header-bar retro-element">
       <h2>⚔️ 單字方塊陣</h2>
-      <button class="retro-btn exit-btn" @click="leaveGame(false)" v-if="matchStatus !== 'idle' && matchStatus !== 'gameover'">逃跑</button>
+      <button class="retro-btn exit-btn" @click="leaveGame(false)" v-if="matchStatus !== 'idle' && matchStatus !== 'gameover' && matchStatus !== 'banned'">逃跑</button>
       <NuxtLink to="/" class="retro-btn exit-btn" v-else>← 返回</NuxtLink>
     </div>
 
-    <div v-if="matchStatus === 'idle'" class="main-screen retro-element">
+    <div v-if="matchStatus === 'banned'" class="main-screen retro-element">
+      <div class="status-box gameover">
+        <div class="icon-big" style="color: #f44336; text-shadow: 0 0 20px rgba(244,67,54,0.8);">🚫</div>
+        <h3 class="lose-text">帳號已被禁賽</h3>
+        <p style="font-size: 1.2rem; font-weight: bold; line-height: 1.5; color: #fff;">
+          您今天已經主動逃跑了 <span style="color:#f44336; font-size:1.5rem;">{{ todayEscapesCount }}</span> 次！<br>
+          已達到單日逃跑上限 ({{ maxEscapes }}次)。
+        </p>
+        <p style="color:#ff9800; margin-top: 10px; font-weight: bold;">
+          為了維護競技場的公平性，您今天將無法進行【單字方塊陣】。<br>
+          請明天再來挑戰，並發揮運動家精神戰鬥到最後！
+        </p>
+        <NuxtLink to="/" class="retro-btn cancel-btn" style="margin-top:20px; width:100%; max-width: 250px;">返回首頁</NuxtLink>
+      </div>
+    </div>
+
+    <div v-else-if="matchStatus === 'idle'" class="main-screen retro-element">
       <div class="status-box">
         <div class="icon-big">🎮</div>
         <h3>拼字競速對決！</h3>
         <p>誰先拼出 {{ targetScore }} 個單字，誰就是贏家！<br>
-           <span style="font-size:0.9rem; color:#f57c00;">(拼對得 {{ pvpCorrectPoints }} 分，拼錯扣 {{ pvpPenaltyPoints }} 分)</span>
+           <span style="font-size:0.9rem; color:#f57c00;">(拼對得 {{ pvpCorrectPoints }} 分，拼錯扣 {{ pvpPenaltyPoints }} 分)</span><br>
+           <span style="font-size:0.8rem; color:#aaa; margin-top:5px; display:inline-block;">今日逃跑次數: {{ todayEscapesCount }} / {{ maxEscapes }} (滿額將禁玩一天)</span>
         </p>
         <button class="retro-btn play-btn" @click="startMatchmaking" :disabled="isLoadingWords">
           {{ isLoadingWords ? '⏳ 載入中...' : '🔍 尋找對手' }}
@@ -460,7 +516,7 @@ onUnmounted(() => {
 .retro-btn:active:not(:disabled) { transform: translateY(6px); box-shadow: none; }
 .retro-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .play-btn { background: var(--success-bg); color: #fff; border-color: #2e7d32; box-shadow: 0 6px 0 #2e7d32; width: 100%; max-width: 250px; margin-top: 15px;}
-.cancel-btn { background: #ffebee; color: #d32f2f; border-color: #d32f2f; box-shadow: 0 6px 0 #d32f2f; }
+.cancel-btn { background: #ffebee; color: #d32f2f; border-color: #d32f2f; box-shadow: 0 6px 0 #d32f2f; text-decoration: none; display: inline-block; }
 .exit-btn { padding: 8px 15px; font-size: 1rem; border-width: 2px; box-shadow: 0 4px 0 var(--border-color); background: #e0e0e0; color: #333; text-decoration: none;}
 
 .game-board { display: flex; flex-direction: column; gap: 15px; flex-grow: 1; position: relative; overflow-x: hidden; padding-bottom: 20px;}

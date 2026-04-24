@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 const supabase = useSupabaseClient();
@@ -10,11 +10,16 @@ const vocabularies = ref([]);
 const gameRecords = ref([]);
 const manualUnlocked1 = ref([]);
 const manualUnlocked2 = ref([]);
-const manualUnlocked3 = ref([]); // 新增第三套
+const manualUnlocked3 = ref([]);
+const manualUnlocked1k = ref([]); // 康軒第一套
+const manualUnlocked2k = ref([]); // 康軒第二套
+const manualUnlocked3k = ref([]); // 康軒第三套
+const manualUnlocked4k = ref([]); // 康軒第四套
+
 const isLoading = ref(true);
 const targetStudentId = ref(null);
 const isPreviewMode = ref(false);
-const activeSet = ref(1);
+const activeSet = ref('1');
 
 const unlockCount = ref(10);
 const unlockScore = ref(60);
@@ -24,11 +29,8 @@ const showRevealModal = ref(false);
 const revealWord = ref('');
 const isFlipped = ref(false);
 
-// 加入第三套 GitHub 網址
 const GITHUB_PAGES_BASE_URL = computed(() => {
-  if (activeSet.value === 1) return 'https://pyfbsdk59.github.io/tarot-cards-1';
-  if (activeSet.value === 2) return 'https://pyfbsdk59.github.io/tarot-cards-2';
-  return 'https://pyfbsdk59.github.io/tarot-cards-3';
+  return `https://pyfbsdk59.github.io/tarot-cards-${activeSet.value}`;
 });
 
 const selectedVersion = ref('翰林');
@@ -38,6 +40,15 @@ const selectedUnit = ref('U1');
 const versions = ['翰林', '康軒', '南一'];
 const volumes = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6'];
 const unitOptions = ['U1', 'U2', 'U3', 'U4', 'U5', 'U6', 'U7', 'U8', 'U9'];
+
+// 🌟 當切換版本時，自動切換到該版本的預設卡牌套系
+watch(selectedVersion, (newVer) => {
+  if (newVer === '康軒') {
+    if (!String(activeSet.value).includes('k')) activeSet.value = '1k';
+  } else {
+    if (String(activeSet.value).includes('k')) activeSet.value = '1';
+  }
+});
 
 onMounted(async () => {
   if (route.query.student_id) {
@@ -59,23 +70,39 @@ onMounted(async () => {
   const { data: records } = await supabase.from('game_records').select('version, volume, unit_played, score').eq('student_id', targetStudentId.value);
   if (records) gameRecords.value = records;
 
-  // 讀取三套解鎖紀錄
-  const { data: studentData } = await supabase.from('students').select('unlocked_tarot, unlocked_tarot_2, unlocked_tarot_3').eq('student_id', targetStudentId.value).maybeSingle();
+  // 讀取所有版本的抽獎解鎖紀錄
+  const { data: studentData } = await supabase.from('students')
+    .select('unlocked_tarot, unlocked_tarot_2, unlocked_tarot_3, unlocked_tarot_1k, unlocked_tarot_2k, unlocked_tarot_3k, unlocked_tarot_4k')
+    .eq('student_id', targetStudentId.value).maybeSingle();
+    
   if (studentData) {
     manualUnlocked1.value = studentData.unlocked_tarot || [];
     manualUnlocked2.value = studentData.unlocked_tarot_2 || [];
     manualUnlocked3.value = studentData.unlocked_tarot_3 || [];
+    manualUnlocked1k.value = studentData.unlocked_tarot_1k || [];
+    manualUnlocked2k.value = studentData.unlocked_tarot_2k || [];
+    manualUnlocked3k.value = studentData.unlocked_tarot_3k || [];
+    manualUnlocked4k.value = studentData.unlocked_tarot_4k || [];
   }
 
   if (route.query.reveal_word) {
     revealWord.value = route.query.reveal_word;
-    activeSet.value = parseInt(route.query.set) || 1;
+    activeSet.value = route.query.set || '1';
+    
+    // 如果來自康軒版抽卡，自動跳到康軒選項
+    if (String(activeSet.value).includes('k')) {
+      selectedVersion.value = '康軒';
+    } else {
+      selectedVersion.value = '翰林';
+    }
+    
     setTimeout(() => { showRevealModal.value = true; }, 800);
   }
 
   isLoading.value = false;
 });
 
+// 🌟 自動解鎖：只計算「當前選擇版本」的遊玩次數
 const currentUnitPlayCount = computed(() => {
   return gameRecords.value.filter(r => 
     r.version === selectedVersion.value && 
@@ -93,11 +120,16 @@ const currentUnitWords = computed(() => {
     .map(v => v.en_us.replace(/[?()!]/g, '').trim()); 
 });
 
-// 判斷目前顯示哪一套
+// 🌟 動態回傳當下選擇的卡牌套系的手動解鎖名單
 const currentManualUnlocks = computed(() => {
-  if (activeSet.value === 1) return manualUnlocked1.value;
-  if (activeSet.value === 2) return manualUnlocked2.value;
-  return manualUnlocked3.value;
+  if (activeSet.value === '1') return manualUnlocked1.value;
+  if (activeSet.value === '2') return manualUnlocked2.value;
+  if (activeSet.value === '3') return manualUnlocked3.value;
+  if (activeSet.value === '1k') return manualUnlocked1k.value;
+  if (activeSet.value === '2k') return manualUnlocked2k.value;
+  if (activeSet.value === '3k') return manualUnlocked3k.value;
+  if (activeSet.value === '4k') return manualUnlocked4k.value;
+  return [];
 });
 
 const isWordUnlocked = (word, index) => {
@@ -111,24 +143,21 @@ const triggerReveal = (word) => {
   showRevealModal.value = true;
 };
 
-// 🌟 新增：下載圖片功能
+// 下載圖片功能
 const downloadImage = async (word) => {
   try {
     const imageUrl = `${GITHUB_PAGES_BASE_URL.value}/${word}.webp`;
-    // 使用 fetch 獲取圖片 Blob，這樣可以繞過一些瀏覽器預設不下載 WebP 的限制
     const response = await fetch(imageUrl);
     const blob = await response.blob();
     const url = window.URL.createObjectURL(blob);
     
-    // 建立臨時的 <a> 標籤來觸發下載
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = url;
-    a.download = `${word}.webp`; // 設定下載的檔名
+    a.download = `${word}.webp`; 
     document.body.appendChild(a);
     a.click();
     
-    // 清理臨時資源
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
   } catch (error) {
@@ -173,15 +202,23 @@ const onImageError = (e) => {
       <p>點擊已解鎖的卡片，可重複觀看翻牌動畫</p>
     </div>
 
-    <div class="deck-tabs">
-      <button :class="['deck-btn', { active: activeSet === 1 }]" @click="activeSet = 1">🌙 第一彈</button>
-      <button :class="['deck-btn', { active: activeSet === 2 }]" @click="activeSet = 2">✨ 第二彈</button>
-      <button :class="['deck-btn', { active: activeSet === 3 }]" @click="activeSet = 3">🔥 第三彈</button> </div>
-
     <div class="selectors retro-element">
       <select v-model="selectedVersion" class="retro-input"><option v-for="v in versions" :key="v" :value="v">{{ v }}</option></select>
       <select v-model="selectedVolume" class="retro-input"><option v-for="vol in volumes" :key="vol" :value="vol">{{ vol }}</option></select>
       <select v-model="selectedUnit" class="retro-input"><option v-for="u in unitOptions" :key="u" :value="u">{{ u }}</option></select>
+    </div>
+
+    <div class="deck-tabs" v-if="selectedVersion !== '康軒'">
+      <button :class="['deck-btn', { active: activeSet === '1' }]" @click="activeSet = '1'">🌙 第一彈</button>
+      <button :class="['deck-btn', { active: activeSet === '2' }]" @click="activeSet = '2'">✨ 第二彈</button>
+      <button :class="['deck-btn', { active: activeSet === '3' }]" @click="activeSet = '3'">🔥 第三彈</button> 
+    </div>
+    
+    <div class="deck-tabs" v-else>
+      <button :class="['deck-btn', { active: activeSet === '1k' }]" @click="activeSet = '1k'">🌙 康軒第一彈</button>
+      <button :class="['deck-btn', { active: activeSet === '2k' }]" @click="activeSet = '2k'">✨ 康軒第二彈</button>
+      <button :class="['deck-btn', { active: activeSet === '3k' }]" @click="activeSet = '3k'">🔥 康軒第三彈</button> 
+      <button :class="['deck-btn', { active: activeSet === '4k' }]" @click="activeSet = '4k'">⚡ 康軒第四彈</button> 
     </div>
 
     <div class="progress-box retro-element">
@@ -237,19 +274,18 @@ const onImageError = (e) => {
 /* 發光粒子特效 */
 .is-revealed::before { content: ''; position: absolute; top: 50%; left: 50%; width: 100%; height: 100%; background: radial-gradient(circle, rgba(212, 175, 55, 0.6) 0%, transparent 70%); transform: translate(-50%, -50%); z-index: -1; animation: gold-glow 2s infinite; }
 
-/* 🌟 修改：這部分的文字縮小、減少 Padding，並上移位置 */
 .new-badge { 
   position: absolute; 
-  top: 10px; /* 從 20px 下移 */
-  left: -5px; /* 從 -10px 改小 */
+  top: 10px;
+  left: -5px;
   background: #ff3366; 
   color: white; 
-  padding: 3px 8px; /* 從 5px 15px 縮小 */
+  padding: 3px 8px;
   transform: rotate(-5deg); 
   font-weight: 900; 
   box-shadow: 2px 2px 0 #000; 
   z-index: 10; 
-  font-size: 0.75rem; /* 從 1.2rem 大幅縮小 */
+  font-size: 0.75rem;
   letter-spacing: 1px;
 }
 
@@ -259,11 +295,11 @@ const onImageError = (e) => {
 @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 0.8; } 50% { transform: scale(1.1); opacity: 1; } }
 @keyframes fadeInUp { from { opacity: 0; transform: translate(-50%, 20px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
-/* --- 其餘樣式與之前相同 --- */
+/* --- 其餘樣式 --- */
 .gallery-container { min-height: 100vh; padding: 20px; display: flex; flex-direction: column; align-items: center; max-width: 1200px; margin: 0 auto; box-sizing: border-box; background: var(--bg-color); }
 .preview-banner { background: #ff3366; color: white; width: 100%; text-align: center; padding: 10px; font-weight: bold; margin-bottom: 20px; border-radius: 8px; }
 .header { text-align: center; width: 100%; margin-bottom: 20px; }
-.deck-tabs { display: flex; gap: 15px; margin-bottom: 20px; }
+.deck-tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; margin-bottom: 20px; }
 .deck-btn { padding: 10px 20px; border-radius: 20px; border: 2px solid var(--border-color); cursor: pointer; font-weight: bold; background: var(--box-bg); color: var(--text-main); }
 .deck-btn.active { background: #d4af37; color: #000; border-color: #d4af37; }
 .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; width: 100%; }
@@ -276,13 +312,12 @@ const onImageError = (e) => {
 .retro-input { flex: 1; padding: 8px; border-radius: 5px; border: 1px solid var(--border-color); }
 .home-btn { margin-top: 30px; text-decoration: none; padding: 10px 30px; background: var(--btn-primary-bg); color: #000; border-radius: 10px; font-weight: bold; }
 
-/* 🌟 新增：下載按鈕的 CSS 樣式 */
 .download-btn {
   position: absolute;
   bottom: 10px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(212, 175, 55, 0.9); /* 金色底，稍微透明 */
+  background: rgba(212, 175, 55, 0.9);
   color: #111;
   border: none;
   padding: 8px 15px;
@@ -294,13 +329,13 @@ const onImageError = (e) => {
   display: flex;
   align-items: center;
   gap: 5px;
-  z-index: 5; /* 確保在圖片上方 */
+  z-index: 5; 
   box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-  white-space: nowrap; /* 避免文字斷行 */
+  white-space: nowrap; 
 }
 .download-btn:hover {
-  background: #d4af37; /* 滑過時變實色 */
-  transform: translateX(-50%) translateY(-2px); /* 向上微浮 */
+  background: #d4af37; 
+  transform: translateX(-50%) translateY(-2px); 
   box-shadow: 0 4px 8px rgba(0,0,0,0.3);
 }
 </style>

@@ -35,13 +35,11 @@ const formatIntervals = (jsonObj) => {
   if (!jsonObj) return [];
   
   let parsedObj = jsonObj;
-  // 🌟 自動相容資料庫存成「字串格式」或「物件格式」
   if (typeof jsonObj === 'string') {
     try { parsedObj = JSON.parse(jsonObj); } catch (e) { return []; }
   }
 
   return Object.entries(parsedObj)
-    // 🌟 過濾器：只保留「真的有秒數數字 (非 null, 非空值, 非 NaN)」的單字
     .filter(([word, time]) => time !== null && time !== undefined && time !== '' && !isNaN(parseFloat(time)))
     .map(([word, time]) => ({ word, time: parseFloat(time) }))
     .sort((a, b) => b.time - a.time);
@@ -144,7 +142,7 @@ const exportToCSV = () => {
     </div>
 
     <div class="filters-panel retro-element">
-        <div class="game-type-tabs">
+<div class="game-type-tabs">
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊消消樂' }" @click="selectedGameType = '單字方塊消消樂'">🟦 方塊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字神移動' }" @click="selectedGameType = '單字神移動'">🔠 移動</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字選選樂' }" @click="selectedGameType = '單字選選樂'">✅ 選擇</button>
@@ -154,13 +152,40 @@ const exportToCSV = () => {
         <button class="type-btn" :class="{ active: selectedGameType === '單字拼起來' }" @click="selectedGameType = '單字拼起來'">🧩 拼圖</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字口說測一測' }" @click="selectedGameType = '單字口說測一測'">🎙️ 口說</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字填字FUN' }" @click="selectedGameType = '單字填字FUN'">🔠 填字</button>
-        <button class="type-btn" :class="{ active: selectedGameType === '單字複習趣' }" @click="selectedGameType = '單字複習趣'; fetchRecords()">✍️ 複習</button>
-        <button class="type-btn" :class="{ active: selectedGameType === '單字方塊陣' }" @click="selectedGameType = '單字方塊陣'; fetchRecords()">⚔️ 對戰</button>
-        <button class="type-btn" :class="{ active: selectedGameType === '單字俄羅斯方塊' }" @click="selectedGameType = '單字俄羅斯方塊'; fetchRecords()">🧱 俄羅斯</button>
-         <button class="type-btn" :class="{ active: selectedGameType === '單字彈珠台' }" @click="selectedGameType = '單字彈珠台'; fetchHistory()">🎰 單字彈珠台</button>
-        <button class="type-btn" :class="{ active: selectedGameType === '單字憤怒鳥' }" @click="selectedGameType = '單字憤怒鳥'; fetchHistory()">🐦 單字憤怒鳥</button>
-        <button class="type-btn" :class="{ active: selectedGameType === '單字吞食天地' }" @click="selectedGameType = '單字吞食天地'; fetchRecords()">🐎 吞食天地</button>
- 
+        <button class="type-btn" :class="{ active: selectedGameType === '單字複習趣' }" @click="selectedGameType = '單字複習趣'">✍️ 複習</button>
+        
+        <button class="type-btn" :class="{ active: selectedGameType === '單字撲克牌接龍' }" @click="selectedGameType = '單字撲克牌接龍'">🃏 接龍</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字踩地雷' }" @click="selectedGameType = '單字踩地雷'">💣 踩地雷</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字9x9數獨' }" @click="selectedGameType = '單字9x9數獨'">🔢 數獨</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅21點(單人)' }" @click="selectedGameType = '單字塔羅21點(單人)'">🃏 塔羅21(單)</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅鍊金術(單人)' }" @click="selectedGameType = '單字塔羅鍊金術(單人)'">🔮 鍊金術(單)</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅UNO(單人)' }" @click="selectedGameType = '單字塔羅UNO(單人)'">🃏 塔羅UNO(單)</button>
+
+        <button class="type-btn" :class="{ active: selectedGameType === '單字方塊陣' }" @click="selectedGameType = '單字方塊陣'">⚔️ 對戰方塊</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字吞食天地' }" @click="selectedGameType = '單字吞食天地'">🐎 吞食天地</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅21點' }" @click="selectedGameType = '單字塔羅21點'">🃏 塔羅21(雙)</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅鍊金術' }" @click="selectedGameType = '單字塔羅鍊金術'">🔮 鍊金術(雙)</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅UNO對決' }" @click="selectedGameType = '單字塔羅UNO對決'">⚔️ 塔羅UNO(雙)</button>
+
+        <button class="type-btn" :class="{ active: selectedGameType === '單字小精靈' }" @click="selectedGameType = '單字小精靈'">👻 小精靈</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字俄羅斯方塊' }" @click="selectedGameType = '單字俄羅斯方塊'">🧱 俄羅斯</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字皮卡丘排球' }" @click="selectedGameType = '單字皮卡丘排球'">🏐 皮卡排球</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字彈珠台' }" @click="selectedGameType = '單字彈珠台'">🎰 彈珠台</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字憤怒鳥' }" @click="selectedGameType = '單字憤怒鳥'">🐦 憤怒鳥</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字看圖辨義' }" @click="selectedGameType = '單字看圖辨義'">🖼️ 看圖辨義</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字音節忍者' }" @click="selectedGameType = '單字音節忍者'">🥷 音節忍者</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '英語口說學霸' }" @click="selectedGameType = '英語口說學霸'">🗣️ 口說學霸-多元評量</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '仿會考辨識句意' }" @click="selectedGameType = '仿會考辨識句意'">💯 會考聽力</button>     
+  
+        
+        <button class="type-btn" :class="{ active: selectedGameType === '單字搖搖杯' }" @click="selectedGameType = '單字搖搖杯'">🧋 搖搖杯</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字天平' }" @click="selectedGameType = '單字天平'">⚖️ 天平</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字迷宮滾滾球' }" @click="selectedGameType = '單字迷宮滾滾球'">🔮 迷宮</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '霍格華茲單字杖' }" @click="selectedGameType = '霍格華茲單字杖'">🪄 單字杖</button>
+        <button class="type-btn" :class="{ active: selectedGameType === 'AR實境單字狙擊手' }" @click="selectedGameType = 'AR實境單字狙擊手'">🔫 狙擊手</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字地圖 GO' }" @click="selectedGameType = '單字地圖 GO'">🌍 地圖GO</button>
+<button class="type-btn" :class="{ active: selectedGameType === '英語口說學霸2' }" @click="selectedGameType = '英語口說學霸2'">📖 口說學霸-朗讀與說故事</button>
+
       </div>
       <div class="identity-tabs" style="margin-top:10px;">
         <button class="id-btn" :class="{active: identityMode === 'student'}" @click="identityMode = 'student'">🧑‍🎓 實名紀錄</button>

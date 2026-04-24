@@ -8,6 +8,9 @@ const isLoading = ref(true);
 
 const selectedGameType = ref('單字方塊消消樂');
 
+// 🌟 統一定義所有 PvP 對戰遊戲
+const pvpGames = ['單字方塊陣', '單字吞食天地', '單字塔羅21點', '單字塔羅鍊金術', '單字塔羅UNO對決'];
+
 const fetchHistory = async () => {
   if (!studentCookie.value) return;
   isLoading.value = true;
@@ -73,7 +76,7 @@ const pvpTotalEscapes = computed(() => historyRecords.value.filter(r => getBattl
     <div class="top-nav"><NuxtLink to="/" class="retro-btn back-btn">← 回首頁</NuxtLink></div>
 
     <div class="filter-box retro-element">
-      <div class="game-type-tabs">
+<div class="game-type-tabs">
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊消消樂' }" @click="selectedGameType = '單字方塊消消樂'; fetchHistory()">🟦 方塊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字神移動' }" @click="selectedGameType = '單字神移動'; fetchHistory()">🔠 移動</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字選選樂' }" @click="selectedGameType = '單字選選樂'; fetchHistory()">✅ 選擇</button>
@@ -84,15 +87,42 @@ const pvpTotalEscapes = computed(() => historyRecords.value.filter(r => getBattl
         <button class="type-btn" :class="{ active: selectedGameType === '單字口說測一測' }" @click="selectedGameType = '單字口說測一測'; fetchHistory()">🎙️ 口說</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字填字FUN' }" @click="selectedGameType = '單字填字FUN'; fetchHistory()">🔠 填字</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字複習趣' }" @click="selectedGameType = '單字複習趣'; fetchHistory()">✍️ 複習</button>
-        <button class="type-btn" :class="{ active: selectedGameType === '單字方塊陣' }" @click="selectedGameType = '單字方塊陣'; fetchHistory()">⚔️ 對戰</button>
-        <button class="type-btn" :class="{ active: selectedGameType === '單字俄羅斯方塊' }" @click="selectedGameType = '單字俄羅斯方塊'; fetchHistory()">🧱 俄羅斯</button>
-         <button class="type-btn" :class="{ active: selectedGameType === '單字彈珠台' }" @click="selectedGameType = '單字彈珠台'; fetchHistory()">🎰 彈珠台</button>
-        <button class="type-btn" :class="{ active: selectedGameType === '單字憤怒鳥' }" @click="selectedGameType = '單字憤怒鳥'; fetchHistory()">🐦 憤怒鳥</button>
+        
+        <button class="type-btn" :class="{ active: selectedGameType === '單字撲克牌接龍' }" @click="selectedGameType = '單字撲克牌接龍'; fetchHistory()">🃏 接龍</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字踩地雷' }" @click="selectedGameType = '單字踩地雷'; fetchHistory()">💣 踩地雷</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字9x9數獨' }" @click="selectedGameType = '單字9x9數獨'; fetchHistory()">🔢 數獨</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅21點(單人)' }" @click="selectedGameType = '單字塔羅21點(單人)'; fetchHistory()">🃏 塔羅21(單)</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅鍊金術(單人)' }" @click="selectedGameType = '單字塔羅鍊金術(單人)'; fetchHistory()">🔮 鍊金術(單)</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅UNO(單人)' }" @click="selectedGameType = '單字塔羅UNO(單人)'; fetchHistory()">🃏 塔羅UNO(單)</button>
+
+        <button class="type-btn" :class="{ active: selectedGameType === '單字方塊陣' }" @click="selectedGameType = '單字方塊陣'; fetchHistory()">⚔️ 對戰方塊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字吞食天地' }" @click="selectedGameType = '單字吞食天地'; fetchHistory()">🐎 吞食天地</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅21點' }" @click="selectedGameType = '單字塔羅21點'; fetchHistory()">🃏 塔羅21(雙)</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅鍊金術' }" @click="selectedGameType = '單字塔羅鍊金術'; fetchHistory()">🔮 鍊金術(雙)</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅UNO對決' }" @click="selectedGameType = '單字塔羅UNO對決'; fetchHistory()">⚔️ 塔羅UNO(雙)</button>
+
+        <button class="type-btn" :class="{ active: selectedGameType === '單字小精靈' }" @click="selectedGameType = '單字小精靈'; fetchHistory()">👻 小精靈</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字俄羅斯方塊' }" @click="selectedGameType = '單字俄羅斯方塊'; fetchHistory()">🧱 俄羅斯</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字皮卡丘排球' }" @click="selectedGameType = '單字皮卡丘排球'; fetchHistory()">🏐 皮卡排球</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字彈珠台' }" @click="selectedGameType = '單字彈珠台'; fetchHistory()">🎰 彈珠台</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字憤怒鳥' }" @click="selectedGameType = '單字憤怒鳥'; fetchHistory()">🐦 憤怒鳥</button>
+ <button class="type-btn" :class="{ active: selectedGameType === '單字看圖辨義' }" @click="selectedGameType = '單字看圖辨義'; fetchHistory()">🖼️ 看圖辨義</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字音節忍者' }" @click="selectedGameType = '單字音節忍者'; fetchHistory()">🥷 音節忍者</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '英語口說學霸' }" @click="selectedGameType = '英語口說學霸'; fetchHistory()">🗣️ 口說學霸</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '仿會考辨識句意' }" @click="selectedGameType = '仿會考辨識句意'; fetchHistory()">💯 會考聽力</button>     
+
+        
+        
+        <button class="type-btn" :class="{ active: selectedGameType === '單字搖搖杯' }" @click="selectedGameType = '單字搖搖杯'; fetchHistory()">🧋 搖搖杯</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字天平' }" @click="selectedGameType = '單字天平'; fetchHistory()">⚖️ 天平</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字迷宮滾滾球' }" @click="selectedGameType = '單字迷宮滾滾球'; fetchHistory()">🔮 迷宮</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '霍格華茲單字杖' }" @click="selectedGameType = '霍格華茲單字杖'; fetchHistory()">🪄 單字杖</button>
+        <button class="type-btn" :class="{ active: selectedGameType === 'AR實境單字狙擊手' }" @click="selectedGameType = 'AR實境單字狙擊手'; fetchHistory()">🔫 狙擊手</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字地圖 GO' }" @click="selectedGameType = '單字地圖 GO'; fetchHistory()">🌍 地圖GO</button>        
       </div>
     </div>
 
-    <div v-if="selectedGameType === '單字方塊陣' && historyRecords.length > 0" class="pvp-summary-box retro-element">
+    <div v-if="pvpGames.includes(selectedGameType) && historyRecords.length > 0" class="pvp-summary-box retro-element">
       <h3>⚔️ 個人對戰總成績</h3>
       <div class="pvp-stats">
         <div class="p-stat win">🏆 {{ pvpTotalWins }} 勝</div>
@@ -113,7 +143,7 @@ const pvpTotalEscapes = computed(() => historyRecords.value.filter(r => getBattl
         <div class="card-body">
           <div class="score-section">
             
-            <div class="score-circle" v-if="item.game_type === '單字方塊陣'">
+            <div class="score-circle" v-if="pvpGames.includes(item.game_type)">
               <strong v-if="getBattleResult(item) === '勝'" style="color:#4caf50; font-size:2.5rem;">勝</strong>
               <strong v-else-if="getBattleResult(item) === '敗'" style="color:#f44336; font-size:2.5rem;">敗</strong>
               <strong v-else-if="getBattleResult(item) === '逃'" style="color:#ff9800; font-size:2.5rem;">逃</strong>
@@ -126,18 +156,18 @@ const pvpTotalEscapes = computed(() => historyRecords.value.filter(r => getBattl
 
             <div class="stats-text">
               <p>⏱️ 花費時間：{{ item.time_taken_seconds ?? item.time_spent ?? 0 }} 秒</p>
-              <p v-if="item.mistakes !== null && item.game_type !== '單字方塊陣'">❌ 錯誤次數：{{ item.mistakes }} 次</p>
+              <p v-if="item.mistakes !== null && !pvpGames.includes(item.game_type)">❌ 錯誤次數：{{ item.mistakes }} 次</p>
             </div>
           </div>
           
           <div class="words-section">
-            <div v-if="item.game_type === '單字方塊陣'" class="word-box correct" style="font-size: 1.1rem;">
+            <div v-if="item.game_type === '單字方塊陣' || item.game_type === '單字吞食天地'" class="word-box correct" style="font-size: 1.1rem;">
               <strong>📝 戰況紀錄：</strong>{{ item.correct_words }}
             </div>
             
             <template v-else>
               <div v-if="item.wrong_words" class="word-box wrong"><strong>⚠️ 待加強單字：</strong>{{ item.wrong_words }}</div>
-              <div v-if="item.correct_words" class="word-box correct"><strong>🌟 熟練單字：</strong>{{ item.correct_words }}</div>
+              <div v-if="item.correct_words" class="word-box correct"><strong>🌟 戰況與熟練單字：</strong>{{ item.correct_words }}</div>
               <div v-if="item.word_intervals && Object.keys(item.word_intervals).length > 0" class="word-box intervals"><strong>⏱️ 各單字耗時：</strong>
                 <span v-for="i in formatIntervals(item.word_intervals)" :key="i.word" class="time-tag">{{ i.word }}({{ i.time }}s)</span>
               </div>
