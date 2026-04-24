@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue';
 import Papa from 'papaparse';
 
+// 同時要求基本後台權限與司律專屬動態密碼
 definePageMeta({ middleware: ['auth', 'law-auth'] });
 
 const supabase = useSupabaseClient();
@@ -62,7 +63,6 @@ const deleteQuestion = async (id) => {
   else fetchQuestions();
 };
 
-// 🌟 修正後的匯入功能：將 CSV 中文標題轉為 DB 英文欄位
 const handleImport = (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -72,7 +72,7 @@ const handleImport = (e) => {
     header: true,
     skipEmptyLines: true,
     complete: async (results) => {
-      // 進行欄位映射轉換
+      // 進行欄位映射轉換 (CSV中文 -> DB英文)
       const mappedData = results.data.map(row => ({
         subject: row['科目'],
         exam_year: row['年份'],
@@ -94,18 +94,17 @@ const handleImport = (e) => {
 
       const { error } = await supabase.from('law_exam_questions').insert(mappedData);
       if (error) {
-        alert('匯入失敗，請檢查格式或資料表欄位: ' + error.message);
+        alert('匯入失敗: ' + error.message);
       } else {
         alert(`成功匯入 ${mappedData.length} 筆題目！`);
         fetchQuestions();
       }
       isUploading.value = false;
-      e.target.value = '';
+      e.target.value = ''; // 清空 input 以便下次能選同一個檔案
     }
   });
 };
 
-// 🌟 修正後的匯出功能：將 DB 英文欄位轉為 CSV 中文標題
 const exportCSV = () => {
   if (questions.value.length === 0) return alert('目前沒有題目可以匯出');
   
@@ -128,13 +127,13 @@ const exportCSV = () => {
   const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = `law_questions_${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `law_questions_backup_${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
 };
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-50 p-8">
+  <div class="min-h-screen bg-slate-50 p-4 md:p-8">
     <div class="max-w-6xl mx-auto">
       
       <div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 border-b-2 border-slate-200 pb-4 gap-4">
@@ -144,6 +143,10 @@ const exportCSV = () => {
         </div>
         
         <div class="flex flex-wrap gap-3">
+          <NuxtLink to="/admin/law-exam/practice" class="bg-blue-600 hover:bg-blue-700 text-white font-black py-2.5 px-6 rounded-xl shadow-lg shadow-blue-200 active:scale-95 transition-all flex items-center gap-2">
+            🎯 開始刷題練習
+          </NuxtLink>
+
           <label class="bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 px-4 rounded-xl shadow-sm cursor-pointer active:scale-95 transition-all">
             <span v-if="isUploading">⏳ 處理中...</span>
             <span v-else>📥 匯入 CSV</span>
