@@ -16,20 +16,25 @@ const selectedYear = ref('ALL');
 const fetchPractice = async () => {
   isLoading.value = true;
   const { data } = await supabase.from('law_exam_questions').select('*');
-  if (data) questions.value = data.sort(() => Math.random() - 0.5); 
+  if (data) {
+    // 🌟 智慧排序：取代原來的亂數 Math.random()
+    const getQNum = (text) => {
+      const match = text?.match(/^(\d+)/);
+      return match ? parseInt(match[1], 10) : 9999;
+    };
+
+    questions.value = data.sort((a, b) => {
+      if (a.exam_year !== b.exam_year) return (b.exam_year || '').localeCompare(a.exam_year || '');
+      if (a.subject !== b.subject) return (a.subject || '').localeCompare(b.subject || '');
+      return getQNum(a.question_text) - getQNum(b.question_text);
+    });
+  }
   isLoading.value = false;
 };
 
-// 🌟 產生可選的科目與年份清單
-const subjects = computed(() => {
-  return ['ALL', ...new Set(questions.value.map(q => q.subject))];
-});
+const subjects = computed(() => ['ALL', ...new Set(questions.value.map(q => q.subject))]);
+const years = computed(() => ['ALL', ...new Set(questions.value.map(q => q.exam_year))]);
 
-const years = computed(() => {
-  return ['ALL', ...new Set(questions.value.map(q => q.exam_year))];
-});
-
-// 🌟 依照篩選器過濾出要練習的題目
 const filteredQuestions = computed(() => {
   return questions.value.filter(q => {
     const matchSubject = selectedSubject.value === 'ALL' || q.subject === selectedSubject.value;
@@ -40,7 +45,6 @@ const filteredQuestions = computed(() => {
 
 const currentQ = computed(() => filteredQuestions.value[currentIndex.value]);
 
-// 🌟 當使用者切換科目或年份時，重設刷題進度
 const resetProgress = () => {
   currentIndex.value = 0;
   selectedAnswer.value = null;
@@ -145,7 +149,6 @@ onMounted(fetchPractice);
 .back-link { background: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; color: #4338ca; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: 0.2s; white-space: nowrap;}
 .back-link:hover { box-shadow: 0 4px 6px rgba(0,0,0,0.1); transform: translateY(-1px); }
 
-/* 🌟 選單樣式 */
 .filter-group { display: flex; gap: 10px; flex: 1; justify-content: center;}
 .styled-select { padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; color: #334155; background: white; outline: none; cursor: pointer; font-weight: bold;}
 .styled-select:focus { border-color: #4f46e5; }
@@ -154,7 +157,6 @@ onMounted(fetchPractice);
 .empty-alert { color: #dc2626; }
 .status-box { text-align: center; padding: 60px; background: white; border-radius: 16px; font-weight: bold; color: #64748b; font-size: 18px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
 
-/* 卡片主體 */
 .exam-card { background: white; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #e2e8f0; }
 .exam-header { padding: 30px; border-bottom: 1px solid #f1f5f9; }
 .tags { display: flex; gap: 10px; margin-bottom: 15px; }
@@ -162,7 +164,6 @@ onMounted(fetchPractice);
 .year-tag { background: #f1f5f9; color: #64748b; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }
 .question-title { margin: 0; font-size: 20px; line-height: 1.6; color: #1e293b; white-space: pre-wrap; font-weight: 500; }
 
-/* 選項區塊 */
 .options-container { padding: 25px 30px; background: #fafaf9; display: flex; flex-direction: column; gap: 15px; }
 .option-row { background: white; border: 2px solid #e2e8f0; border-radius: 12px; padding: 15px 20px; transition: all 0.2s ease; }
 .option-row.selected { border-color: #4f46e5; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15); transform: translateY(-2px); }
@@ -173,7 +174,6 @@ onMounted(fetchPractice);
 .toggle-btn { background: #f1f5f9; border: none; padding: 6px 12px; border-radius: 6px; color: #64748b; font-weight: bold; cursor: pointer; font-size: 13px; margin-left: 15px; flex-shrink: 0; transition: 0.2s; }
 .toggle-btn:hover { background: #e0e7ff; color: #4338ca; }
 
-/* 詳解彈出區 */
 .explanation-box { margin-top: 15px; padding: 15px 20px; background: #eef2ff; border-radius: 8px; border-left: 4px solid #4f46e5; animation: fadeIn 0.3s ease; }
 .exp-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .exp-title { font-weight: bold; color: #3730a3; font-size: 14px; }
@@ -182,7 +182,6 @@ onMounted(fetchPractice);
 .exp-link { display: inline-block; margin-top: 10px; color: #4f46e5; font-size: 13px; font-weight: bold; text-decoration: none; }
 .exp-link:hover { text-decoration: underline; }
 
-/* 底部按鈕 */
 .exam-footer { padding: 20px 30px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f1f5f9; background: white; }
 .nav-btn { padding: 12px 24px; border-radius: 10px; font-weight: bold; cursor: pointer; border: none; font-size: 16px; transition: 0.2s; }
 .prev-btn { background: transparent; color: #64748b; }
