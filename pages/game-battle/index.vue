@@ -342,29 +342,25 @@ const handleCorrect = async () => {
 };
 
 const triggerGameOver = async (wId) => {
-  winnerId.value = wId;
+  winnerId.value = String(wId); // 確保轉為字串
   matchStatus.value = 'gameover';
   const timeSpent = Math.round((Date.now() - gameStartTime) / 1000);
-  const isWinner = wId === studentCookie.value.id;
+
+  // 🌟 修正：嚴格使用 String() 來避免字串與數字比對失敗
+  const isWinner = String(winnerId.value) === String(studentCookie.value.id);
   
   if (isWinner) soundFx.win(); else soundFx.lose();
 
   if (studentCookie.value && !studentCookie.value.isAnon) {
+    // 🌟 修正：確保分數最低為 0，避免負分
     const finalScore = Math.max(0, (myScore.value * pvpCorrectPoints.value) - (mistakesCount.value * pvpPenaltyPoints.value));
-
+    
     await supabase.from('game_records').insert([{
-      student_id: studentCookie.value.id,
-      game_type: '單字方塊陣',
-      score: finalScore, 
-      mistakes: mistakesCount.value, 
-      time_taken_seconds: timeSpent,
-      version: route.query.version,
-      volume: route.query.volume,
-      unit_played: route.query.unit,
+      student_id: studentCookie.value.id, game_type: '單字方塊陣', score: finalScore, mistakes: mistakesCount.value, time_taken_seconds: timeSpent,
+      version: route.query.version, volume: route.query.volume, unit_played: route.query.unit,
       correct_words: isWinner ? `【勝】對手: ${opponentData.value.name}` : `【敗】對手: ${opponentData.value.name}`
     }]);
   }
-
   leaveGame(true);
 };
 
