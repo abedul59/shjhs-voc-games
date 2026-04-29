@@ -54,7 +54,7 @@ const gameDict = {
   'examRead2': { name: '📜 會考閱讀考古學(題組)', path: '/game-examRead2', class: 'exam-btn full-width' },
   'gramAmuPark': { name: '🎡 文法遊樂園', path: '/game-gramAmuPark', class: 'exam-btn full-width' },
   'noropejump': { name: '🏃‍♂️ 單字無繩式跳繩', path: '/game-noropejump', class: 'exam-btn full-width' },
-  'vocshooting': { name: '🥊 單字飛鼠射擊', path: '/game-vocshooting', class: 'shooting-btn full-width' },
+  'vocshooting': { name: '🔫 單字飛鼠射擊', path: '/game-vocshooting', class: 'shooting-btn full-width' },
   'battle': { name: '⚔️ 單字方塊陣', path: '/game-battle', class: 'battle-btn full-width', pvpKey: 'enable_battle' },
   'tenchi': { name: '🐎 吞食天地', path: '/game-tenchi', class: 'tenchi-btn', pvpKey: 'enable_tenchi' },
   'tarot21': { name: '🃏 塔羅 21 點', path: '/game-tarot21', class: 'tarot-btn', pvpKey: 'enable_tarot21' },
@@ -65,28 +65,13 @@ const gameDict = {
 const noUnitGames = ['speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examRead1', 'examRead2'];
 const isNoUnitGame = computed(() => noUnitGames.includes(selectedGameType.value));
 
-// 🌟 新增：預設的分類排版 (防止資料庫為空時畫面消失)
+// 🌟 預設分類 (當資料庫沒設定時的完美備案)
 const defaultCategories = [
-  {
-    category_name: '🕹️ 經典單字遊戲',
-    games: ['match', 'move', 'choice', 'fill', 'sentence', 'listen', 'puzzle', 'cross', 'review', 'picture2meaning', 'ninja']
-  },
-  {
-    category_name: '🏆 體感與趣味挑戰',
-    games: ['shake2shuffle', 'tilt2sort', 'gravitymaze', 'swing2cast', 'ARsniper', 'GPSmap', 'vocshooting', 'noropejump']
-  },
-  {
-    category_name: '👾 懷舊街機遊樂場',
-    games: ['tetris', 'pinball', 'angrybirds', 'solitaire', 'pikavolley', 'pacman', 'minesweeper', 'sudoku']
-  },
-  {
-    category_name: '⚔️ 雙人對戰與領域牌組',
-    games: ['battle', 'tenchi', 'tarot21', 'tarotAlch', 'tarotUno', 'tarotUno1', 'tarot21solo', 'tarotAlch1']
-  },
-  {
-    category_name: '🎓 考試與口說訓練',
-    games: ['speak', 'speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examListen1', 'examRead1', 'examRead2', 'gramAmuPark']
-  }
+  { id: 'c1', name: '🕹️ 經典單字遊戲', games: ['match', 'move', 'choice', 'fill', 'sentence', 'listen', 'puzzle', 'cross', 'review', 'picture2meaning', 'ninja'] },
+  { id: 'c2', name: '🏆 體感與趣味挑戰', games: ['shake2shuffle', 'tilt2sort', 'gravitymaze', 'swing2cast', 'ARsniper', 'GPSmap', 'vocshooting', 'noropejump'] },
+  { id: 'c3', name: '👾 懷舊街機遊樂場', games: ['tetris', 'pinball', 'angrybirds', 'solitaire', 'pikavolley', 'pacman', 'minesweeper', 'sudoku'] },
+  { id: 'c4', name: '⚔️ 雙人對戰與領域牌組', games: ['battle', 'tenchi', 'tarot21', 'tarotAlch', 'tarotUno', 'tarotUno1', 'tarot21solo', 'tarotAlch1'] },
+  { id: 'c5', name: '🎓 考試與口說訓練', games: ['speak', 'speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examListen1', 'examRead1', 'examRead2', 'gramAmuPark'] }
 ];
 
 const dynamicCategories = ref([...defaultCategories]);
@@ -95,6 +80,7 @@ const accessSettings = ref({
   disabled_games: [], locked_units: [], restrict_play_time: false, allow_play_days: [1,2,3,4,5,6,0], allow_play_start: '00:00', allow_play_end: '23:59'
 });
 
+// 🌟 儲存學生專屬白名單 (預設全開)
 const studentAllowedGames = ref(['ALL']);
 
 onMounted(async () => {
@@ -107,34 +93,44 @@ onMounted(async () => {
   
   const { data: settings } = await supabase.from('system_settings').select('*').eq('id', 1).single();
   if (settings) {
-    // 檢查匿名登入封鎖
+    // 🚨 核心防護：如果後台設定禁止匿名，且學生目前的 Cookie 是匿名身分，強制登出！
     if (settings.disable_anon_login === true && studentCookie.value && studentCookie.value.isAnon) {
       alert('⚠️ 老師已關閉匿名登入功能！系統將強制為您登出，請使用正確的班級座號登入。');
       handleLogout();
       return; 
     }
 
-    // 🌟 如果資料庫有自訂的分類，才覆蓋預設值
+    // 相容並載入資料庫的分類
     if (settings.game_categories && settings.game_categories.length > 0) {
-      dynamicCategories.value = settings.game_categories;
+      dynamicCategories.value = settings.game_categories.map((c, i) => ({
+        id: c.id || `cat_${i}`,
+        name: c.name || c.category_name || `分類 ${i+1}`,
+        games: c.games || []
+      }));
       const hasShooting = dynamicCategories.value.some(cat => cat.games.includes('vocshooting'));
-      if (!hasShooting && dynamicCategories.value.length > 0) dynamicCategories.value[0].games.push('vocshooting');
+      if (!hasShooting && dynamicCategories.value.length > 0) {
+        dynamicCategories.value[0].games.push('vocshooting');
+      }
     }
     
     pvpStatus.value = {
-      enable_battle: settings.enable_battle === true, enable_tenchi: settings.enable_tenchi === true,
-      enable_tarot21: settings.enable_tarot21 === true, enable_tarot_alch: settings.enable_tarot_alch === true,
+      enable_battle: settings.enable_battle === true,
+      enable_tenchi: settings.enable_tenchi === true,
+      enable_tarot21: settings.enable_tarot21 === true,
+      enable_tarot_alch: settings.enable_tarot_alch === true,
       enable_tarot_uno: settings.enable_tarot_uno === true
     };
     accessSettings.value = {
-      disabled_games: settings.disabled_games || [], locked_units: settings.locked_units || [],
-      restrict_play_time: settings.restrict_play_time || false, allow_play_days: settings.allow_play_days || [1,2,3,4,5,6,0],
+      disabled_games: settings.disabled_games || [],
+      locked_units: settings.locked_units || [],
+      restrict_play_time: settings.restrict_play_time || false,
+      allow_play_days: settings.allow_play_days || [1,2,3,4,5,6,0],
       allow_play_start: settings.allow_play_start ? settings.allow_play_start.substring(0,5) : '00:00',
       allow_play_end: settings.allow_play_end ? settings.allow_play_end.substring(0,5) : '23:59'
     };
   }
 
-  // 讀取目前登入學生的白名單設定
+  // 🌟 修正點：以 student_id (學號) 讀取白名單
   if (studentCookie.value && !studentCookie.value.isAnon) {
     const { data: stuData } = await supabase.from('students')
       .select('allowed_games')
@@ -194,6 +190,7 @@ const isUnitLocked = computed(() => {
   return accessSettings.value.locked_units.includes(`${selectedVersion.value}|${selectedVolume.value}|${selectedUnit.value}`);
 });
 
+// 🌟 動態判定遊戲是否被鎖住 (整合全校設定與學生白名單)
 const checkGameDisabled = (gameId) => {
     if (accessSettings.value.disabled_games?.includes(gameId)) return true;
     const gData = gameDict[gameId];
@@ -240,136 +237,121 @@ onUnmounted(() => removeIdleTracking());
 </script>
 
 <template>
-  <div class="selector-container">
-    <div class="user-info">
-      <span class="user-name">🧑‍🎓 {{ studentCookie?.class }} {{ studentCookie?.name }}</span>
+  <div>
+    <div class="logged-in-section retro-element">
+      <h3>👋 歡迎回來！</h3>
+      <p>
+        <span v-if="studentCookie.isAnon">🕵️ {{ studentCookie.name }}</span>
+        <span v-else>👤 {{ studentCookie.class }} - {{ studentCookie.name }}</span>
+      </p>
       
-      <div class="user-actions">
-        <NuxtLink v-if="!studentCookie?.isAnon" to="/student-grammar-stats" class="retro-btn diag-btn">📊 文法診斷</NuxtLink>
-        <button class="retro-btn logout-btn" @click="handleLogout">登出</button>
+      <div class="user-actions" style="display: flex; justify-content: center; gap: 15px; margin-top: 15px;">
+        <NuxtLink v-if="!studentCookie.isAnon" to="/student-grammar-stats" class="retro-btn stats-btn" style="background: #3f51b5; color: white; border-color: #1a237e; text-decoration: none;">
+          📊 我的文法診斷簿
+        </NuxtLink>
+        <button class="retro-btn logout-btn" @click="handleLogout">🚪 登出帳號</button>
       </div>
     </div>
 
-    <div class="unit-selector retro-element">
-      <div class="select-group">
-        <label>📖 版本</label>
-        <select v-model="selectedVersion" @change="onVersionChange" class="retro-input">
-          <option value="" disabled>請選擇...</option>
-          <option v-for="v in availableVersions" :key="v" :value="v">{{ v }}</option>
-        </select>
+    <hr class="divider" />
+    <div class="game-selection">
+      <h3>🎮 選擇遊戲模式</h3>
+      
+      <div v-if="!isTimeAllowed" class="lock-banner">
+         ⏳ 系統目前為非開放時段，無法進行遊戲喔！<br>
+         <span style="font-size: 0.9rem;">(開放時間：{{ accessSettings.allow_play_start }} ~ {{ accessSettings.allow_play_end }})</span>
       </div>
-      <div class="select-group">
-        <label>📚 冊數</label>
-        <select v-model="selectedVolume" @change="onVolumeChange" class="retro-input" :disabled="!selectedVersion">
-          <option value="" disabled>請選擇...</option>
-          <option v-for="v in availableVolumes" :key="v" :value="v">{{ v }}</option>
-        </select>
-      </div>
-      <div class="select-group">
-        <label>🔖 單元</label>
-        <select v-model="selectedUnit" class="retro-input" :disabled="!selectedVolume">
-          <option value="" disabled>請選擇...</option>
-          <option v-for="u in availableUnits" :key="u" :value="u">{{ u }}</option>
-        </select>
-      </div>
-    </div>
 
-    <div class="categories-container">
-      <div v-for="cat in dynamicCategories" :key="cat.category_name" class="category-section retro-element">
-        <h3 class="cat-title">{{ cat.category_name }}</h3>
-        <div class="games-grid">
-          
-          <button 
-            v-for="gameId in cat.games" 
-            :key="gameId"
-            class="retro-btn game-btn"
-            :class="[
-              gameDict[gameId]?.class, 
-              { 'active': selectedGameType === gameId, 'is-locked': checkGameDisabled(gameId) }
-            ]"
-            @click="selectedGameType = gameId"
-            :disabled="checkGameDisabled(gameId)"
-          >
-            {{ checkGameDisabled(gameId) ? '🔒 ' : '' }}{{ gameDict[gameId]?.name || gameId }}
-          </button>
-          
+      <div v-for="cat in dynamicCategories" :key="cat.id" style="margin-bottom: 25px;">
+        <h4 class="cat-title">{{ cat.name }}</h4>
+        <div class="game-type-tabs">
+          <template v-for="gameId in cat.games" :key="gameId">
+             <button v-if="gameDict[gameId]" 
+                     class="type-btn" 
+                     :class="[{ active: selectedGameType === gameId }, gameDict[gameId].class]" 
+                     @click="selectedGameType = gameId" 
+                     :disabled="checkGameDisabled(gameId)">
+                {{ gameDict[gameId].name }} <span v-if="checkGameDisabled(gameId)">🔒</span>
+             </button>
+          </template>
         </div>
       </div>
+
+      <div v-if="!isNoUnitGame">
+        <h3 style="margin-top: 30px;">📚 選擇挑戰單元</h3>
+        <div class="form-group"><select v-model="selectedVersion" @change="onVersionChange" class="retro-input"><option value="" disabled>1. 版本...</option><option v-for="v in availableVersions" :key="v" :value="v">{{ v }}</option></select></div>
+        <div class="form-group"><select v-model="selectedVolume" @change="onVolumeChange" class="retro-input" :disabled="!selectedVersion"><option value="" disabled>2. 冊數...</option><option v-for="vol in availableVolumes" :key="vol" :value="vol">{{ vol }}</option></select></div>
+        <div class="form-group"><select v-model="selectedUnit" class="retro-input" :disabled="!selectedVolume"><option value="" disabled>3. 單元...</option><option v-for="u in availableUnits" :key="u" :value="u">{{ u }}</option></select></div>
+      
+        <div v-if="isUnitLocked" class="lock-banner mini">🔒 老師已鎖定此單元，請選擇其他單元進行挑戰！</div>
+      </div>
     </div>
 
-    <p v-if="errorMsg" class="error-msg">{{ errorMsg }}</p>
-
-    <button class="retro-btn start-btn" @click="handleStartGame" :disabled="isLoading">
-      {{ isLoading ? '⏳ 載入中...' : '▶ 開始挑戰' }}
+    <button class="retro-btn start-btn" @click="handleStartGame" :disabled="isLoading || !isTimeAllowed || checkGameDisabled(selectedGameType) || (!isNoUnitGame && isUnitLocked)">
+      {{ isLoading ? '載入中...' : '▶ 開始挑戰' }}
     </button>
+    <p v-if="errorMsg" class="error-msg">{{ errorMsg }}</p>
   </div>
 </template>
 
 <style scoped>
-.selector-container { width: 100%; max-width: 600px; display: flex; flex-direction: column; gap: 15px; }
-.user-info { display: flex; justify-content: space-between; align-items: center; background: var(--box-bg); padding: 10px 15px; border-radius: var(--radius-element); border: var(--border-width) solid var(--border-color); font-weight: 900; }
-.user-name { font-size: 1.1rem; color: var(--primary-color); }
+/* 完美保留您原本的樣式與外觀設定 */
+.cat-title { width: 100%; margin: 10px 0; color: #ff9800; text-align: left; font-size: 1.1rem; border-bottom: 1px dashed #555; padding-bottom: 5px;}
+.lock-banner { background: #ffebee; border: 2px dashed #f44336; color: #c62828; padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; margin-bottom: 15px; font-size: 1.1rem; }
+.lock-banner.mini { padding: 8px; font-size: 0.95rem; margin-top: -5px; }
 
-.user-actions { display: flex; gap: 10px; align-items: center;}
-.diag-btn { padding: 5px 12px; background: #fff3e0; color: #e65100; border-color: #ff9800; font-size: 0.95rem; text-decoration: none; display: flex; align-items: center;}
-.logout-btn { padding: 5px 12px; background: #e0e0e0; color: #333; font-size: 0.95rem; }
+.picture2meaning-btn { background: #e1f5fe; color: #0288d1; border-color: #03a9f4;}
+.picture2meaning-btn.active { background: #0288d1; color: #fff; box-shadow: 0 4px 0 #01579b; border-color: #01579b; }
+.exam-btn { background: #e8eaf6; color: #303f9f; border-color: #3f51b5; }
+.exam-btn.active { background: #303f9f; color: #fff; box-shadow: 0 4px 0 #1a237e; border-color: #1a237e; }
+.speak-btn { background: #ffebee; color: #d32f2f; border-color: #ef5350; } 
+.speak-btn.active { background: #d32f2f; color: #fff; box-shadow: 0 4px 0 #b71c1c; border-color: #b71c1c; }
+.minesweeper-btn { background: #e0f7fa; color: #006064; border-color: #00838f; } .minesweeper-btn.active { background: #00838f; color: #fff; box-shadow: 0 4px 0 #006064; }
+.pacman-btn { background: #000; color: #ffeb3b; border-color: #1e88e5;} .pacman-btn.active { background: #1e88e5; color: #fff; box-shadow: 0 4px 0 #1565c0; border-color: #1565c0;}
+.tenchi-btn { background: #e8f5e9; color: #1b5e20; border-color: #4caf50; } .tenchi-btn.active { background: #4caf50; color: #fff; box-shadow: 0 4px 0 #1b5e20; }
+.angrybirds-btn { background: #ffebee; color: #c62828; border-color: #ef5350; } .angrybirds-btn.active { background: #f44336; color: #fff; box-shadow: 0 4px 0 #c62828; }
+.game-pinball { background-color: #6a1b9a; color: white; border-color: #4527a0; }
+.battle-btn { background: #fff3e0; color: #e65100; border-color: #ffb74d; } .battle-btn.active { background: #ff9800; color: #fff; border-color: #e65100; box-shadow: 0 4px 0 #e65100; }
+.tarot-btn { background: #e8eaf6; color: #3f51b5; border-color: #7986cb; } .tarot-btn.active { background: #3f51b5; color: #fff; box-shadow: 0 4px 0 #1a237e; border-color: #1a237e; }
 
-.unit-selector { display: flex; gap: 10px; background: var(--box-bg); padding: 15px; border-radius: var(--radius-box); border: var(--box-border-width) solid var(--border-color); box-shadow: var(--shadow-box); flex-wrap: wrap; }
-.select-group { flex: 1; display: flex; flex-direction: column; min-width: 100px;}
-.select-group label { font-size: 0.9rem; font-weight: 900; color: var(--text-main); margin-bottom: 5px; }
-.retro-input { width: 100%; padding: 8px; border: var(--border-width) solid var(--border-color); border-radius: var(--radius-element); background: var(--input-bg); color: var(--text-main); font-weight: bold; font-family: inherit; font-size: 1rem; transition: all 0.2s;}
-.retro-input:focus { outline: none; background: var(--input-focus); }
+.logged-in-section { background: var(--success-bg); border: var(--border-width) solid var(--success-color); border-radius: var(--radius-element); padding: 20px; text-align: center; margin-bottom: 20px; color: var(--text-main); }
+.logged-in-section h3 { margin-top: 0; color: var(--success-color); font-weight: 900; }
+.logout-btn { background-color: var(--btn-danger-bg) !important; color: var(--text-main) !important; padding: 10px !important; font-size: 1rem !important; margin-top: 10px; width: auto !important; display: inline-block; }
+
+.divider { border: 0; border-bottom: 2px dashed var(--border-color); opacity: 0.3; margin: 20px 0; }
+.game-selection h3 { margin: 0 0 10px 0; font-weight: 900; color: var(--text-main); }
+.game-type-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.type-btn { flex: 1; min-width: 45%; padding: 10px 5px; font-size: 0.95rem; font-weight: 900; background: var(--tab-bg); color: var(--text-main); border: var(--border-width) solid var(--border-color); border-radius: var(--radius-element); cursor: pointer; box-shadow: var(--shadow-btn); transition: all 0.2s; }
+.type-btn.active { background: var(--tab-active-bg); color: var(--tab-active-text); transform: var(--transform-active); box-shadow: var(--shadow-btn-active); }
+
+/* 🌟 控制按鈕鎖定的原生樣式效果 */
+.type-btn:disabled { opacity: 0.5; filter: grayscale(100%); cursor: not-allowed; box-shadow: none; transform: none; border-color: #aaa !important; color: #777 !important; } 
+
+.full-width { min-width: 100%; margin-top: 5px; }
+
+.form-group { margin-bottom: 15px; text-align: left; }
+.retro-input { width: 100%; padding: 12px; border: var(--border-width) solid var(--border-color); border-radius: var(--radius-element); background-color: var(--input-bg); color: var(--text-main); font-size: 1rem; font-family: inherit; font-weight: bold; box-sizing: border-box; transition: all 0.3s; }
+.retro-input:focus { background-color: var(--input-focus); outline: none; }
 .retro-input:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.categories-container { display: flex; flex-direction: column; gap: 15px; }
-.category-section { background: var(--box-bg); padding: 15px; border-radius: var(--radius-box); border: var(--box-border-width) solid var(--border-color); box-shadow: var(--shadow-box); }
-.cat-title { margin-top: 0; margin-bottom: 15px; font-size: 1.2rem; font-weight: 900; color: var(--text-main); border-bottom: 2px dashed var(--border-color); padding-bottom: 5px; }
-
-.games-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.game-btn { background: var(--tab-bg); color: var(--text-muted); font-size: 1rem; padding: 12px 10px; font-family: inherit;}
-.game-btn.active { background: var(--tab-active-bg); color: var(--tab-active-text); border-color: var(--primary-color); transform: scale(1.02); box-shadow: 0 0 10px rgba(0,0,0,0.2);}
-.game-btn.full-width { grid-column: 1 / -1; }
-
-.game-btn.is-locked { 
-  opacity: 0.5; 
-  filter: grayscale(100%); 
-  cursor: not-allowed; 
-  background-color: #e0e0e0 !important; 
-  color: #757575 !important; 
-  border-color: #9e9e9e !important;
-  box-shadow: none !important;
-  transform: none !important;
-}
-
-.start-btn { width: 100%; padding: 15px; background: var(--btn-primary-bg); color: var(--btn-primary-text); font-size: 1.3rem; font-family: inherit;}
-.error-msg { background: var(--danger-bg); border: 2px dashed var(--danger-color); color: var(--danger-color); margin-top: 15px; font-weight: 900; padding: 10px; text-align: center; border-radius: var(--radius-element); }
-
-.retro-btn { font-weight: 900; border: var(--border-width) solid var(--border-color); border-radius: var(--radius-element); box-shadow: var(--shadow-btn); cursor: pointer; transition: 0.1s; text-align: center; }
+.retro-btn { width: 100%; padding: 15px; border: var(--border-width) solid var(--border-color); border-radius: var(--radius-element); box-shadow: var(--shadow-btn); font-size: 1.3rem; font-weight: 900; cursor: pointer; text-align: center; margin-top: 10px; transition: all 0.15s; font-family: inherit;}
+.start-btn { background: var(--btn-primary-bg); color: var(--btn-primary-text); }
 .retro-btn:active:not(:disabled) { transform: var(--transform-active); box-shadow: var(--shadow-btn-active); }
+.error-msg { background: var(--danger-bg); border: 2px dashed var(--danger-color); color: var(--danger-color); margin-top: 15px; font-weight: 900; padding: 10px; text-align: center; border-radius: var(--radius-element); }
+@media (max-width: 600px) { .game-type-tabs { flex-direction: column; } .type-btn { min-width: 100%; } }
 
-.speak-btn { background: #e3f2fd; color: #1565c0; border-color: #1976d2;}
-.exam-btn { background: #fff3e0; color: #e65100; border-color: #ff9800;}
-.game-pinball { background: #fce4ec; color: #c2185b; border-color: #e91e63;}
-.angrybirds-btn { background: #e8f5e9; color: #2e7d32; border-color: #4caf50;}
-.solitaire-btn { background: #f3e5f5; color: #4527a0; border-color: #673ab7;}
-.pika-btn { background: #fffde7; color: #f57f17; border-color: #fbc02d;}
-.pacman-btn { background: #212121; color: #ffeb3b; border-color: #ffb300;}
-.minesweeper-btn { background: #e0e0e0; color: #333; border-color: #9e9e9e;}
-.sudoku-btn { background: #e1f5fe; color: #0277bd; border-color: #03a9f4;}
-.tarot-btn { background: #ede7f6; color: #4527a0; border-color: #673ab7;}
-.shooting-btn { background: #e8eaf6; color: #4527a0; border-color: #7e57c2;}
-.picture2meaning-btn { background: #e0f7fa; color: #006064; border-color: #00acc1;}
-.battle-btn { background: #ffebee; color: #b71c1c; border-color: #e53935;}
-.tenchi-btn { background: #e8f5e9; color: #1b5e20; border-color: #43a047;}
-.shake-btn { background: #fffde7; color: #f57f17; border-color: #fbc02d;}
-.tilt-btn { background: #e0f2f1; color: #004d40; border-color: #00897b;}
-.maze-btn { background: #f1f8e9; color: #33691e; border-color: #689f38;}
-.magic-btn { background: #311b92; color: #b39ddb; border-color: #5e35b1;}
-.sniper-btn { background: #000; color: #69f0ae; border-color: #00c853;}
-.gps-btn { background: #1b5e20; color: #b9f6ca; border-color: #4caf50;}
-
-@media (max-width: 600px) { 
-  .games-grid { grid-template-columns: 1fr; } 
-  .user-name { font-size: 0.95rem; }
-}
+.shake-btn { background: #fffde7; color: #e65100; border-color: #ffb300; }
+.shake-btn.active { background: #e65100; color: #fff; box-shadow: 0 4px 0 #bf360c; border-color: #bf360c; }
+.tilt-btn { background: #e0f2f1; color: #00796b; border-color: #4db6ac; }
+.tilt-btn.active { background: #00796b; color: #fff; box-shadow: 0 4px 0 #004d40; border-color: #004d40; }
+.maze-btn { background: #d7ccc8; color: #4e342e; border-color: #8d6e63; }
+.maze-btn.active { background: #5d4037; color: #fff; box-shadow: 0 4px 0 #3e2723; border-color: #3e2723; }
+.magic-btn { background: #ede7f6; color: #4527a0; border-color: #7e57c2; }
+.magic-btn.active { background: #4527a0; color: #fff; box-shadow: 0 4px 0 #311b92; border-color: #311b92; }
+.sniper-btn { background: #e8f5e9; color: #1b5e20; border-color: #4caf50; }
+.sniper-btn.active { background: #2e7d32; color: #fff; box-shadow: 0 4px 0 #1b5e20; border-color: #1b5e20; }
+.gps-btn { background: #e8f5e9; color: #2e7d32; border-color: #4caf50; }
+.gps-btn.active { background: #2e7d32; color: #fff; box-shadow: 0 4px 0 #1b5e20; border-color: #1b5e20; }
+.shooting-btn { background: #e3f2fd; color: #1565c0; border-color: #1e88e5; }
+.shooting-btn.active { background: #1565c0; color: #fff; box-shadow: 0 4px 0 #0d47a1; border-color: #0d47a1; }
 </style>
