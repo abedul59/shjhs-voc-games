@@ -220,10 +220,11 @@ const stopTracking = () => {
   }
 };
 
-const endGame = () => {
+// 🌟 修正點：加上 async/await
+const endGame = async () => {
   isGameOver.value = true;
   stopTracking();
-  uploadRecord('單字地圖 GO');
+  await uploadRecord('單字地圖 GO');
 };
 
 onUnmounted(() => {
@@ -260,7 +261,7 @@ const uploadRecord = async (gameName) => {
     await supabase.from('game_records').insert([{ 
       student_id: student.id, 
       real_name: student.real_name || student.name,
-      class_name: student.class, 
+      class_name: student.class || '未分班', // 🌟 修正點：加上防呆
       version: route.query.version,
       volume: route.query.volume, 
       unit_played: route.query.unit,
