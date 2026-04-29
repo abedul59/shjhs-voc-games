@@ -80,7 +80,6 @@ const checkAnswer = (selectedWord, event) => {
 };
 
 const startJumpingPhase = () => {
-  // 🌟 使用正確的欄位名稱 en_us
   const englishText = currentWord.value.en_us || '';
   const cleanWord = englishText.replace(/[^a-zA-Z]/g, '');
   
@@ -116,7 +115,6 @@ const handleMotion = (event) => {
   const delta = Math.abs(magnitude - lastMagnitude);
   lastMagnitude = magnitude;
   
-  // 變化大於 4.5 m/s² 視為跳躍
   if (delta > 4.5 && !isJumpingLock) {
     isJumpingLock = true; 
     const now = Date.now();
@@ -165,13 +163,16 @@ const endGame = async () => {
   await supabase.from('game_records').insert([{
     student_id: studentCookie.value.id,
     real_name: studentCookie.value.real_name || studentCookie.value.name,
-    class_name: studentCookie.value.class,
-    unit_played: `${version} ${volume}-${unit}`,
+    class_name: studentCookie.value.class || '未分班',
+    version: version, 
+    volume: volume,
+    unit_played: unit,
     game_type: '單字無繩式跳繩',
     score: score.value,
     correct_words: `跳躍總數: ${totalJumpsDone.value} 下`, 
     time_taken_seconds: 0,
-    is_anon: studentCookie.value.isAnon || false
+    is_anon: studentCookie.value.isAnon || false,
+    browser_id: studentCookie.value.browserId || 'unknown'
   }]);
   
   if (!studentCookie.value.isAnon) {
