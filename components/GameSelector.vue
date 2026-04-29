@@ -65,7 +65,31 @@ const gameDict = {
 const noUnitGames = ['speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examRead1', 'examRead2'];
 const isNoUnitGame = computed(() => noUnitGames.includes(selectedGameType.value));
 
-const dynamicCategories = ref([]);
+// 🌟 新增：預設的分類排版 (防止資料庫為空時畫面消失)
+const defaultCategories = [
+  {
+    category_name: '🕹️ 經典單字遊戲',
+    games: ['match', 'move', 'choice', 'fill', 'sentence', 'listen', 'puzzle', 'cross', 'review', 'picture2meaning', 'ninja']
+  },
+  {
+    category_name: '🏆 體感與趣味挑戰',
+    games: ['shake2shuffle', 'tilt2sort', 'gravitymaze', 'swing2cast', 'ARsniper', 'GPSmap', 'vocshooting', 'noropejump']
+  },
+  {
+    category_name: '👾 懷舊街機遊樂場',
+    games: ['tetris', 'pinball', 'angrybirds', 'solitaire', 'pikavolley', 'pacman', 'minesweeper', 'sudoku']
+  },
+  {
+    category_name: '⚔️ 雙人對戰與領域牌組',
+    games: ['battle', 'tenchi', 'tarot21', 'tarotAlch', 'tarotUno', 'tarotUno1', 'tarot21solo', 'tarotAlch1']
+  },
+  {
+    category_name: '🎓 考試與口說訓練',
+    games: ['speak', 'speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examListen1', 'examRead1', 'examRead2', 'gramAmuPark']
+  }
+];
+
+const dynamicCategories = ref([...defaultCategories]);
 const pvpStatus = ref({});
 const accessSettings = ref({
   disabled_games: [], locked_units: [], restrict_play_time: false, allow_play_days: [1,2,3,4,5,6,0], allow_play_start: '00:00', allow_play_end: '23:59'
@@ -83,13 +107,15 @@ onMounted(async () => {
   
   const { data: settings } = await supabase.from('system_settings').select('*').eq('id', 1).single();
   if (settings) {
+    // 檢查匿名登入封鎖
     if (settings.disable_anon_login === true && studentCookie.value && studentCookie.value.isAnon) {
       alert('⚠️ 老師已關閉匿名登入功能！系統將強制為您登出，請使用正確的班級座號登入。');
       handleLogout();
       return; 
     }
 
-    if (settings.game_categories) {
+    // 🌟 如果資料庫有自訂的分類，才覆蓋預設值
+    if (settings.game_categories && settings.game_categories.length > 0) {
       dynamicCategories.value = settings.game_categories;
       const hasShooting = dynamicCategories.value.some(cat => cat.games.includes('vocshooting'));
       if (!hasShooting && dynamicCategories.value.length > 0) dynamicCategories.value[0].games.push('vocshooting');
@@ -108,6 +134,7 @@ onMounted(async () => {
     };
   }
 
+  // 讀取目前登入學生的白名單設定
   if (studentCookie.value && !studentCookie.value.isAnon) {
     const { data: stuData } = await supabase.from('students')
       .select('allowed_games')
@@ -119,6 +146,7 @@ onMounted(async () => {
     }
   }
 
+  // 防呆：自動選取第一個可玩的遊戲
   setTimeout(() => {
     if (checkGameDisabled(selectedGameType.value)) {
        for (const cat of dynamicCategories.value) {
@@ -215,7 +243,11 @@ onUnmounted(() => removeIdleTracking());
   <div class="selector-container">
     <div class="user-info">
       <span class="user-name">🧑‍🎓 {{ studentCookie?.class }} {{ studentCookie?.name }}</span>
-      <button class="retro-btn logout-btn" @click="handleLogout">登出</button>
+      
+      <div class="user-actions">
+        <NuxtLink v-if="!studentCookie?.isAnon" to="/student-grammar-stats" class="retro-btn diag-btn">📊 文法診斷</NuxtLink>
+        <button class="retro-btn logout-btn" @click="handleLogout">登出</button>
+      </div>
     </div>
 
     <div class="unit-selector retro-element">
@@ -277,7 +309,10 @@ onUnmounted(() => removeIdleTracking());
 .selector-container { width: 100%; max-width: 600px; display: flex; flex-direction: column; gap: 15px; }
 .user-info { display: flex; justify-content: space-between; align-items: center; background: var(--box-bg); padding: 10px 15px; border-radius: var(--radius-element); border: var(--border-width) solid var(--border-color); font-weight: 900; }
 .user-name { font-size: 1.1rem; color: var(--primary-color); }
-.logout-btn { padding: 5px 15px; background: #e0e0e0; color: #333; font-size: 0.9rem; }
+
+.user-actions { display: flex; gap: 10px; align-items: center;}
+.diag-btn { padding: 5px 12px; background: #fff3e0; color: #e65100; border-color: #ff9800; font-size: 0.95rem; text-decoration: none; display: flex; align-items: center;}
+.logout-btn { padding: 5px 12px; background: #e0e0e0; color: #333; font-size: 0.95rem; }
 
 .unit-selector { display: flex; gap: 10px; background: var(--box-bg); padding: 15px; border-radius: var(--radius-box); border: var(--box-border-width) solid var(--border-color); box-shadow: var(--shadow-box); flex-wrap: wrap; }
 .select-group { flex: 1; display: flex; flex-direction: column; min-width: 100px;}
@@ -333,5 +368,8 @@ onUnmounted(() => removeIdleTracking());
 .sniper-btn { background: #000; color: #69f0ae; border-color: #00c853;}
 .gps-btn { background: #1b5e20; color: #b9f6ca; border-color: #4caf50;}
 
-@media (max-width: 600px) { .games-grid { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { 
+  .games-grid { grid-template-columns: 1fr; } 
+  .user-name { font-size: 0.95rem; }
+}
 </style>
