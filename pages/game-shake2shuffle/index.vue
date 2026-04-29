@@ -7,6 +7,11 @@ const supabase = useSupabaseClient();
 const route = useRoute();
 const router = useRouter();
 
+// 🌟 預先暫存單元資訊
+const qVersion = route.query.version;
+const qVolume = route.query.volume;
+const qUnit = route.query.unit;
+
 // Game State
 const isLoading = ref(true);
 const vocabList = ref([]);
@@ -27,7 +32,7 @@ const currentScrambled = ref([]);
 const currentRandomWord = ref('');
 
 // ==========================================
-// 🌟 核心紀錄與對錯分析引擎 (已優化，無紅線)
+// 🌟 核心紀錄與對錯分析引擎
 // ==========================================
 const studentCookie = useCookie('currentStudent');
 const gameStartTime = Date.now();
@@ -39,29 +44,19 @@ const uploadRecord = async (gameName) => {
   if (!student.id) return;
   
   try {
-    let userIp = 'Unknown'; 
-    try { 
-      const response = await fetch('https://api.ipify.org?format=json');
-      const data = await response.json();
-      userIp = data.ip; 
-    } catch (e) {
-      console.log('無法取得 IP');
-    }
-    
     await supabase.from('game_records').insert([{ 
       student_id: student.id, 
       real_name: student.real_name || student.name,
-      class_name: student.class, 
-      version: route.query.version,
-      volume: route.query.volume, 
-      unit_played: route.query.unit,
+      class_name: student.class || '未分班', 
+      version: qVersion, // 🌟 使用變數
+      volume: qVolume, 
+      unit_played: qUnit,
       game_type: gameName, 
       score: Math.round(score.value),
       time_taken_seconds: Math.round((Date.now() - gameStartTime) / 1000),
       correct_words: correctWordsList.value.join(', '),
       wrong_words: Array.from(wrongWordsSet.value).join(', '),
-      device_info: navigator.userAgent, 
-      ip_address: userIp,
+      device_info: navigator.userAgent,
       is_anon: student.isAnon || false, 
       browser_id: student.browserId || 'unknown'
     }]);
@@ -79,7 +74,6 @@ const uploadRecord = async (gameName) => {
   }
 };
 // ==========================================
-
 
 // Audio setup
 const playSound = (type) => {
@@ -109,14 +103,13 @@ const vibrate = (pattern) => {
 
 // Initialize
 onMounted(async () => {
-  const { version, volume, unit } = route.query;
-  if (!version || !volume || !unit) {
+  if (!qVersion || !qVolume || !qUnit) {
     alert("缺少單元資訊，返回首頁！");
     router.push('/');
     return;
   }
   const { data, error } = await supabase.from('vocabularies')
-    .select('*').eq('version', version).eq('volume', volume).eq('unit', unit);
+    .select('*').eq('version', qVersion).eq('volume', qVolume).eq('unit', qUnit);
     
   if (error || !data || data.length === 0) {
     alert("載入單字失敗！");
@@ -230,7 +223,6 @@ const setupCurrentWord = () => {
   }
 };
 
-// 🌟 這裡已加入對錯紀錄機制
 const checkAnswerA = () => {
   const userWord = currentScrambled.value.join('');
   const correctWord = currentVocab.value.en_us.trim();
@@ -238,27 +230,26 @@ const checkAnswerA = () => {
   if (userWord === correctWord) {
     playSound('correct'); vibrate([100, 50, 100]);
     score.value += 10;
-    correctWordsList.value.push(correctWord); // 記錄答對
+    correctWordsList.value.push(correctWord); 
     nextWord();
   } else {
     playSound('wrong'); vibrate([300]);
-    wrongWordsSet.value.add(correctWord); // 記錄答錯
+    wrongWordsSet.value.add(correctWord); 
     alert("❌ 拼字錯誤！請繼續搖晃手機重新洗牌！");
   }
 };
 
-// 🌟 這裡已加入對錯紀錄機制
 const checkAnswerB = () => {
   const correctWord = currentVocab.value.en_us.trim();
 
   if (currentRandomWord.value === correctWord) {
     playSound('correct'); vibrate([100, 50, 100]);
     score.value += 10;
-    correctWordsList.value.push(correctWord); // 記錄答對
+    correctWordsList.value.push(correctWord); 
     nextWord();
   } else {
     playSound('wrong'); vibrate([300]);
-    wrongWordsSet.value.add(correctWord); // 記錄答錯
+    wrongWordsSet.value.add(correctWord); 
     alert(`❌ 抓錯囉！你抓到的是 ${currentRandomWord.value}\n正確單字是：${correctWord}`);
     nextWord();
   }
@@ -276,12 +267,10 @@ const nextWord = () => {
   setTimeout(() => { isShakingAllowed.value = true; }, 800);
 };
 
-// 🌟 遊戲結束時自動呼叫上傳引擎
-const endGame = () => {
+const endGame = async () => {
   isGameOver.value = true;
   window.removeEventListener('devicemotion', handleMotion);
-  
-  uploadRecord('單字搖搖杯'); // 上傳成績
+  await uploadRecord('單字搖搖杯'); // 🌟 加入 await 確保上傳
 };
 
 onUnmounted(() => {
