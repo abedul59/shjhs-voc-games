@@ -55,10 +55,6 @@ const config = ref({
   tarot_alch1_card_set: '1', tarot_alch1_card_set_kangxuan: '1k', tarot_alch1_time_limit: 600, tarot_alch1_penalty: 3, tarot_alch1_blank_count: 3, 
   examRead2_time_limit: 240,
 
-
-  // ✨ 加入這一行
-  login_blocked_message: '⚠️ 目前為系統管制時間，暫不開放登入喔！',
-
   ninja_time_limit: 300, ninja_penalty: 3,
   tenchi_hp: 100, tenchi_sp: 40, tenchi_min_dmg: 5, tenchi_max_dmg: 15, tenchi_escape_rate: 50, tenchi_wins_per_formation: 8, tenchi_blank_count: 3, 
   tenchi_base_atk: 10, tenchi_base_def: 10, tenchi_base_int: 10, tenchi_base_eva: 10, tenchi_player_atk: 15, tenchi_player_def: 15, tenchi_player_int: 15, tenchi_player_eva: 10, tenchi_max_escapes: 20, 
@@ -141,6 +137,54 @@ const upgradeStudents = async () => {
   }
 };
 
+// 🌟 一鍵清除幽靈對戰房間
+const clearGhostRooms = async () => {
+  const confirmMsg = `⚠️ 確定要執行「幽靈房間清掃」嗎？\n\n系統將會強制刪除這 5 款對戰遊戲中，建立時間「超過 15 分鐘」的房間。\n\n建議使用時機：\n1. 上課前，為確保學生配對順暢。\n2. 發現有學生卡在配對畫面進不去時。`;
+  
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    isLoading.value = true;
+    
+    // 計算 15 分鐘前的時間點
+    const thresholdTime = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    
+    // 5 款對戰遊戲的房間資料表名稱 
+    // (⚠️ 如果你的資料庫命名有差異，系統會自動跳過錯誤並在終端機提示)
+    const pvpTables = [
+      'battle_rooms', 
+      'tenchi_rooms', 
+      'tarot21_rooms', 
+      'tarot_alch_rooms', 
+      'tarot_uno_rooms'
+    ];
+
+    let totalDeleted = 0;
+
+    for (const table of pvpTables) {
+      const { data, error } = await supabase
+        .from(table)
+        .delete()
+        .lt('created_at', thresholdTime) // 刪除建立時間小於 (早於) 15 分鐘前的資料
+        .select('id');
+
+      if (data) {
+        totalDeleted += data.length;
+      }
+      if (error) {
+        console.warn(`清理 ${table} 時發生錯誤 (可能是您尚未建立此資料表，可忽略):`, error.message);
+      }
+    }
+    
+    alert(`🧹 掃蕩完成！\n共清除了 ${totalDeleted} 個閒置超過 15 分鐘的幽靈房間。`);
+  } catch (err) {
+    console.error("清理幽靈房間失敗", err);
+    alert("清理過程發生錯誤：" + err.message);
+  } finally {
+    isLoading.value = false;
+  }
+};
+
 </script>
 
 <template>
@@ -162,34 +206,35 @@ const upgradeStudents = async () => {
       <NuxtLink to="/admin/grammar-stats" class="retro-btn nav-btn" style="background: #e65100; border-color: #e65100;">🎡 學生文法答題分析</NuxtLink>
       <NuxtLink to="/admin/exam-stats" class="retro-btn nav-btn" style="background: #00bcd4; border-color: #00838f;">📈 會考單題數據分析</NuxtLink>
       <NuxtLink to="/admin/exam-stats2" class="retro-btn nav-btn" style="background: #00bcd4; border-color: #00838f;">📈 會考題組數據分析</NuxtLink>
-      <NuxtLink to="/admin/access" class="retro-btn nav-btn" style="background: #d32f2f; border-color: #e57373;">🛑 遊戲權限與時間管理</NuxtLink>
-
+      
       <template v-if="isSuperAdmin">
         
         <div class="admin-nav-bar retro-element">
           <h3 style="margin-top: 0; color: #0277bd;">🚀 進階管理專區入口</h3>
           
           <div class="nav-buttons">
-          <NuxtLink to="/admin/speakno3-manager" class="retro-btn nav-btn" style="background: #e91e63; border-color: #c2185b;">🎤 口說學霸3(歌單管理)</NuxtLink>
-            
+            <NuxtLink to="/admin/speakno3-manager" class="retro-btn nav-btn" style="background: #e91e63; border-color: #c2185b;">🎤 口說學霸3(歌單管理)</NuxtLink>
+            <NuxtLink to="/admin/access" class="retro-btn nav-btn" style="background: #d32f2f; border-color: #e57373;">🛑 遊戲權限與時間管理</NuxtLink>
             <NuxtLink to="/admin/tarot-manager" class="retro-btn nav-btn" style="background: #673ab7; border-color: #9fa8da;">🔮 塔羅牌手動發放</NuxtLink>
-            
             <NuxtLink to="/admin/speakno2-manager" class="retro-btn nav-btn" style="background: #2e7d32; border-color: #a5d6a7;">📖 口說學霸2(文章管理)</NuxtLink>
+            
+            <button @click="clearGhostRooms" class="retro-btn nav-btn" style="background: #607d8b; border-color: #455a64; color: white;" :disabled="isLoading">
+              {{ isLoading ? '🧹 清理中...' : '🧹 一鍵清除對戰幽靈房間' }}
+            </button>
             
             <button @click="upgradeStudents" class="retro-btn nav-btn" style="background: #ffb300; border-color: #ffe082; color: #3e2723;" :disabled="isLoading">
               {{ isLoading ? '🔄 升級中...' : '🆙 一鍵全校升年級 (暑假專用)' }}
             </button>
           </div>
         </div>
+
         <NuxtLink to="/admin/manage-grammar" class="retro-btn nav-btn" style="background: #e65100; border-color: #e65100;">🎡 文法題庫管理</NuxtLink>
-        
+
         <NuxtLink to="/admin/teacher-logs" class="retro-btn" style="background: #e91e63; color: white; border-color: #c2185b; box-shadow: 0 4px 0 #c2185b;">🕵️ 教師足跡追蹤</NuxtLink>
         <NuxtLink to="/admin/teachers" class="retro-btn teacher-btn" style="grid-column: span 2; background: #9c27b0; color: white;">👨‍🏫 教師權限管理</NuxtLink>
         <NuxtLink to="/admin/vocabularies" class="retro-btn vocab-btn">📝 編輯單字庫</NuxtLink>
         <NuxtLink to="/admin/categories" class="retro-btn nav-btn" style="background: #ff9800; border-color: #ffb74d;">🗂️ 前台排版管理</NuxtLink>
-        
         <NuxtLink to="/admin/manage-announcements" class="retro-btn nav-btn" style="background: #03a9f4; border-color: #0288d1;">📢 公佈欄管理</NuxtLink>
-        
         <NuxtLink to="/admin/import-exam" class="retro-btn nav-btn" style="background: #e91e63; border-color: #7b1fa2;">📥 會考題庫匯入</NuxtLink>
         <NuxtLink to="/admin/manage-exam" class="retro-btn nav-btn" style="background: #9c27b0; border-color: #6a1b9a;">✏️ 會考單題題庫管理</NuxtLink>
         <NuxtLink to="/admin/manage-exam2" class="retro-btn nav-btn" style="background: #5e35b1; border-color: #4527a0;">📖 會考題組題庫管理</NuxtLink>
@@ -201,18 +246,6 @@ const upgradeStudents = async () => {
             <p style="margin: 0; font-size: 0.8rem; font-weight: normal;">手動解鎖學生的陣型與策略</p>
           </div>
         </NuxtLink>
-
-        <NuxtLink to="/admin/law-exam"  class="retro-btn test-btn" style="grid-column: span 2;">
-  <div class="ml-4">
-    <h3 class="font-bold text-gray-800">管理員設定</h3>
-    <p class="text-xs text-gray-500">調整系統進階參數與安全性配置</p>
-  </div>
-        </NuxtLink>
-
-
-
-
-
       </template>
     </div>
 
@@ -247,7 +280,7 @@ const upgradeStudents = async () => {
 
 .save-settings-btn { background-color: var(--btn-primary-bg); color: var(--btn-primary-text); width: 100%; margin-top: 10px; font-size: 1.3rem;}
 .retro-btn { display: flex; justify-content: center; align-items: center; padding: 15px 25px; color: var(--text-main); text-decoration: none; font-size: 1.1rem; font-weight: 900; border: var(--border-width) solid var(--border-color); border-radius: var(--radius-element); box-shadow: var(--shadow-btn); cursor: pointer; transition: all 0.15s; text-align: center;}
-.retro-btn:active { transform: var(--transform-active); box-shadow: var(--shadow-btn-active); }
+.retro-btn:active:not(:disabled) { transform: var(--transform-active); box-shadow: var(--shadow-btn-active); }
 
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; width: 100%; max-width: 700px; margin-bottom: 20px;}
 .record-btn { background-color: var(--btn-secondary-bg); color: var(--btn-secondary-text); } 
