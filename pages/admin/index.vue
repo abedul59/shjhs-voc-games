@@ -246,6 +246,15 @@ const clearGhostRooms = async () => {
             <p style="margin: 0; font-size: 0.8rem; font-weight: normal;">手動解鎖學生的陣型與策略</p>
           </div>
         </NuxtLink>
+
+        <NuxtLink to="/admin/law-exam"  class="retro-btn test-btn" style="grid-column: span 2;">
+  <div class="ml-4">
+    <h3 class="font-bold text-gray-800">管理員設定</h3>
+    <p class="text-xs text-gray-500">調整系統進階參數與安全性配置</p>
+  </div>
+        </NuxtLink>
+
+        
       </template>
     </div>
 
