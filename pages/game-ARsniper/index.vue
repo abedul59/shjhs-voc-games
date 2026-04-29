@@ -28,13 +28,6 @@ let gameLoop = null;
 
 const isFiring = ref(false);
 
-
-
-
-
-
-
-
 // Audio setup
 const playSound = (type) => {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -227,17 +220,13 @@ const stopCamera = () => {
   if (stream) stream.getTracks().forEach(track => track.stop());
 };
 
-
-
-
-
-
-const endGame = () => {
+// 🌟 修正點：加上 async/await
+const endGame = async () => {
   isGameOver.value = true;
   cancelAnimationFrame(gameLoop);
   clearInterval(spawnInterval);
   stopCamera();
-  uploadRecord('AR實境單字狙擊手');
+  await uploadRecord('AR實境單字狙擊手');
 };
 
 onUnmounted(() => {
@@ -270,7 +259,7 @@ const uploadRecord = async (gameName) => {
     await supabase.from('game_records').insert([{ 
       student_id: student.id, 
       real_name: student.real_name || student.name,
-      class_name: student.class, 
+      class_name: student.class || '未分班', // 🌟 修正點：加上防呆
       version: route.query.version,
       volume: route.query.volume, 
       unit_played: route.query.unit,
