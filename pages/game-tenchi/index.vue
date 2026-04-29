@@ -741,21 +741,29 @@ const spawnEffect = (targetId, text, type, fxClass) => {
 
 const addLog = (text, type) => { battleLog.value.unshift({ id: Date.now() + Math.random(), text, type }); if (battleLog.value.length > 5) battleLog.value.pop(); };
 
-const endGame = async (winName, reasonText, isEscape = false) => {
+const endGame = async (winId, reasonText, isEscape = false) => {
     if (matchStatus.value === 'end') return; 
-    
     matchStatus.value = 'end'; 
     isSelectingAction.value = true; 
-    winner.value = winName || '無'; 
+    
+    let winName = '無';
+    // 🌟 修正：加入 String() 確保判定正確
+    if (String(winId) === String(p1.value.id)) winName = p1.value.name;
+    else if (String(winId) === String(p2.value.id)) winName = p2.value.name;
+    
+    winner.value = winName; 
     endReason.value = reasonText; 
     
-    if (winName) sfx.win();
+    if (winId) sfx.win();
     clearInterval(timer); 
     cleanupSubscriptions();
 
     if (studentCookie.value && !studentCookie.value.isAnon) {
-        const myScore = myPlayerRole.value === 'p1' ? p1.value.score : p2.value.score;
-        let resultMark = winName === (myPlayerRole.value === 'p1' ? p1.value.name : p2.value.name) ? '【勝】' : '【敗】'; 
+        // 🌟 修正：確保分數最低為 0
+        const myScore = Math.max(0, myPlayerRole.value === 'p1' ? p1.value.score : p2.value.score);
+        
+        // 🌟 修正：加入 String() 確保自己贏的時候不會因為型別被判輸
+        let resultMark = String(winId) === String(studentCookie.value.id) ? '【勝】' : '【敗】'; 
         if (isEscape) resultMark = '【逃】';
 
         await supabase.from('game_records').insert([{
