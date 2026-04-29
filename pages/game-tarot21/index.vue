@@ -550,10 +550,17 @@ const handleNetworkEvent = async (event) => {
     }
 };
 
-const endGame = async (winName, reasonText) => {
+const endGame = async (winId, reasonText) => {
     if (matchStatus.value === 'end') return; 
     matchStatus.value = 'end'; 
-    winner.value = winName || '無'; 
+    
+    let winName = '無';
+    // 🌟 修正：加入 String() 確保讀取到正確的贏家名字
+    if (String(winId) === String(players.value.p1.id)) winName = players.value.p1.name;
+    else if (String(winId) === String(players.value.p2.id)) winName = players.value.p2.name;
+    else if (winId === 'tie') winName = '雙方';
+
+    winner.value = winName; 
     endReason.value = reasonText; 
     
     sfx.winRound();
@@ -563,17 +570,25 @@ const endGame = async (winName, reasonText) => {
 
     if (studentCookie.value && !studentCookie.value.isAnon) {
         const myData = players.value[myPlayerRole.value];
-        let resultMark = winName === myData.name ? '【勝】' : '【敗】'; 
+        let resultMark = '【平】';
+        
+        // 🌟 修正：加入 String() 確保勝負判定不受型別干擾
+        if (String(winId) === String(studentCookie.value.id)) resultMark = '【勝】';
+        else if (winId && winId !== 'tie') resultMark = '【敗】';
 
-        let cw = `結果: ${resultMark} (${reasonText}) | 剩餘血量: ${myData.hp}`;
+        // 🌟 修正：確保最後結算寫入資料庫的血量不會是負數
+        const finalHp = Math.max(0, myData.hp);
+        let cw = `結果: ${resultMark} (${reasonText}) | 剩餘血量: ${finalHp}`;
         if (correctWordsList.value.length > 0) cw += ', ' + correctWordsList.value.join(', ');
 
+        // ⚠️ 提醒：下面 game_type 的名稱請依照當下修改的遊戲維持原樣 (單字塔羅21點 / 單字塔羅鍊金術 / 單字塔羅UNO對決)
         await supabase.from('game_records').insert([{
-            student_id: studentCookie.value.id, game_type: '單字塔羅21點', score: myData.hp, time_taken_seconds: timeSpent.value,
+            student_id: studentCookie.value.id, 
+            game_type: '單字塔羅21點', // <-- 請記得確認這個名稱！
+            score: finalHp, 
+            time_taken_seconds: timeSpent.value,
             version: route.query.version, volume: route.query.volume, unit_played: route.query.unit,
-            correct_words: cw, 
-            wrong_words: wrongWordsList.value.join(', '), 
-            mistakes: mistakesCount.value 
+            correct_words: cw, wrong_words: wrongWordsList.value.join(', '), mistakes: mistakesCount.value 
         }]);
     }
 };
