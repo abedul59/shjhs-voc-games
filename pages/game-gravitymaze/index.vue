@@ -7,6 +7,11 @@ const supabase = useSupabaseClient();
 const route = useRoute();
 const router = useRouter();
 
+// 🌟 預先暫存單元資訊，避免跳出時 route.query 遺失
+const qVersion = route.query.version;
+const qVolume = route.query.volume;
+const qUnit = route.query.unit;
+
 // Game State
 const isLoading = ref(true);
 const vocabList = ref([]);
@@ -20,18 +25,18 @@ const permissionError = ref('');
 // Physics & Tilt State
 let baseBeta = null;
 let baseGamma = null;
-const ball = ref({ x: 50, y: 50, vx: 0, vy: 0, radius: 4 }); // 座標使用百分比 (0-100)
+const ball = ref({ x: 50, y: 50, vx: 0, vy: 0, radius: 4 }); 
 let gameLoop = null;
 
 // Current Question State
-const currentQuestion = ref(''); // 中文題目
+const currentQuestion = ref(''); 
 const holes = ref([
-  { id: 0, x: 15, y: 15, word: '', isCorrect: false, color: '#f44336' }, // 左上
-  { id: 1, x: 85, y: 15, word: '', isCorrect: false, color: '#2196f3' }, // 右上
-  { id: 2, x: 15, y: 85, word: '', isCorrect: false, color: '#4caf50' }, // 左下
-  { id: 3, x: 85, y: 85, word: '', isCorrect: false, color: '#ff9800' }  // 右下
+  { id: 0, x: 15, y: 15, word: '', isCorrect: false, color: '#f44336' },
+  { id: 1, x: 85, y: 15, word: '', isCorrect: false, color: '#2196f3' },
+  { id: 2, x: 15, y: 85, word: '', isCorrect: false, color: '#4caf50' },
+  { id: 3, x: 85, y: 85, word: '', isCorrect: false, color: '#ff9800' }
 ]);
-const holeRadius = 12; // 洞的半徑判定 (百分比)
+const holeRadius = 12; 
 
 // Audio setup
 const playSound = (type) => {
@@ -61,14 +66,13 @@ const vibrate = (pattern) => {
 
 // Initialize
 onMounted(async () => {
-  const { version, volume, unit } = route.query;
-  if (!version || !volume || !unit) {
+  if (!qVersion || !qVolume || !qUnit) {
     alert("缺少單元資訊，返回首頁！");
     router.push('/');
     return;
   }
   const { data, error } = await supabase.from('vocabularies')
-    .select('*').eq('version', version).eq('volume', volume).eq('unit', unit);
+    .select('*').eq('version', qVersion).eq('volume', qVolume).eq('unit', qUnit);
     
   if (error || !data || data.length < 4) {
     alert("載入單字失敗，或單字量不足 (至少需要 4 個單字)！");
@@ -76,12 +80,10 @@ onMounted(async () => {
     return;
   }
   
-  // 打亂題庫
   vocabList.value = data.sort(() => Math.random() - 0.5);
   isLoading.value = false;
 });
 
-// Permission handling for iOS 13+ (DeviceOrientationEvent for Tilt)
 const requestPermission = async () => {
   if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
     try {
@@ -102,7 +104,6 @@ const requestPermission = async () => {
 };
 
 const startGame = () => {
-  // 將目前的拿法設定為「平地」(0 度)
   baseBeta = null; 
   baseGamma = null;
   window.addEventListener('deviceorientation', handleOrientation, false);
@@ -111,7 +112,6 @@ const startGame = () => {
 };
 
 const handleOrientation = (event) => {
-  // 校正初始角度
   if (baseBeta === null || baseGamma === null) {
     baseBeta = event.beta;
     baseGamma = event.gamma;
@@ -121,16 +121,13 @@ const handleOrientation = (event) => {
   let dBeta = event.beta - baseBeta;
   let dGamma = event.gamma - baseGamma;
 
-  // 限制最大傾斜角度，避免球失控
   if (dBeta > 45) dBeta = 45; if (dBeta < -45) dBeta = -45;
   if (dGamma > 45) dGamma = 45; if (dGamma < -45) dGamma = -45;
 
-  // 將傾斜角度轉換為加速度
   ball.value.vy += (dBeta / 45) * 0.4;
   ball.value.vx += (dGamma / 45) * 0.4;
 };
 
-// 網頁版測試用 (鍵盤控制)
 const handleKeyDown = (e) => {
   const speed = 1.5;
   if (e.key === 'ArrowUp' || e.key === 'w') ball.value.vy -= speed;
@@ -145,43 +142,35 @@ const setupNextQuestion = () => {
     return;
   }
   
-  // 將球放回正中央
   ball.value.x = 50; ball.value.y = 50;
   ball.value.vx = 0; ball.value.vy = 0;
 
   const correctItem = vocabList.value[currentIndex.value];
   currentQuestion.value = correctItem.zh_tw;
   
-  // 挑選 3 個錯字
   let wrongWords = vocabList.value.filter(v => v.en_us !== correctItem.en_us).sort(() => Math.random() - 0.5).slice(0, 3);
   
-  // 如果題庫太少，重複補字
   while(wrongWords.length < 3) wrongWords.push(vocabList.value[0]);
 
-  // 準備 4 個選項並洗牌
   const options = [correctItem.en_us, wrongWords[0].en_us, wrongWords[1].en_us, wrongWords[2].en_us].sort(() => Math.random() - 0.5);
 
-  // 分配到 4 個洞裡
   holes.value.forEach((hole, index) => {
     hole.word = options[index];
     hole.isCorrect = (options[index] === correctItem.en_us);
   });
 };
 
-// 新增一個狀態鎖，用來防止進洞後重複觸發
 const isProcessingHole = ref(false);
 
 const updatePhysics = () => {
   if (isGameOver.value || isProcessingHole.value) return;
 
-  // 摩擦力 (讓球不會無限加速)
   ball.value.vx *= 0.95;
   ball.value.vy *= 0.95;
 
   ball.value.x += ball.value.vx;
   ball.value.y += ball.value.vy;
 
-  // 邊界碰撞 (彈回並發出聲音)
   let bounced = false;
   if (ball.value.x < ball.value.radius) { ball.value.x = ball.value.radius; ball.value.vx *= -0.6; bounced = true; }
   if (ball.value.x > 100 - ball.value.radius) { ball.value.x = 100 - ball.value.radius; ball.value.vx *= -0.6; bounced = true; }
@@ -190,17 +179,15 @@ const updatePhysics = () => {
   
   if (bounced && (Math.abs(ball.value.vx) > 0.5 || Math.abs(ball.value.vy) > 0.5)) playSound('bounce');
 
-  // 檢查進洞
   checkHoleCollision();
 
-  // 只有在沒有處理進洞事件時，才繼續下一個 frame
   if (!isProcessingHole.value && !isGameOver.value) {
     gameLoop = requestAnimationFrame(updatePhysics);
   }
 };
 
 const checkHoleCollision = () => {
-  if (isProcessingHole.value) return; // 鎖定狀態下不檢查碰撞
+  if (isProcessingHole.value) return;
   
   for (let hole of holes.value) {
     const dx = ball.value.x - hole.x;
@@ -215,9 +202,7 @@ const checkHoleCollision = () => {
 };
 
 const handleHoleEnter = (hole) => {
-  // 🌟 上鎖！防止在等待換題的這 0.5 秒內，物理引擎重複觸發這個函數
   isProcessingHole.value = true; 
-  
   ball.value.vx = 0; ball.value.vy = 0;
   
   if (hole.isCorrect) {
@@ -226,19 +211,18 @@ const handleHoleEnter = (hole) => {
     currentIndex.value++;
     
     setTimeout(() => {
-      isProcessingHole.value = false; // 解鎖
+      isProcessingHole.value = false;
       setupNextQuestion();
       if (!isGameOver.value) gameLoop = requestAnimationFrame(updatePhysics);
-    }, 500); // 稍微停頓半秒，讓學生有進洞的視覺回饋
+    }, 500);
     
   } else {
     playSound('wrong'); vibrate([300]);
     lives.value -= 1;
     
-    // 稍微延遲一下再跳 alert，避免畫面卡住
     setTimeout(() => {
       alert(`❌ 掉進錯的洞囉！這個字是 ${hole.word}`);
-      isProcessingHole.value = false; // 解鎖
+      isProcessingHole.value = false;
       
       if (lives.value > 0) {
         ball.value.x = 50; ball.value.y = 50; 
@@ -250,21 +234,23 @@ const handleHoleEnter = (hole) => {
   }
 };
 
-const endGame = () => {
-  uploadRecord('單字迷宮滾滾球');
+const endGame = async () => {
   isGameOver.value = true;
   cancelAnimationFrame(gameLoop);
   window.removeEventListener('deviceorientation', handleOrientation);
   window.removeEventListener('keydown', handleKeyDown);
-  
+  await uploadRecord('單字迷宮滾滾球'); // 🌟 加入 await 確保上傳完成
 };
 
 onMounted(() => { window.addEventListener('keydown', handleKeyDown); });
-onUnmounted(() => { endGame(); window.removeEventListener('keydown', handleKeyDown); });
-
+onUnmounted(() => { 
+  cancelAnimationFrame(gameLoop);
+  window.removeEventListener('deviceorientation', handleOrientation);
+  window.removeEventListener('keydown', handleKeyDown); 
+});
 
 // ==========================================
-// 🌟 核心紀錄與對錯分析引擎 (純淨優化版)
+// 🌟 核心紀錄與對錯分析引擎
 // ==========================================
 const studentCookie = useCookie('currentStudent');
 const gameStartTime = Date.now();
@@ -276,29 +262,19 @@ const uploadRecord = async (gameName) => {
   if (!student.id) return;
   
   try {
-    let userIp = 'Unknown'; 
-    try { 
-      const response = await fetch('https://api.ipify.org?format=json');
-      const data = await response.json();
-      userIp = data.ip; 
-    } catch (e) {
-      console.log('無法取得 IP');
-    }
-    
     await supabase.from('game_records').insert([{ 
       student_id: student.id, 
       real_name: student.real_name || student.name,
-      class_name: student.class, 
-      version: route.query.version,
-      volume: route.query.volume, 
-      unit_played: route.query.unit,
+      class_name: student.class || '未分班', 
+      version: qVersion, // 🌟 使用暫存的變數
+      volume: qVolume, 
+      unit_played: qUnit,
       game_type: gameName, 
       score: Math.round(score.value),
       time_taken_seconds: Math.round((Date.now() - gameStartTime) / 1000),
       correct_words: correctWordsList.value.join(', '),
       wrong_words: Array.from(wrongWordsSet.value).join(', '),
-      device_info: navigator.userAgent, 
-      ip_address: userIp,
+      device_info: navigator.userAgent,
       is_anon: student.isAnon || false, 
       browser_id: student.browserId || 'unknown'
     }]);
@@ -401,7 +377,6 @@ h1 { color: #2e7d32; font-size: 2rem; text-shadow: 1px 1px 0px #a5d6a7; margin-b
   padding: 10px 30px; border-radius: 12px; border: 3px dashed #e64a19; margin-bottom: 20px;
 }
 
-/* 遊戲迷宮區 (木板風格) */
 .play-area {
   position: relative; width: 100%; aspect-ratio: 1 / 1.1; background: #d7ccc8;
   border: 8px solid #795548; border-radius: 12px; overflow: hidden;
@@ -409,7 +384,6 @@ h1 { color: #2e7d32; font-size: 2rem; text-shadow: 1px 1px 0px #a5d6a7; margin-b
   background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.03) 10px, rgba(0,0,0,0.03) 20px);
 }
 
-/* 洞口 */
 .hole {
   position: absolute; width: 22%; aspect-ratio: 1 / 1; border-radius: 50%;
   transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center;
@@ -425,7 +399,6 @@ h1 { color: #2e7d32; font-size: 2rem; text-shadow: 1px 1px 0px #a5d6a7; margin-b
   text-shadow: 1px 1px 0 #fff; white-space: nowrap; background: rgba(255,255,255,0.8); padding: 2px 6px; border-radius: 4px;
 }
 
-/* 鋼球 (使用放射漸層做出金屬立體感) */
 .ball {
   position: absolute; width: 6%; aspect-ratio: 1 / 1; border-radius: 50%;
   transform: translate(-50%, -50%); z-index: 10;
