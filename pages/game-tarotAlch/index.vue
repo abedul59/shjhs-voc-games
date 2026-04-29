@@ -603,7 +603,7 @@ const endGame = async (winId, reasonText) => {
         // ⚠️ 提醒：下面 game_type 的名稱請依照當下修改的遊戲維持原樣 (單字塔羅21點 / 單字塔羅鍊金術 / 單字塔羅UNO對決)
         await supabase.from('game_records').insert([{
             student_id: studentCookie.value.id, 
-            game_type: '單字塔羅21點', // <-- 請記得確認這個名稱！
+            game_type: '單字塔羅鍊金術', // <-- 請記得確認這個名稱！
             score: finalHp, 
             time_taken_seconds: timeSpent.value,
             version: route.query.version, volume: route.query.volume, unit_played: route.query.unit,
