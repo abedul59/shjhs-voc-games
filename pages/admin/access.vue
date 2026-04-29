@@ -12,7 +12,9 @@ const allowedClasses = Array.isArray(authCookie.value?.classes) ? authCookie.val
 const isSuperAdmin = computed(() => isAdminCookie.value === true || isAdminCookie.value === 'superadmin' || allowedClasses.includes('ALL'));
 
 const settings = ref({
-  disabled_games: [], locked_units: [], restrict_play_time: false, allow_play_days: [1,2,3,4,5], allow_play_start: '08:00', allow_play_end: '17:00', login_blocked_message: '⚠️ 目前為系統管制時間，暫不開放登入喔！'
+  disabled_games: [], locked_units: [], restrict_play_time: false, allow_play_days: [1,2,3,4,5], allow_play_start: '08:00', allow_play_end: '17:00', 
+  login_blocked_message: '⚠️ 目前為系統管制時間，暫不開放登入喔！',
+  disable_anon_login: false // ✨ 新增：禁止匿名登入開關
 });
 
 const vocabMenu = ref([]);
@@ -33,7 +35,7 @@ const gamesList = [
 
 const daysList = [{ val: 1, label: '一' }, { val: 2, label: '二' }, { val: 3, label: '三' }, { val: 4, label: '四' }, { val: 5, label: '五' }, { val: 6, label: '六' }, { val: 0, label: '日' }];
 
-// 🌟 學生個別權限管理狀態
+// 學生個別權限管理狀態
 const displayClasses = computed(() => {
   if (isSuperAdmin.value) {
     const list = ['000']; for (let grade of [7, 8, 9]) { for (let i = 1; i <= 14; i++) { list.push(`${grade}${String(i).padStart(2, '0')}`); } } list.push('999'); return list;
@@ -46,7 +48,7 @@ const isFetchingStudents = ref(false);
 
 const showStudentModal = ref(false);
 const editingStudent = ref(null);
-const tempAllowedMode = ref('ALL'); // 'ALL' 或 'CUSTOM'
+const tempAllowedMode = ref('ALL'); 
 const tempAllowedGames = ref([]);
 
 onMounted(async () => {
@@ -56,12 +58,14 @@ onMounted(async () => {
     vocabMenu.value = uniqueMenu;
   }
 
+  // ✨ 修改點：要求資料庫抓出 disable_anon_login
   const { data: s } = await supabase.from('system_settings').select('*').eq('id', 1).single();
   if (s) {
     settings.value.disabled_games = s.disabled_games || []; settings.value.locked_units = s.locked_units || [];
     settings.value.restrict_play_time = s.restrict_play_time || false; settings.value.allow_play_days = s.allow_play_days || [1,2,3,4,5];
     settings.value.allow_play_start = s.allow_play_start ? s.allow_play_start.substring(0,5) : '08:00'; settings.value.allow_play_end = s.allow_play_end ? s.allow_play_end.substring(0,5) : '17:00';
     settings.value.login_blocked_message = s.login_blocked_message || '⚠️ 目前為系統管制時間，暫不開放登入喔！'; 
+    settings.value.disable_anon_login = s.disable_anon_login || false; // ✨ 讀取禁止匿名設定
   }
   
   if (displayClasses.value.length > 0) selStudentClass.value = displayClasses.value[0];
@@ -86,12 +90,13 @@ const saveSettings = async () => {
   await supabase.from('system_settings').update({
     disabled_games: settings.value.disabled_games, locked_units: settings.value.locked_units, restrict_play_time: settings.value.restrict_play_time,
     allow_play_days: settings.value.allow_play_days, allow_play_start: settings.value.allow_play_start, allow_play_end: settings.value.allow_play_end,
-    login_blocked_message: settings.value.login_blocked_message 
+    login_blocked_message: settings.value.login_blocked_message,
+    disable_anon_login: settings.value.disable_anon_login // ✨ 儲存禁止匿名設定
   }).eq('id', 1);
   setTimeout(() => { isSaving.value = false; alert('✅ 全域權限與時間設定已成功儲存！'); }, 500);
 };
 
-// 🌟 學生個別權限管理邏輯
+// 學生個別權限管理邏輯
 const fetchStudents = async () => {
   if (!selStudentClass.value) return;
   isFetchingStudents.value = true;
@@ -104,13 +109,8 @@ watch(selStudentClass, fetchStudents);
 const openStudentModal = (student) => {
   editingStudent.value = student;
   const currentAllowed = student.allowed_games || ['ALL'];
-  if (currentAllowed.includes('ALL')) {
-    tempAllowedMode.value = 'ALL';
-    tempAllowedGames.value = [];
-  } else {
-    tempAllowedMode.value = 'CUSTOM';
-    tempAllowedGames.value = [...currentAllowed];
-  }
+  if (currentAllowed.includes('ALL')) { tempAllowedMode.value = 'ALL'; tempAllowedGames.value = []; } 
+  else { tempAllowedMode.value = 'CUSTOM'; tempAllowedGames.value = [...currentAllowed]; }
   showStudentModal.value = true;
 };
 
@@ -119,11 +119,9 @@ const saveStudentAccess = async () => {
   if (tempAllowedMode.value === 'CUSTOM' && finalAllowed.length === 0) {
     if (!confirm('您沒有勾選任何遊戲，這位學生將無法進行任何挑戰！確定要這樣設定嗎？')) return;
   }
-  
   await supabase.from('students').update({ allowed_games: finalAllowed }).eq('id', editingStudent.value.id);
   alert(`✅ 已更新 ${editingStudent.value.real_name} 的專屬遊戲白名單！`);
-  showStudentModal.value = false;
-  fetchStudents();
+  showStudentModal.value = false; fetchStudents();
 };
 </script>
 
@@ -142,9 +140,21 @@ const saveStudentAccess = async () => {
     <div v-else class="content-grid">
       
       <template v-if="isSuperAdmin">
+        
+        <div class="admin-card" style="border-color: #f44336;">
+          <h3 style="color: #c62828;">🚫 訪客登入限制</h3>
+          <label class="toggle-label">
+            <input type="checkbox" v-model="settings.disable_anon_login" />
+            <b style="color: #d32f2f;">禁止匿名訪客登入</b>
+          </label>
+          <p style="font-size: 0.95rem; color: #555; margin-top: 5px;">
+            勾選後，前台登入畫面的「匿名挑戰」選項將會被隱藏，強制所有人必須使用正確的班級與座號登入，以防止學生鑽漏洞規避追蹤。
+          </p>
+        </div>
+
         <div class="admin-card">
           <h3>⏳ 全站開放時間限制</h3>
-          <label class="toggle-label"><input type="checkbox" v-model="settings.restrict_play_time" /><b>啟用全站時間限制</b> (若未勾選，則 24 小時皆可遊玩)</label>
+          <label class="toggle-label"><input type="checkbox" v-model="settings.restrict_play_time" /><b>啟用全站時間限制</b></label>
           <div v-if="settings.restrict_play_time" class="time-settings-box">
             <div style="margin-bottom: 10px;"><b>開放星期：</b><div class="days-grid"><label v-for="day in daysList" :key="day.val" class="day-cb"><input type="checkbox" :value="day.val" v-model="settings.allow_play_days" />週{{ day.label }}</label></div></div>
             <div><b>開放時段：</b><input type="time" v-model="settings.allow_play_start" class="retro-input time-input" />～<input type="time" v-model="settings.allow_play_end" class="retro-input time-input" /></div>
@@ -170,7 +180,7 @@ const saveStudentAccess = async () => {
           </div>
         </div>
 
-        <div class="admin-card full-width">
+        <div class="admin-card">
           <h3>🎮 遊戲模組停用設定 (全校)</h3>
           <p style="font-size: 0.9rem; color: #555; margin-bottom: 15px;">打勾的遊戲代表「全校維護中」，所有人皆無法遊玩。</p>
           <div class="games-grid">
@@ -275,7 +285,7 @@ const saveStudentAccess = async () => {
 .game-cb { background: #fff; border: 1px solid #ccc; padding: 10px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-weight: bold; transition: 0.2s;}
 .game-cb.is-disabled { background: #ffebee; border-color: #ef5350; color: #c62828; text-decoration: line-through; }
 
-/* 🌟 學生管理表格樣式 */
+/* 學生管理表格樣式 */
 .students-table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; border: 1px solid #ddd;}
 .students-table th, .students-table td { padding: 10px; border-bottom: 1px solid #eee; text-align: left; }
 .students-table th { background: #e8f5e9; color: #1b5e20; }
@@ -283,7 +293,7 @@ const saveStudentAccess = async () => {
 .bg-green { background: #4caf50; }
 .bg-orange { background: #ff9800; }
 
-/* 🌟 Modal 樣式 */
+/* Modal 樣式 */
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; padding: 20px; box-sizing: border-box;}
 .modal-box { background: white; padding: 25px; border-radius: 12px; border: 3px solid #1565c0; width: 100%; max-width: 600px; max-height: 90vh; overflow-y: auto;}
 .radio-group { display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px; background: #f5f5f5; padding: 15px; border-radius: 8px; border: 1px dashed #ccc;}
