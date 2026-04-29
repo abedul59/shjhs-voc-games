@@ -305,8 +305,8 @@ const nextQuestion = () => {
   }
 };
 
-const endGame = () => {
-  uploadRecord('霍格華茲單字杖');
+// 🌟 修正點：加上 async/await
+const endGame = async () => {
   isGameOver.value = true;
   cancelAnimationFrame(gameLoop);
   clearInterval(spawnInterval);
@@ -315,6 +315,7 @@ const endGame = () => {
     recognition.onend = null;
     recognition.stop();
   }
+  await uploadRecord('霍格華茲單字杖');
 };
 
 onUnmounted(() => {
@@ -347,7 +348,7 @@ const uploadRecord = async (gameName) => {
     await supabase.from('game_records').insert([{ 
       student_id: student.id, 
       real_name: student.real_name || student.name,
-      class_name: student.class, 
+      class_name: student.class || '未分班', // 🌟 修正點：加上防呆
       version: route.query.version,
       volume: route.query.volume, 
       unit_played: route.query.unit,
