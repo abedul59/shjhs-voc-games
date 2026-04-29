@@ -71,7 +71,6 @@ const accessSettings = ref({
   disabled_games: [], locked_units: [], restrict_play_time: false, allow_play_days: [1,2,3,4,5,6,0], allow_play_start: '00:00', allow_play_end: '23:59'
 });
 
-// 🌟 儲存學生專屬白名單 (預設為 ALL 全開)
 const studentAllowedGames = ref(['ALL']);
 
 onMounted(async () => {
@@ -84,6 +83,12 @@ onMounted(async () => {
   
   const { data: settings } = await supabase.from('system_settings').select('*').eq('id', 1).single();
   if (settings) {
+    if (settings.disable_anon_login === true && studentCookie.value && studentCookie.value.isAnon) {
+      alert('⚠️ 老師已關閉匿名登入功能！系統將強制為您登出，請使用正確的班級座號登入。');
+      handleLogout();
+      return; 
+    }
+
     if (settings.game_categories) {
       dynamicCategories.value = settings.game_categories;
       const hasShooting = dynamicCategories.value.some(cat => cat.games.includes('vocshooting'));
@@ -103,15 +108,17 @@ onMounted(async () => {
     };
   }
 
-  // 🌟 讀取目前登入學生的白名單設定
   if (studentCookie.value && !studentCookie.value.isAnon) {
-    const { data: stuData } = await supabase.from('students').select('allowed_games').eq('id', studentCookie.value.id).single();
+    const { data: stuData } = await supabase.from('students')
+      .select('allowed_games')
+      .eq('student_id', studentCookie.value.id) 
+      .single();
+      
     if (stuData && stuData.allowed_games) {
       studentAllowedGames.value = stuData.allowed_games;
     }
   }
 
-  // 防呆：如果預設選擇的遊戲已經被鎖住了，自動往下找第一個可玩的遊戲
   setTimeout(() => {
     if (checkGameDisabled(selectedGameType.value)) {
        for (const cat of dynamicCategories.value) {
@@ -159,24 +166,13 @@ const isUnitLocked = computed(() => {
   return accessSettings.value.locked_units.includes(`${selectedVersion.value}|${selectedVolume.value}|${selectedUnit.value}`);
 });
 
-// 🌟 核心：動態判定遊戲是否被鎖住
 const checkGameDisabled = (gameId) => {
-    // 1. 全校封鎖黑名單
     if (accessSettings.value.disabled_games?.includes(gameId)) return true;
-    
-    // 2. 雙人對戰模式的總開關
     const gData = gameDict[gameId];
-    if (gData && gData.pvpKey && pvpStatus.value) {
-        if (pvpStatus.value[gData.pvpKey] === false) return true;
-    }
-
-    // 3. 學生專屬白名單：如果陣列裡沒有 'ALL'，且這款遊戲不在他的白名單內，就鎖定！
+    if (gData && gData.pvpKey && pvpStatus.value) { if (pvpStatus.value[gData.pvpKey] === false) return true; }
     if (studentAllowedGames.value && !studentAllowedGames.value.includes('ALL')) {
-        if (!studentAllowedGames.value.includes(gameId)) {
-            return true; 
-        }
+        if (!studentAllowedGames.value.includes(gameId)) return true; 
     }
-
     return false;
 };
 
@@ -259,7 +255,7 @@ onUnmounted(() => removeIdleTracking());
               gameDict[gameId]?.class, 
               { 'active': selectedGameType === gameId, 'is-locked': checkGameDisabled(gameId) }
             ]"
-            @click="if(!checkGameDisabled(gameId)) selectedGameType = gameId"
+            @click="selectedGameType = gameId"
             :disabled="checkGameDisabled(gameId)"
           >
             {{ checkGameDisabled(gameId) ? '🔒 ' : '' }}{{ gameDict[gameId]?.name || gameId }}
@@ -299,7 +295,6 @@ onUnmounted(() => removeIdleTracking());
 .game-btn.active { background: var(--tab-active-bg); color: var(--tab-active-text); border-color: var(--primary-color); transform: scale(1.02); box-shadow: 0 0 10px rgba(0,0,0,0.2);}
 .game-btn.full-width { grid-column: 1 / -1; }
 
-/* 🌟 鎖定狀態樣式 */
 .game-btn.is-locked { 
   opacity: 0.5; 
   filter: grayscale(100%); 
@@ -317,7 +312,6 @@ onUnmounted(() => removeIdleTracking());
 .retro-btn { font-weight: 900; border: var(--border-width) solid var(--border-color); border-radius: var(--radius-element); box-shadow: var(--shadow-btn); cursor: pointer; transition: 0.1s; text-align: center; }
 .retro-btn:active:not(:disabled) { transform: var(--transform-active); box-shadow: var(--shadow-btn-active); }
 
-/* 個別遊戲特殊顏色 (延續您的原始設計) */
 .speak-btn { background: #e3f2fd; color: #1565c0; border-color: #1976d2;}
 .exam-btn { background: #fff3e0; color: #e65100; border-color: #ff9800;}
 .game-pinball { background: #fce4ec; color: #c2185b; border-color: #e91e63;}
