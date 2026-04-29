@@ -612,8 +612,8 @@ const handleNetworkEvent = (event) => {
     if (matchStatus.value !== 'playing') return;
 
     totalTurns.value++; 
-    
-    const isP1Attacking = event.attacker_id === p1.value.id;
+
+    const isP1Attacking = String(event.attacker_id) === String(p1.value.id);
     const attacker = isP1Attacking ? p1.value : p2.value;
     const defender = isP1Attacking ? p2.value : p1.value;
     const attackerSide = isP1Attacking ? 'p1' : 'p2';
@@ -653,7 +653,7 @@ const handleNetworkEvent = (event) => {
         return; 
     }
 
-    if (event.attacker_id !== String(studentCookie.value.id)) attacker.score += 10;
+    if (String(event.attacker_id) !== String(studentCookie.value.id)) attacker.score += 10;
 
     if (event.target_index === -4) {
         sfx.dispel(); defender.formation = '散開之陣'; defender.stealthStartTurn = -1;
