@@ -54,10 +54,7 @@ const gameDict = {
   'examRead2': { name: '📜 會考閱讀考古學(題組)', path: '/game-examRead2', class: 'exam-btn full-width' },
   'gramAmuPark': { name: '🎡 文法遊樂園', path: '/game-gramAmuPark', class: 'exam-btn full-width' },
   'noropejump': { name: '🏃‍♂️ 單字無繩式跳繩', path: '/game-noropejump', class: 'exam-btn full-width' },
-  
-  // ✨ 已修正：改為單字飛鼠射擊，並更換 ID 與樣式
   'vocshooting': { name: '🔫 單字飛鼠射擊', path: '/game-vocshooting', class: 'shooting-btn full-width' },
-
   'battle': { name: '⚔️ 單字方塊陣', path: '/game-battle', class: 'battle-btn full-width', pvpKey: 'enable_battle' },
   'tenchi': { name: '🐎 吞食天地', path: '/game-tenchi', class: 'tenchi-btn', pvpKey: 'enable_tenchi' },
   'tarot21': { name: '🃏 塔羅 21 點', path: '/game-tarot21', class: 'tarot-btn', pvpKey: 'enable_tarot21' },
@@ -74,6 +71,9 @@ const accessSettings = ref({
   disabled_games: [], locked_units: [], restrict_play_time: false, allow_play_days: [1,2,3,4,5,6,0], allow_play_start: '00:00', allow_play_end: '23:59'
 });
 
+// 🌟 新增：學生的專屬白名單 (預設為 ALL 全開)
+const studentAllowedGames = ref(['ALL']);
+
 onMounted(async () => {
   const { data: vData } = await supabase.from('vocabularies').select('version, volume, unit').limit(10000);
   if (vData) {
@@ -86,30 +86,31 @@ onMounted(async () => {
   if (settings) {
     if (settings.game_categories) {
       dynamicCategories.value = settings.game_categories;
-      
-      // ✨ 已修正：自動將飛鼠射擊加入選單，確保學生看得到
       const hasShooting = dynamicCategories.value.some(cat => cat.games.includes('vocshooting'));
-      if (!hasShooting && dynamicCategories.value.length > 0) {
-        dynamicCategories.value[0].games.push('vocshooting');
-      }
+      if (!hasShooting && dynamicCategories.value.length > 0) dynamicCategories.value[0].games.push('vocshooting');
     }
     
     pvpStatus.value = {
-      enable_battle: settings.enable_battle === true,
-      enable_tenchi: settings.enable_tenchi === true,
-      enable_tarot21: settings.enable_tarot21 === true,
-      enable_tarot_alch: settings.enable_tarot_alch === true,
+      enable_battle: settings.enable_battle === true, enable_tenchi: settings.enable_tenchi === true,
+      enable_tarot21: settings.enable_tarot21 === true, enable_tarot_alch: settings.enable_tarot_alch === true,
       enable_tarot_uno: settings.enable_tarot_uno === true
     };
     accessSettings.value = {
-      disabled_games: settings.disabled_games || [],
-      locked_units: settings.locked_units || [],
-      restrict_play_time: settings.restrict_play_time || false,
-      allow_play_days: settings.allow_play_days || [1,2,3,4,5,6,0],
+      disabled_games: settings.disabled_games || [], locked_units: settings.locked_units || [],
+      restrict_play_time: settings.restrict_play_time || false, allow_play_days: settings.allow_play_days || [1,2,3,4,5,6,0],
       allow_play_start: settings.allow_play_start ? settings.allow_play_start.substring(0,5) : '00:00',
       allow_play_end: settings.allow_play_end ? settings.allow_play_end.substring(0,5) : '23:59'
     };
   }
+
+  // 🌟 新增：讀取目前登入學生的白名單設定 (匿名訪客預設全開)
+  if (studentCookie.value && !studentCookie.value.isAnon) {
+    const { data: stuData } = await supabase.from('students').select('allowed_games').eq('id', studentCookie.value.id).single();
+    if (stuData && stuData.allowed_games) {
+      studentAllowedGames.value = stuData.allowed_games;
+    }
+  }
+
   setupIdleTracking(); resetIdleTimer();
 });
 
@@ -144,16 +145,35 @@ const isUnitLocked = computed(() => {
   return accessSettings.value.locked_units.includes(`${selectedVersion.value}|${selectedVolume.value}|${selectedUnit.value}`);
 });
 
+// 🌟 核心：判定遊戲是否被鎖住
 const checkGameDisabled = (gameId) => {
+    // 1. 全校封鎖黑名單
     if (accessSettings.value.disabled_games.includes(gameId)) return true;
+    
+    // 2. 雙人對戰模式的總開關
     const gData = gameDict[gameId];
     if (gData && gData.pvpKey && !pvpStatus.value[gData.pvpKey]) return true;
+
+    // 🌟 3. 學生專屬白名單：如果陣列裡沒有 'ALL'，且這款遊戲不在他的白名單內，就鎖定！
+    if (!studentAllowedGames.value.includes('ALL') && !studentAllowedGames.value.includes(gameId)) {
+        return true; 
+    }
+
     return false;
 };
 
 const handleStartGame = async () => {
   if (!isTimeAllowed.value) { errorMsg.value = '⚠️ 目前非開放遊玩時段！'; return; }
-  if (checkGameDisabled(selectedGameType.value)) { errorMsg.value = '⚠️ 此遊戲目前維護中，已被禁用！'; return; }
+  
+  // 開始前再防呆一次，避免有駭客改前端按鈕
+  if (checkGameDisabled(selectedGameType.value)) { 
+      if (!studentAllowedGames.value.includes('ALL') && !studentAllowedGames.value.includes(selectedGameType.value)) {
+          errorMsg.value = '⚠️ 老師目前沒有開放這個遊戲給您玩喔！'; 
+      } else {
+          errorMsg.value = '⚠️ 此遊戲目前全校維護中，已被禁用！'; 
+      }
+      return; 
+  }
 
   if (isNoUnitGame.value) {
     isLoading.value = true;
