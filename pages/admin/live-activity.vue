@@ -27,7 +27,7 @@ const displayClasses = computed(() => {
 });
 
 const selectedClass = ref('ALL');
-const activityData = ref({}); // 存放分類後的學生資料
+const activityData = ref({}); 
 
 const timeAgo = (dateStr) => {
   if (!dateStr) return '';
@@ -54,7 +54,7 @@ const fetchActivity = async () => {
     return;
   }
 
-  // 2. 抓取今天的登入與遊戲紀錄 (為了效能，一次抓今天全部再比對)
+  // 2. 抓取今天的登入與遊戲紀錄
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const todayStr = today.toISOString();
@@ -102,6 +102,35 @@ const fetchActivity = async () => {
   isLoading.value = false;
 };
 
+// ✨ 新增：一鍵強制全體登出邏輯
+const forceLogoutAll = async () => {
+  const confirmMsg = `⚠️ 確定要執行「強制全體登出」嗎？\n\n系統將會把所有「未正常登出」的紀錄標記為已登出。\n這能有效清除忘記按登出就關閉網頁的「幽靈上線狀態」。`;
+  
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    isLoading.value = true;
+    const now = new Date().toISOString();
+    
+    // 將所有 logout_time 為 null 的登入紀錄強制填上現在時間
+    const { data, error } = await supabase
+      .from('login_logs')
+      .update({ logout_time: now })
+      .is('logout_time', null)
+      .select('id');
+
+    if (error) throw error;
+
+    alert(`🧹 清理完成！\n共將 ${data ? data.length : 0} 個幽靈帳號標記為已登出。`);
+    await fetchActivity(); // 重新整理畫面
+  } catch (err) {
+    console.error("強制登出失敗", err);
+    alert("強制登出發生錯誤：" + err.message);
+  } finally {
+    isLoading.value = false;
+  }
+};
+
 onMounted(() => {
   if (displayClasses.value.length > 0 && !isSuperAdmin.value) {
     selectedClass.value = displayClasses.value[0];
@@ -123,14 +152,22 @@ onUnmounted(() => {
         <h1>📡 學生即時動態</h1>
         <NuxtLink to="/admin" class="retro-btn btn-back">⬅ 返回</NuxtLink>
       </div>
+      
       <div class="controls">
         <select v-model="selectedClass" @change="fetchActivity" class="retro-input">
           <option value="ALL">顯示全部授權班級</option>
           <option v-for="cls in displayClasses" :key="cls" :value="cls">{{ cls }} 班</option>
         </select>
-        <button class="retro-btn btn-refresh" @click="fetchActivity" :disabled="isLoading">
-          {{ isLoading ? '🔄 讀取中...' : '🔄 立即重整' }}
-        </button>
+        
+        <div class="action-buttons">
+          <button class="retro-btn btn-refresh" @click="fetchActivity" :disabled="isLoading">
+            {{ isLoading ? '🔄 讀取中...' : '🔄 立即重整' }}
+          </button>
+          
+          <button class="retro-btn btn-danger" @click="forceLogoutAll" :disabled="isLoading" title="清除忘記登出的幽靈綠燈">
+            🧹 強制全體登出
+          </button>
+        </div>
       </div>
     </div>
     
@@ -176,7 +213,9 @@ onUnmounted(() => {
 .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px dashed #ccc; padding-bottom: 15px; margin-bottom: 10px; flex-wrap: wrap; gap: 15px;}
 .title-area { display: flex; align-items: center; gap: 15px; }
 .title-area h1 { margin: 0; color: #1565c0; font-weight: 900; }
-.controls { display: flex; gap: 10px; align-items: center; }
+
+.controls { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
+.action-buttons { display: flex; gap: 10px; }
 
 .refresh-note { text-align: right; color: #757575; font-size: 0.9rem; font-weight: bold; margin-bottom: 20px;}
 .empty-msg { text-align: center; color: #999; font-size: 1.2rem; margin-top: 50px; font-weight: bold; }
@@ -205,11 +244,19 @@ onUnmounted(() => {
 .retro-btn { padding: 8px 15px; font-weight: 900; border: 2px solid #333; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-block; transition: 0.1s;}
 .retro-btn:active:not(:disabled) { transform: translateY(2px); }
 .retro-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
 .btn-back { background: #e0e0e0; color: #333; }
 .btn-refresh { background: #ff9800; color: white; border-color: #e65100; box-shadow: 0 3px 0 #e65100;}
 .btn-refresh:active:not(:disabled) { box-shadow: none; }
+.btn-danger { background: #f44336; color: white; border-color: #c62828; box-shadow: 0 3px 0 #c62828;}
+.btn-danger:active:not(:disabled) { box-shadow: none; }
+
 .retro-input { padding: 8px 12px; border: 2px solid #ccc; border-radius: 8px; font-weight: bold; font-size: 1rem; outline: none;}
 
 @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.2); opacity: 0.8; } 100% { transform: scale(1); opacity: 1; } }
-@media (max-width: 600px) { .header { flex-direction: column; align-items: flex-start; } .controls { width: 100%; justify-content: space-between; } }
+@media (max-width: 600px) { 
+  .header { flex-direction: column; align-items: flex-start; } 
+  .controls { width: 100%; justify-content: space-between; } 
+  .action-buttons { width: 100%; justify-content: flex-end; }
+}
 </style>
