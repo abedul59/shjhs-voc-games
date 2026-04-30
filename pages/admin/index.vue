@@ -203,7 +203,7 @@ const clearGhostRooms = async () => {
       <NuxtLink to="/admin/logs" class="retro-btn log-btn">🕒 登入紀錄</NuxtLink>
       <NuxtLink to="/admin/student-logs" class="retro-btn test-btn">👣 學生足跡</NuxtLink>
       <NuxtLink to="/admin/live-activity" class="retro-btn" style="background: #4caf50; color: white; border-color: #2e7d32; box-shadow: 0 4px 0 #2e7d32;">📡 學生即時動態</NuxtLink>
-      <NuxtLink to="/admin/students" class="retro-btn student-btn" style="grid-column: span 2;">🧑‍🎓 學生名單管理</NuxtLink>
+      
       <NuxtLink to="/admin/grammar-stats" class="retro-btn nav-btn" style="background: #e65100; border-color: #e65100;">🎡 學生文法答題分析</NuxtLink>
       <NuxtLink to="/admin/exam-stats" class="retro-btn nav-btn" style="background: #00bcd4; border-color: #00838f;">📈 會考單題數據分析</NuxtLink>
       <NuxtLink to="/admin/exam-stats2" class="retro-btn nav-btn" style="background: #00bcd4; border-color: #00838f;">📈 會考題組數據分析</NuxtLink>
@@ -230,7 +230,7 @@ const clearGhostRooms = async () => {
         </div>
 
         <NuxtLink to="/admin/manage-grammar" class="retro-btn nav-btn" style="background: #e65100; border-color: #e65100;">🎡 文法題庫管理</NuxtLink>
-
+        <NuxtLink to="/admin/students" class="retro-btn student-btn" style="grid-column: span 2;">🧑‍🎓 學生名單管理</NuxtLink>
         <NuxtLink to="/admin/teacher-logs" class="retro-btn" style="background: #e91e63; color: white; border-color: #c2185b; box-shadow: 0 4px 0 #c2185b;">🕵️ 教師足跡追蹤</NuxtLink>
         <NuxtLink to="/admin/teachers" class="retro-btn teacher-btn" style="grid-column: span 2; background: #9c27b0; color: white;">👨‍🏫 教師權限管理</NuxtLink>
         <NuxtLink to="/admin/vocabularies" class="retro-btn vocab-btn">📝 編輯單字庫</NuxtLink>
