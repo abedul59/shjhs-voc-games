@@ -8,14 +8,13 @@ const supabase = useSupabaseClient();
 const clauses = ref([]);
 const isLoading = ref(true);
 const isUploading = ref(false);
-const viewMode = ref('single'); // 'single': 逐條觀看, 'all': 全覽觀看
+const viewMode = ref('single'); 
 
 const searchQuery = ref('');
 const selectedClause = ref(null);
 const selectedIds = ref([]);
 const floatingReference = ref(null);
 
-// 🌟 複數網址新增專用狀態
 const newUrlLabel = ref('');
 const newUrlLink = ref('');
 
@@ -23,7 +22,6 @@ const fetchClauses = async () => {
   isLoading.value = true;
   const { data } = await supabase.from('civil_law_clauses').select('*');
   if (data) {
-    // 確保 urls 必定為陣列格式，避免點擊崩潰
     clauses.value = data.map(c => {
       let parsedUrls = [];
       if (typeof c.urls === 'string') {
@@ -44,7 +42,6 @@ const fetchClauses = async () => {
 
 onMounted(fetchClauses);
 
-// 章節樹狀結構化
 const groupedClauses = computed(() => {
   const groups = {};
   const data = searchQuery.value 
@@ -61,20 +58,17 @@ const groupedClauses = computed(() => {
   return groups;
 });
 
-// 過濾後的平坦陣列 (供全覽模式使用)
 const filteredFlatClauses = computed(() => {
   if (!searchQuery.value) return clauses.value;
   return clauses.value.filter(c => c.title.includes(searchQuery.value) || c.content.includes(searchQuery.value));
 });
 
-// 選擇法條並切換到逐條模式
 const selectClause = (clause) => {
   selectedClause.value = clause;
   viewMode.value = 'single';
-  window.scrollTo({ top: 0, behavior: 'smooth' }); // 手機版切換時置頂
+  window.scrollTo({ top: 0, behavior: 'smooth' }); 
 };
 
-// 🌟 自動儲存筆記與網址
 const saveCurrentData = async (clause) => {
   if (!clause) return;
   const { error } = await supabase.from('civil_law_clauses')
@@ -83,7 +77,6 @@ const saveCurrentData = async (clause) => {
   if (error) alert('儲存失敗: ' + error.message);
 };
 
-// 🌟 網址管理：新增與刪除
 const addNewUrl = async (clause) => {
   if (!newUrlLabel.value || !newUrlLink.value) return alert('請輸入名稱與網址');
   if (!clause.urls) clause.urls = [];
@@ -101,7 +94,40 @@ const removeUrl = async (clause, index) => {
   await saveCurrentData(clause);
 };
 
-// 🌟 自動偵測內文中的「第 XX 條」與中文數字跳轉
+// 🌟 新增：將中文數字轉換為阿拉伯數字的轉換器
+const parseNum = (str) => {
+  if (!str) return '';
+  if (/^\d+$/.test(str)) return parseInt(str, 10).toString(); // 本身就是數字
+  
+  const dict = { '〇':0, '零':0, '一':1, '二':2, '三':3, '四':4, '五':5, '六':6, '七':7, '八':8, '九':9, '十':10, '百':100, '千':1000 };
+  let total = 0;
+  let current = 0;
+  for (let i = 0; i < str.length; i++) {
+    let val = dict[str[i]];
+    if (val === undefined) continue;
+    if (val >= 10) {
+      if (current === 0) current = 1;
+      total += current * val;
+      current = 0;
+    } else {
+      current = val;
+    }
+  }
+  total += current;
+  return total.toString();
+};
+
+// 🌟 解析法條文字，並標準化為 "15" 或 "121-1"
+const getNormalizedArticleNum = (rawText) => {
+  let text = rawText.replace(/\s/g, ''); // 移除多餘空白
+  let match = text.match(/^第(.+)條(?:之(.+))?$/); // 匹配 第XX條 或 第XX條之XX
+  if (!match) return null;
+  
+  let mainNum = parseNum(match[1]);
+  let subNum = match[2] ? '-' + parseNum(match[2]) : '';
+  return mainNum + subNum;
+};
+
 const parseContentWithLinks = (text) => {
   if (!text) return '';
   const regex = /(第\s*[0-9一二三四五六七八九十百千-]+[條之]*[0-9一二三四五六七八九十百千-]*\s*條)/g;
@@ -117,18 +143,19 @@ const parseContentWithLinks = (text) => {
 const handleContentClick = (e) => {
   if (e.target.classList.contains('ref-btn')) {
     const rawText = e.target.getAttribute('data-raw');
-    const cleanTarget = rawText.replace(/\s/g, '');
-    const target = clauses.value.find(c => {
-      const cleanTitle = c.title.replace(/\s/g, '');
-      return cleanTitle === cleanTarget || c.article_num === rawText.match(/[0-9-]+/)?.[0];
-    });
+    const convertedNum = getNormalizedArticleNum(rawText);
     
-    if (target) floatingReference.value = target;
-    else alert(`系統暫時無法定位：${rawText}`);
+    // 透過轉換後的數字去尋找法條
+    const target = clauses.value.find(c => c.article_num === convertedNum);
+    
+    if (target) {
+      floatingReference.value = target;
+    } else {
+      alert(`系統暫時無法定位：${rawText} (解析為條號 ${convertedNum})`);
+    }
   }
 };
 
-// 🌟 匯入/匯出與批次刪除
 const handleImport = (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -415,7 +442,7 @@ const clearAll = async () => {
   .card-side { width: 100%; flex-direction: row; justify-content: space-between; border-right: none; border-bottom: 1px solid #e2e8f0; padding: 15px 20px;}
   .card-main { padding: 20px 15px; }
 
-  /* 手機版浮動視窗改為底部彈出 (Bottom Sheet) */
+  /* 手機版浮動視窗改為底部彈出 */
   .floating-modal-overlay { align-items: flex-end; }
   .floating-modal { width: 100%; border-radius: 24px 24px 0 0; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
 }
