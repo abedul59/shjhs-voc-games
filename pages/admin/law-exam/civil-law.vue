@@ -18,6 +18,10 @@ const floatingReference = ref(null);
 const newUrlLabel = ref('');
 const newUrlLink = ref('');
 
+// 🌟 手動儲存狀態
+const isSaving = ref(false);
+const showSavedToast = ref(false);
+
 const fetchClauses = async () => {
   isLoading.value = true;
   const { data } = await supabase.from('civil_law_clauses').select('*');
@@ -66,17 +70,29 @@ const filteredFlatClauses = computed(() => {
 const selectClause = (clause) => {
   selectedClause.value = clause;
   viewMode.value = 'single';
+  showSavedToast.value = false; // 切換法條時重置儲存提示
   window.scrollTo({ top: 0, behavior: 'smooth' }); 
 };
 
-const saveCurrentData = async (clause) => {
+// 🌟 手動儲存功能 (取代原本的 blur 自動儲存)
+const saveManual = async (clause) => {
   if (!clause) return;
+  isSaving.value = true;
   const { error } = await supabase.from('civil_law_clauses')
     .update({ notes: clause.notes, urls: clause.urls })
     .eq('id', clause.id);
-  if (error) alert('儲存失敗: ' + error.message);
+  
+  isSaving.value = false;
+  
+  if (error) {
+    alert('儲存失敗: ' + error.message);
+  } else {
+    showSavedToast.value = true;
+    setTimeout(() => { showSavedToast.value = false; }, 2500); // 2.5秒後隱藏提示
+  }
 };
 
+// 🌟 網址管理 (新增/刪除後自動觸發儲存，保持流暢)
 const addNewUrl = async (clause) => {
   if (!newUrlLabel.value || !newUrlLink.value) return alert('請輸入名稱與網址');
   if (!clause.urls) clause.urls = [];
@@ -86,18 +102,18 @@ const addNewUrl = async (clause) => {
   
   clause.urls.push({ label: newUrlLabel.value, url: link });
   newUrlLabel.value = ''; newUrlLink.value = '';
-  await saveCurrentData(clause);
+  await saveManual(clause);
 };
 
 const removeUrl = async (clause, index) => {
   clause.urls.splice(index, 1);
-  await saveCurrentData(clause);
+  await saveManual(clause);
 };
 
-// 🌟 新增：將中文數字轉換為阿拉伯數字的轉換器
+// 中文數字轉阿拉伯數字
 const parseNum = (str) => {
   if (!str) return '';
-  if (/^\d+$/.test(str)) return parseInt(str, 10).toString(); // 本身就是數字
+  if (/^\d+$/.test(str)) return parseInt(str, 10).toString(); 
   
   const dict = { '〇':0, '零':0, '一':1, '二':2, '三':3, '四':4, '五':5, '六':6, '七':7, '八':8, '九':9, '十':10, '百':100, '千':1000 };
   let total = 0;
@@ -117,10 +133,9 @@ const parseNum = (str) => {
   return total.toString();
 };
 
-// 🌟 解析法條文字，並標準化為 "15" 或 "121-1"
 const getNormalizedArticleNum = (rawText) => {
-  let text = rawText.replace(/\s/g, ''); // 移除多餘空白
-  let match = text.match(/^第(.+)條(?:之(.+))?$/); // 匹配 第XX條 或 第XX條之XX
+  let text = rawText.replace(/\s/g, ''); 
+  let match = text.match(/^第(.+)條(?:之(.+))?$/); 
   if (!match) return null;
   
   let mainNum = parseNum(match[1]);
@@ -145,7 +160,6 @@ const handleContentClick = (e) => {
     const rawText = e.target.getAttribute('data-raw');
     const convertedNum = getNormalizedArticleNum(rawText);
     
-    // 透過轉換後的數字去尋找法條
     const target = clauses.value.find(c => c.article_num === convertedNum);
     
     if (target) {
@@ -205,8 +219,8 @@ const clearAll = async () => {
         <div class="header-top">
           <NuxtLink to="/admin/law-exam" class="back-link">← 回專區</NuxtLink>
           <div class="mode-toggle">
-            <button @click="viewMode = 'single'" :class="{ active: viewMode === 'single' }">逐條觀看</button>
-            <button @click="viewMode = 'all'" :class="{ active: viewMode === 'all' }">全部觀看</button>
+            <button @click="viewMode = 'single'" :class="{ active: viewMode === 'single' }">逐條</button>
+            <button @click="viewMode = 'all'" :class="{ active: viewMode === 'all' }">全覽</button>
           </div>
         </div>
         
@@ -262,9 +276,19 @@ const clearAll = async () => {
           <div class="notes-section">
             <div class="notes-header">
               <h3>📝 筆記與實務見解</h3>
-              <span class="auto-save-tag">離開輸入框自動儲存</span>
+              <div class="save-actions">
+                <span v-if="showSavedToast" class="save-success-tag">✅ 已儲存</span>
+                <button @click="saveManual(selectedClause)" class="btn-save-manual" :disabled="isSaving">
+                  {{ isSaving ? '儲存中...' : '💾 儲存筆記' }}
+                </button>
+              </div>
             </div>
-            <textarea v-model="selectedClause.notes" @blur="saveCurrentData(selectedClause)" class="note-edit" placeholder="輸入您的筆記..."></textarea>
+            
+            <textarea 
+              v-model="selectedClause.notes" 
+              class="note-edit" 
+              placeholder="在此貼上實務見解... (將自動保留原始網頁的換行與排版)"
+            ></textarea>
             
             <div class="urls-manager">
               <h4 class="url-section-title">🔗 參考網址</h4>
@@ -298,7 +322,7 @@ const clearAll = async () => {
             </div>
             <div class="card-main">
               <div class="card-content" v-html="parseContentWithLinks(c.content)" @click="handleContentClick"></div>
-              <div v-if="c.notes" class="card-note-preview">💡 {{ c.notes }}</div>
+              <div v-if="c.notes" class="card-note-preview">{{ c.notes }}</div>
               <div v-if="c.urls && c.urls.length" class="card-url-preview">
                 <a v-for="(u, idx) in c.urls" :key="idx" :href="u.url" target="_blank" class="preview-url-item">🔗 {{ u.label }}</a>
               </div>
@@ -317,7 +341,7 @@ const clearAll = async () => {
         <div class="float-body">
           <p class="float-content-text">{{ floatingReference.content }}</p>
           <div v-if="floatingReference.notes" class="float-note-preview">
-            <strong>筆記：</strong> {{ floatingReference.notes }}
+            <strong>筆記：</strong><br>{{ floatingReference.notes }}
           </div>
           <button @click="selectClause(floatingReference); floatingReference = null" class="btn-jump-main">查看完整條文與編輯 ➔</button>
         </div>
@@ -330,7 +354,7 @@ const clearAll = async () => {
 .law-layout { display: flex; height: 100vh; background: #f8fafc; font-family: 'Helvetica Neue', Arial, sans-serif; overflow: hidden; }
 
 /* 側邊欄與模式切換 */
-.sidebar { width: 360px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; }
+.sidebar { width: 340px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; }
 .sidebar-header { padding: 15px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
 .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
 .back-link { font-size: 13px; font-weight: bold; color: #4f46e5; text-decoration: none; }
@@ -368,7 +392,7 @@ const clearAll = async () => {
 .content-box { background: white; padding: 35px; border-radius: 16px; border: 1px solid #e2e8f0; line-height: 1.8; font-size: 18px; margin-bottom: 30px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
 .content-text { white-space: pre-wrap; color: #334155;}
 
-/* 🌟 強化的參照按鈕 */
+/* 參照按鈕 */
 :deep(.ref-btn) { 
   background: #e0e7ff; color: #4338ca; border: none; 
   padding: 2px 8px; border-radius: 4px; font-size: 15px; font-weight: 800; 
@@ -376,12 +400,18 @@ const clearAll = async () => {
 }
 :deep(.ref-btn:hover) { background: #4f46e5; color: white; transform: translateY(-1px); }
 
-/* 筆記與網址管理 */
+/* 🌟 筆記區與手動儲存按鈕 */
 .notes-section { background: white; padding: 30px; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
 .notes-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
 .notes-header h3 { margin: 0; font-size: 18px; color: #1e293b; }
-.auto-save-tag { font-size: 11px; color: #10b981; font-weight: bold; background: #d1fae5; padding: 4px 10px; border-radius: 12px; }
-.note-edit { width: 100%; height: 150px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fffbeb; font-family: inherit; font-size: 15px; line-height: 1.6; resize: vertical; outline: none; margin-bottom: 25px;}
+.save-actions { display: flex; align-items: center; gap: 10px; }
+.save-success-tag { font-size: 13px; color: #10b981; font-weight: bold; animation: fadeIn 0.2s; }
+.btn-save-manual { background: #10b981; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 4px rgba(16,185,129,0.2); }
+.btn-save-manual:hover:not(:disabled) { background: #059669; transform: translateY(-1px); }
+.btn-save-manual:disabled { opacity: 0.7; cursor: not-allowed; }
+
+/* 確保 textarea 保留換行排版 */
+.note-edit { width: 100%; height: 250px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fffbeb; font-family: inherit; font-size: 15px; line-height: 1.6; resize: vertical; outline: none; margin-bottom: 25px; white-space: pre-wrap; }
 .note-edit:focus { border-color: #fbbf24; box-shadow: 0 0 0 4px rgba(251,191,36,0.1); }
 
 .url-section-title { font-size: 16px; color: #475569; margin: 0 0 15px 0; border-top: 1px solid #f1f5f9; padding-top: 20px;}
@@ -407,7 +437,8 @@ const clearAll = async () => {
 .btn-jump-edit:hover { background: #4f46e5; color: white;}
 .card-main { flex: 1; padding: 25px; }
 .card-content { font-size: 17px; line-height: 1.8; color: #334155; white-space: pre-wrap;}
-.card-note-preview { margin-top: 15px; padding: 12px 15px; background: #fffbeb; border-radius: 8px; font-size: 14px; color: #854d0e; border-left: 4px solid #fbbf24;}
+/* 確保全覽模式預覽保留換行 */
+.card-note-preview { margin-top: 15px; padding: 12px 15px; background: #fffbeb; border-radius: 8px; font-size: 14px; color: #854d0e; border-left: 4px solid #fbbf24; white-space: pre-wrap; line-height: 1.6;}
 .card-url-preview { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px;}
 .preview-url-item { background: #e0e7ff; color: #4338ca; padding: 4px 10px; border-radius: 6px; font-size: 12px; text-decoration: none; font-weight: bold;}
 
@@ -420,14 +451,15 @@ const clearAll = async () => {
 .float-header button:hover { color: white; transform: rotate(90deg);}
 .float-body { padding: 25px; max-height: 500px; overflow-y: auto; }
 .float-content-text { line-height: 1.8; font-size: 16px; color: #334155; margin: 0 0 20px 0; white-space: pre-wrap;}
-.float-note-preview { background: #fef9c3; padding: 15px; border-radius: 12px; font-size: 14px; color: #854d0e; margin-bottom: 20px; border-left: 4px solid #fbbf24;}
+/* 確保浮動視窗預覽保留換行 */
+.float-note-preview { background: #fef9c3; padding: 15px; border-radius: 12px; font-size: 14px; color: #854d0e; margin-bottom: 20px; border-left: 4px solid #fbbf24; white-space: pre-wrap; line-height: 1.6;}
 .btn-jump-main { width: 100%; padding: 14px; background: #4f46e5; border: none; border-radius: 10px; font-weight: 800; font-size: 15px; color: white; cursor: pointer; transition: 0.2s;}
 .btn-jump-main:hover { background: #4338ca; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);}
 
 @keyframes popUp { from { transform: scale(0.95) translateY(10px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-/* 🌟 手機版 (Mobile) 完美適應 */
+/* 手機版 (Mobile) */
 @media (max-width: 768px) {
   .law-layout { flex-direction: column; overflow: auto; }
   .sidebar { width: 100%; height: 35vh; border-right: none; border-bottom: 2px solid #e2e8f0; }
@@ -442,7 +474,6 @@ const clearAll = async () => {
   .card-side { width: 100%; flex-direction: row; justify-content: space-between; border-right: none; border-bottom: 1px solid #e2e8f0; padding: 15px 20px;}
   .card-main { padding: 20px 15px; }
 
-  /* 手機版浮動視窗改為底部彈出 */
   .floating-modal-overlay { align-items: flex-end; }
   .floating-modal { width: 100%; border-radius: 24px 24px 0 0; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
 }
