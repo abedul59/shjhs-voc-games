@@ -8,37 +8,38 @@ const supabase = useSupabaseClient();
 const clauses = ref([]);
 const isLoading = ref(true);
 const isUploading = ref(false);
-const viewMode = ref('single'); // 'single' (逐條) or 'all' (全部)
+const viewMode = ref('single'); // 'single': 逐條觀看, 'all': 全覽觀看
 
 const searchQuery = ref('');
 const selectedClause = ref(null);
 const selectedIds = ref([]);
 const floatingReference = ref(null);
 
-// 🌟 用於新增網址的暫存狀態
+// 🌟 複數網址新增專用狀態
 const newUrlLabel = ref('');
 const newUrlLink = ref('');
-
-// 🌟 中文數字轉阿拉伯數字對照表 (用於偵測跳轉)
-const chineseToNum = (text) => {
-  const table = { '〇':0,'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10,'百':100,'千':1000 };
-  let result = 0, temp = 0, section = 0;
-  // 這裡我們簡化處理，因為條號通常不超過 2000。
-  // 更穩健的方法是正則匹配，但針對條號搜尋，我們可以直接比對標題。
-  return text; 
-};
 
 const fetchClauses = async () => {
   isLoading.value = true;
   const { data } = await supabase.from('civil_law_clauses').select('*');
   if (data) {
-    clauses.value = data.sort((a, b) => {
+    // 確保 urls 必定為陣列格式，避免點擊崩潰
+    clauses.value = data.map(c => {
+      let parsedUrls = [];
+      if (typeof c.urls === 'string') {
+        try { parsedUrls = JSON.parse(c.urls); } catch(e) { parsedUrls = []; }
+      } else if (Array.isArray(c.urls)) {
+        parsedUrls = c.urls;
+      }
+      return { ...c, urls: parsedUrls };
+    }).sort((a, b) => {
       const numA = parseFloat(a.article_num.replace('-', '.'));
       const numB = parseFloat(b.article_num.replace('-', '.'));
       return numA - numB;
     });
   }
   isLoading.value = false;
+  selectedIds.value = []; 
 };
 
 onMounted(fetchClauses);
@@ -60,10 +61,49 @@ const groupedClauses = computed(() => {
   return groups;
 });
 
-// 🌟 自動偵測內文中的「第 XX 條」
+// 過濾後的平坦陣列 (供全覽模式使用)
+const filteredFlatClauses = computed(() => {
+  if (!searchQuery.value) return clauses.value;
+  return clauses.value.filter(c => c.title.includes(searchQuery.value) || c.content.includes(searchQuery.value));
+});
+
+// 選擇法條並切換到逐條模式
+const selectClause = (clause) => {
+  selectedClause.value = clause;
+  viewMode.value = 'single';
+  window.scrollTo({ top: 0, behavior: 'smooth' }); // 手機版切換時置頂
+};
+
+// 🌟 自動儲存筆記與網址
+const saveCurrentData = async (clause) => {
+  if (!clause) return;
+  const { error } = await supabase.from('civil_law_clauses')
+    .update({ notes: clause.notes, urls: clause.urls })
+    .eq('id', clause.id);
+  if (error) alert('儲存失敗: ' + error.message);
+};
+
+// 🌟 網址管理：新增與刪除
+const addNewUrl = async (clause) => {
+  if (!newUrlLabel.value || !newUrlLink.value) return alert('請輸入名稱與網址');
+  if (!clause.urls) clause.urls = [];
+  
+  let link = newUrlLink.value;
+  if (!link.startsWith('http')) link = 'https://' + link;
+  
+  clause.urls.push({ label: newUrlLabel.value, url: link });
+  newUrlLabel.value = ''; newUrlLink.value = '';
+  await saveCurrentData(clause);
+};
+
+const removeUrl = async (clause, index) => {
+  clause.urls.splice(index, 1);
+  await saveCurrentData(clause);
+};
+
+// 🌟 自動偵測內文中的「第 XX 條」與中文數字跳轉
 const parseContentWithLinks = (text) => {
   if (!text) return '';
-  // 正則表達式：支援阿拉伯數字(78)與中文數字(七十八)
   const regex = /(第\s*[0-9一二三四五六七八九十百千-]+[條之]*[0-9一二三四五六七八九十百千-]*\s*條)/g;
   
   return text.split(regex).map(part => {
@@ -77,10 +117,8 @@ const parseContentWithLinks = (text) => {
 const handleContentClick = (e) => {
   if (e.target.classList.contains('ref-btn')) {
     const rawText = e.target.getAttribute('data-raw');
-    // 嘗試比對 title 找到目標 (如 "第 78 條" 或 "第 78-1 條")
-    // 我們將輸入與資料庫中的 title 進行模糊比對
+    const cleanTarget = rawText.replace(/\s/g, '');
     const target = clauses.value.find(c => {
-      const cleanTarget = rawText.replace(/\s/g, '');
       const cleanTitle = c.title.replace(/\s/g, '');
       return cleanTitle === cleanTarget || c.article_num === rawText.match(/[0-9-]+/)?.[0];
     });
@@ -90,12 +128,7 @@ const handleContentClick = (e) => {
   }
 };
 
-const saveCurrentData = async (clause) => {
-  await supabase.from('civil_law_clauses')
-    .update({ notes: clause.notes, urls: clause.urls })
-    .eq('id', clause.id);
-};
-
+// 🌟 匯入/匯出與批次刪除
 const handleImport = (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -104,56 +137,76 @@ const handleImport = (e) => {
     header: true, skipEmptyLines: true,
     complete: async (results) => {
       const { error } = await supabase.from('civil_law_clauses').insert(results.data);
-      if (error) alert(error.message);
-      else fetchClauses();
+      if (error) alert('匯入失敗: ' + error.message);
+      else { alert('成功匯入！'); fetchClauses(); }
       isUploading.value = false;
+      e.target.value = '';
     }
   });
 };
 
-const addNewUrl = (clause) => {
-  if (!newUrlLabel.value || !newUrlLink.value) return;
-  if (!clause.urls) clause.urls = [];
-  let link = newUrlLink.value;
-  if (!link.startsWith('http')) link = 'https://' + link;
-  clause.urls.push({ label: newUrlLabel.value, url: link });
-  newUrlLabel.value = ''; newUrlLink.value = '';
-  saveCurrentData(clause);
+const exportCSV = () => {
+  if (clauses.value.length === 0) return alert('無資料');
+  const csv = Papa.unparse(clauses.value);
+  const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `civil_law_backup.csv`;
+  link.click();
 };
 
-const removeUrl = (clause, index) => {
-  clause.urls.splice(index, 1);
-  saveCurrentData(clause);
+const batchDelete = async () => {
+  if (selectedIds.value.length === 0) return;
+  if (!confirm(`確定刪除選取的 ${selectedIds.value.length} 條法規？此動作無法復原。`)) return;
+  await supabase.from('civil_law_clauses').delete().in('id', selectedIds.value);
+  fetchClauses();
+};
+
+const clearAll = async () => {
+  if (!confirm('🚨 嚴重警告：確定要清空所有民法資料嗎？這將刪除所有筆記與網址。')) return;
+  await supabase.from('civil_law_clauses').delete().neq('article_num', 'CLEAN_ALL');
+  selectedClause.value = null;
+  fetchClauses();
 };
 </script>
 
 <template>
   <div class="law-layout" :class="{ 'mode-all': viewMode === 'all' }">
-    <div class="sidebar" v-if="viewMode === 'single' || !isMobile">
+    
+    <div class="sidebar">
       <div class="sidebar-header">
         <div class="header-top">
           <NuxtLink to="/admin/law-exam" class="back-link">← 回專區</NuxtLink>
           <div class="mode-toggle">
-            <button @click="viewMode = 'single'" :class="{ active: viewMode === 'single' }">逐條</button>
-            <button @click="viewMode = 'all'" :class="{ active: viewMode === 'all' }">全覽</button>
+            <button @click="viewMode = 'single'" :class="{ active: viewMode === 'single' }">逐條觀看</button>
+            <button @click="viewMode = 'all'" :class="{ active: viewMode === 'all' }">全部觀看</button>
           </div>
         </div>
         
         <div class="top-actions">
           <label class="btn-tool primary">📥 匯入<input type="file" @change="handleImport" hidden /></label>
-          <button @click="fetchClauses" class="btn-tool">🔄 刷新</button>
+          <button @click="exportCSV" class="btn-tool">📤 匯出</button>
         </div>
+        <div class="danger-zone">
+          <button @click="batchDelete" class="btn-tool danger" :disabled="!selectedIds.length">
+            🗑️ 刪除選取 ({{selectedIds.length}})
+          </button>
+          <button @click="clearAll" class="btn-tool danger-filled">🔥 全部清空</button>
+        </div>
+        
         <input v-model="searchQuery" class="search-input" placeholder="🔍 搜尋條號或關鍵字..." />
       </div>
 
       <div class="tree-list">
-        <div v-for="(sections, chapter) in groupedClauses" :key="chapter" class="chapter-group">
+        <div v-if="isLoading" class="list-msg">資料載入中...</div>
+        <div v-else v-for="(sections, chapter) in groupedClauses" :key="chapter" class="chapter-group">
           <details open>
             <summary class="chapter-title">{{ chapter }}</summary>
             <div v-for="(items, section) in sections" :key="section" class="section-group">
               <details open>
                 <summary class="section-title">{{ section }}</summary>
                 <div v-for="c in items" :key="c.id" class="clause-item" :class="{active: selectedClause?.id === c.id}">
+                  <input type="checkbox" v-model="selectedIds" :value="c.id" class="q-checkbox" />
                   <span @click="selectClause(c)" class="clause-label">{{ c.title }}</span>
                 </div>
               </details>
@@ -164,8 +217,9 @@ const removeUrl = (clause, index) => {
     </div>
 
     <div class="main-content">
+      
       <div v-if="viewMode === 'single'">
-        <div v-if="!selectedClause" class="empty-state">⚖️ 請從左側目錄選擇法條</div>
+        <div v-if="!selectedClause" class="empty-state">⚖️ 請從左側目錄選擇法條以檢視內容</div>
         <div v-else class="clause-detail">
           <div class="clause-header">
             <div class="title-with-path">
@@ -173,26 +227,32 @@ const removeUrl = (clause, index) => {
               <h1>{{ selectedClause.title }}</h1>
             </div>
           </div>
+          
           <div class="content-box">
             <div class="content-text" v-html="parseContentWithLinks(selectedClause.content)" @click="handleContentClick"></div>
           </div>
 
           <div class="notes-section">
-            <h3>📝 筆記與實務見解</h3>
-            <textarea v-model="selectedClause.notes" @blur="saveCurrentData(selectedClause)" class="note-edit"></textarea>
+            <div class="notes-header">
+              <h3>📝 筆記與實務見解</h3>
+              <span class="auto-save-tag">離開輸入框自動儲存</span>
+            </div>
+            <textarea v-model="selectedClause.notes" @blur="saveCurrentData(selectedClause)" class="note-edit" placeholder="輸入您的筆記..."></textarea>
             
             <div class="urls-manager">
-              <h4>🔗 參考網址</h4>
-              <div class="url-list">
+              <h4 class="url-section-title">🔗 參考網址</h4>
+              <div v-if="selectedClause.urls && selectedClause.urls.length" class="url-list">
                 <div v-for="(linkObj, index) in selectedClause.urls" :key="index" class="url-card">
-                  <a :href="linkObj.url" target="_blank">{{ linkObj.label }}</a>
-                  <button @click="removeUrl(selectedClause, index)">✕</button>
+                  <a :href="linkObj.url" target="_blank" class="url-link-text">{{ linkObj.label }}</a>
+                  <button @click="removeUrl(selectedClause, index)" class="btn-remove-url">✕</button>
                 </div>
               </div>
+              <p v-else class="no-urls">尚未新增網址。</p>
+
               <div class="url-add-form">
-                <input v-model="newUrlLabel" placeholder="名稱" />
-                <input v-model="newUrlLink" placeholder="網址" />
-                <button @click="addNewUrl(selectedClause)">新增</button>
+                <input v-model="newUrlLabel" placeholder="名稱 (如：最高法院判例)" class="url-input" />
+                <input v-model="newUrlLink" placeholder="網址 (https://...)" class="url-input" />
+                <button @click="addNewUrl(selectedClause)" class="btn-add-url">＋ 新增</button>
               </div>
             </div>
           </div>
@@ -201,18 +261,20 @@ const removeUrl = (clause, index) => {
 
       <div v-else class="full-text-view">
         <div class="view-header">
-          <h1>全部條文預覽 ({{clauses.length}} 條)</h1>
-          <button @click="viewMode = 'single'" class="btn-tool">切換回逐條模式</button>
+          <h1>全部條文預覽 ({{ filteredFlatClauses.length }} 條)</h1>
         </div>
         <div class="clauses-container">
-          <div v-for="c in clauses" :key="c.id" class="full-clause-card">
+          <div v-for="c in filteredFlatClauses" :key="c.id" class="full-clause-card">
             <div class="card-side">
               <span class="card-num">{{ c.title }}</span>
-              <button @click="selectClause(c); viewMode = 'single'" class="btn-jump-edit">編輯筆記</button>
+              <button @click="selectClause(c)" class="btn-jump-edit">📝 編輯筆記</button>
             </div>
             <div class="card-main">
               <div class="card-content" v-html="parseContentWithLinks(c.content)" @click="handleContentClick"></div>
               <div v-if="c.notes" class="card-note-preview">💡 {{ c.notes }}</div>
+              <div v-if="c.urls && c.urls.length" class="card-url-preview">
+                <a v-for="(u, idx) in c.urls" :key="idx" :href="u.url" target="_blank" class="preview-url-item">🔗 {{ u.label }}</a>
+              </div>
             </div>
           </div>
         </div>
@@ -222,7 +284,7 @@ const removeUrl = (clause, index) => {
     <div v-if="floatingReference" class="floating-modal-overlay" @click.self="floatingReference = null">
       <div class="floating-modal">
         <div class="float-header">
-          <h4>{{ floatingReference.title }}</h4>
+          <h4>{{ floatingReference.title }} 參照</h4>
           <button @click="floatingReference = null">✕</button>
         </div>
         <div class="float-body">
@@ -230,7 +292,7 @@ const removeUrl = (clause, index) => {
           <div v-if="floatingReference.notes" class="float-note-preview">
             <strong>筆記：</strong> {{ floatingReference.notes }}
           </div>
-          <button @click="selectedClause = floatingReference; floatingReference = null; viewMode = 'single'" class="btn-jump-main">查看完整條文與網址 ➔</button>
+          <button @click="selectClause(floatingReference); floatingReference = null" class="btn-jump-main">查看完整條文與編輯 ➔</button>
         </div>
       </div>
     </div>
@@ -241,67 +303,121 @@ const removeUrl = (clause, index) => {
 .law-layout { display: flex; height: 100vh; background: #f8fafc; font-family: 'Helvetica Neue', Arial, sans-serif; overflow: hidden; }
 
 /* 側邊欄與模式切換 */
-.sidebar { width: 340px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; }
+.sidebar { width: 360px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; }
 .sidebar-header { padding: 15px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
 .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-.mode-toggle { display: flex; background: #e2e8f0; padding: 3px; border-radius: 8px; }
-.mode-toggle button { border: none; padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+.back-link { font-size: 13px; font-weight: bold; color: #4f46e5; text-decoration: none; }
+.mode-toggle { display: flex; background: #e2e8f0; padding: 4px; border-radius: 8px; }
+.mode-toggle button { border: none; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; transition: 0.2s; background: transparent; color: #64748b;}
 .mode-toggle button.active { background: white; color: #4f46e5; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
 
-.top-actions { display: flex; gap: 8px; margin-bottom: 10px; }
-.btn-tool { flex: 1; padding: 8px; background: white; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 12px; font-weight: bold; text-align: center; cursor: pointer; }
+.top-actions, .danger-zone { display: flex; gap: 8px; margin-bottom: 10px; }
+.btn-tool { flex: 1; padding: 8px; background: white; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 12px; font-weight: bold; text-align: center; cursor: pointer; transition: 0.2s;}
+.btn-tool:hover { background: #f1f5f9; }
 .btn-tool.primary { background: #4f46e5; color: white; border: none; }
+.btn-tool.danger { color: #dc2626; border-color: #fecaca; }
+.btn-tool.danger:disabled { opacity: 0.3; cursor: not-allowed; }
+.btn-tool.danger-filled { background: #dc2626; color: white; border: none; }
 .search-input { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; box-sizing: border-box; }
+
+/* 左側樹狀列表 */
+.tree-list { flex: 1; overflow-y: auto; padding: 10px; }
+.list-msg { padding: 20px; text-align: center; color: #94a3b8; font-size: 14px;}
+.chapter-title { padding: 10px; font-weight: 800; color: #1e293b; background: #f1f5f9; border-radius: 8px; cursor: pointer; margin-top: 10px; font-size: 14px; }
+.section-title { padding: 8px 15px; font-size: 13px; font-weight: bold; color: #64748b; cursor: pointer; }
+.clause-item { display: flex; align-items: center; gap: 10px; padding: 6px 30px; transition: 0.2s; border-radius: 6px; }
+.clause-item:hover { background: #f8fafc; }
+.clause-item.active { background: #eef2ff; color: #4f46e5; font-weight: bold; }
+.q-checkbox { width: 16px; height: 16px; cursor: pointer; flex-shrink: 0;}
+.clause-label { flex: 1; cursor: pointer; font-size: 14px; }
 
 /* 內容區 */
 .main-content { flex: 1; overflow-y: auto; padding: 30px; position: relative; scroll-behavior: smooth;}
-.clause-detail { max-width: 800px; margin: 0 auto; }
-.content-box { background: white; padding: 30px; border-radius: 16px; border: 1px solid #e2e8f0; line-height: 1.8; font-size: 18px; margin-bottom: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
+.empty-state { height: 100%; display: flex; justify-content: center; align-items: center; font-size: 18px; color: #94a3b8; font-weight: bold;}
+.clause-detail { max-width: 800px; margin: 0 auto; animation: fadeIn 0.3s ease;}
+.clause-header { margin-bottom: 25px; }
+.breadcrumb { font-size: 12px; color: #94a3b8; font-weight: bold; margin-bottom: 8px;}
+.clause-header h1 { margin: 0; font-size: 28px; color: #1e293b; }
+.content-box { background: white; padding: 35px; border-radius: 16px; border: 1px solid #e2e8f0; line-height: 1.8; font-size: 18px; margin-bottom: 30px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+.content-text { white-space: pre-wrap; color: #334155;}
 
 /* 🌟 強化的參照按鈕 */
 :deep(.ref-btn) { 
-  background: #eef2ff; color: #4f46e5; border: 1px solid #c7d2fe; 
-  padding: 0 6px; border-radius: 4px; font-size: 15px; font-weight: bold; 
-  cursor: pointer; margin: 0 2px; transition: 0.2s; vertical-align: middle;
+  background: #e0e7ff; color: #4338ca; border: none; 
+  padding: 2px 8px; border-radius: 4px; font-size: 15px; font-weight: 800; 
+  cursor: pointer; margin: 0 4px; transition: 0.2s; vertical-align: baseline;
 }
 :deep(.ref-btn:hover) { background: #4f46e5; color: white; transform: translateY(-1px); }
 
+/* 筆記與網址管理 */
+.notes-section { background: white; padding: 30px; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+.notes-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+.notes-header h3 { margin: 0; font-size: 18px; color: #1e293b; }
+.auto-save-tag { font-size: 11px; color: #10b981; font-weight: bold; background: #d1fae5; padding: 4px 10px; border-radius: 12px; }
+.note-edit { width: 100%; height: 150px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fffbeb; font-family: inherit; font-size: 15px; line-height: 1.6; resize: vertical; outline: none; margin-bottom: 25px;}
+.note-edit:focus { border-color: #fbbf24; box-shadow: 0 0 0 4px rgba(251,191,36,0.1); }
+
+.url-section-title { font-size: 16px; color: #475569; margin: 0 0 15px 0; border-top: 1px solid #f1f5f9; padding-top: 20px;}
+.url-list { display: flex; flex-direction: column; gap: 8px;}
+.url-card { display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 10px 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
+.url-link-text { font-size: 14px; font-weight: bold; color: #4f46e5; text-decoration: none; }
+.url-link-text:hover { text-decoration: underline; }
+.btn-remove-url { background: #fee2e2; color: #dc2626; border: none; width: 26px; height: 26px; border-radius: 50%; font-weight: bold; cursor: pointer; }
+.no-urls { font-size: 13px; color: #94a3b8; font-style: italic; }
+.url-add-form { display: grid; grid-template-columns: 1fr 2fr auto; gap: 10px; margin-top: 15px; background: #f1f5f9; padding: 15px; border-radius: 12px;}
+.url-input { padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; outline: none;}
+.btn-add-url { background: #1e293b; color: white; border: none; padding: 0 20px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s;}
+.btn-add-url:hover { background: #000; }
+
 /* 全覽模式樣式 */
 .full-text-view { max-width: 900px; margin: 0 auto; }
-.view-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
-.full-clause-card { background: white; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; margin-bottom: 15px; overflow: hidden; }
-.card-side { width: 100px; background: #f8fafc; padding: 15px; display: flex; flex-direction: column; align-items: center; gap: 10px; border-right: 1px solid #e2e8f0; }
-.card-num { font-weight: 800; font-size: 14px; color: #4f46e5; text-align: center; }
-.btn-jump-edit { font-size: 11px; padding: 4px 8px; border-radius: 4px; border: 1px solid #cbd5e1; background: white; cursor: pointer; }
-.card-main { flex: 1; padding: 20px; }
-.card-content { font-size: 16px; line-height: 1.6; }
-.card-note-preview { margin-top: 12px; padding: 8px 12px; background: #fffbeb; border-radius: 6px; font-size: 13px; color: #854d0e; }
+.view-header { margin-bottom: 25px; }
+.view-header h1 { font-size: 24px; color: #1e293b; margin: 0;}
+.full-clause-card { background: white; border-radius: 16px; border: 1px solid #e2e8f0; display: flex; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); overflow: hidden;}
+.card-side { width: 120px; background: #f8fafc; padding: 20px 15px; display: flex; flex-direction: column; align-items: center; gap: 15px; border-right: 1px solid #e2e8f0; flex-shrink: 0;}
+.card-num { font-weight: 800; font-size: 15px; color: #1e293b; text-align: center; }
+.btn-jump-edit { font-size: 12px; padding: 6px 10px; border-radius: 6px; border: 1px solid #4f46e5; background: #eef2ff; color: #4f46e5; font-weight: bold; cursor: pointer; transition: 0.2s;}
+.btn-jump-edit:hover { background: #4f46e5; color: white;}
+.card-main { flex: 1; padding: 25px; }
+.card-content { font-size: 17px; line-height: 1.8; color: #334155; white-space: pre-wrap;}
+.card-note-preview { margin-top: 15px; padding: 12px 15px; background: #fffbeb; border-radius: 8px; font-size: 14px; color: #854d0e; border-left: 4px solid #fbbf24;}
+.card-url-preview { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px;}
+.preview-url-item { background: #e0e7ff; color: #4338ca; padding: 4px 10px; border-radius: 6px; font-size: 12px; text-decoration: none; font-weight: bold;}
 
-/* 浮動視窗樣式 */
-.floating-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.2); z-index: 100; display: flex; justify-content: center; align-items: center; }
-.floating-modal { width: 400px; background: white; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); border: 1px solid #e2e8f0; animation: popUp 0.2s ease; }
-.float-header { padding: 15px 20px; background: #1e293b; color: white; border-radius: 16px 16px 0 0; display: flex; justify-content: space-between; }
-.float-header button { background: none; border: none; color: white; cursor: pointer; font-size: 18px; }
-.float-body { padding: 20px; max-height: 400px; overflow-y: auto; }
-.float-content-text { line-height: 1.6; color: #334155; margin-bottom: 15px; }
-.btn-jump-main { width: 100%; padding: 12px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: bold; color: #4f46e5; cursor: pointer; }
+/* 浮動視窗 (Floating Reference) */
+.floating-modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); z-index: 100; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(2px);}
+.floating-modal { width: 450px; background: white; border-radius: 20px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); overflow: hidden; animation: popUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+.float-header { padding: 18px 25px; background: #1e293b; color: white; display: flex; justify-content: space-between; align-items: center;}
+.float-header h4 { margin: 0; font-size: 18px; letter-spacing: 1px;}
+.float-header button { background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 22px; transition: 0.2s;}
+.float-header button:hover { color: white; transform: rotate(90deg);}
+.float-body { padding: 25px; max-height: 500px; overflow-y: auto; }
+.float-content-text { line-height: 1.8; font-size: 16px; color: #334155; margin: 0 0 20px 0; white-space: pre-wrap;}
+.float-note-preview { background: #fef9c3; padding: 15px; border-radius: 12px; font-size: 14px; color: #854d0e; margin-bottom: 20px; border-left: 4px solid #fbbf24;}
+.btn-jump-main { width: 100%; padding: 14px; background: #4f46e5; border: none; border-radius: 10px; font-weight: 800; font-size: 15px; color: white; cursor: pointer; transition: 0.2s;}
+.btn-jump-main:hover { background: #4338ca; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);}
 
-/* 筆記區與網址區 (簡化版) */
-.note-edit { width: 100%; height: 120px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fffbeb; font-family: inherit; margin-bottom: 20px; }
-.url-card { display: flex; justify-content: space-between; background: #f1f5f9; padding: 8px 12px; border-radius: 8px; margin-bottom: 8px; font-size: 13px; }
-.url-add-form { display: grid; grid-template-columns: 1fr 2fr auto; gap: 8px; margin-top: 15px; }
-.url-add-form input { padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; }
+@keyframes popUp { from { transform: scale(0.95) translateY(10px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-@keyframes popUp { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-
-/* 🌟 手機版 (Mobile) 優化 */
+/* 🌟 手機版 (Mobile) 完美適應 */
 @media (max-width: 768px) {
   .law-layout { flex-direction: column; overflow: auto; }
   .sidebar { width: 100%; height: 35vh; border-right: none; border-bottom: 2px solid #e2e8f0; }
-  .main-content { padding: 20px 15px; }
-  .full-clause-card { flex-direction: column; }
-  .card-side { width: 100%; flex-direction: row; justify-content: space-between; border-right: none; border-bottom: 1px solid #e2e8f0; }
-  .floating-modal { width: 90%; position: fixed; bottom: 20px; }
+  .main-content { padding: 20px 15px; overflow: visible;}
+  
+  .clause-header h1 { font-size: 24px; }
+  .content-box { padding: 20px; font-size: 16px; }
   .url-add-form { grid-template-columns: 1fr; }
+  .btn-add-url { padding: 12px; }
+
+  .full-clause-card { flex-direction: column; }
+  .card-side { width: 100%; flex-direction: row; justify-content: space-between; border-right: none; border-bottom: 1px solid #e2e8f0; padding: 15px 20px;}
+  .card-main { padding: 20px 15px; }
+
+  /* 手機版浮動視窗改為底部彈出 (Bottom Sheet) */
+  .floating-modal-overlay { align-items: flex-end; }
+  .floating-modal { width: 100%; border-radius: 24px 24px 0 0; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
 }
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 </style>
