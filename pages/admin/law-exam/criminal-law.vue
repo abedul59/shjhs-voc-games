@@ -23,7 +23,14 @@ const showSavedToast = ref(false);
 
 const fetchClauses = async () => {
   isLoading.value = true;
-  const { data } = await supabase.from('criminal_law_clauses').select('*');
+  // 🌟 加入錯誤捕捉，防止資料表不存在時直接崩潰
+  const { data, error } = await supabase.from('criminal_law_clauses').select('*');
+  
+  if (error) {
+    console.error(error);
+    alert('⚠️ 無法連線到資料庫，請確認您已在 Supabase 建立 criminal_law_clauses 資料表！\n錯誤訊息：' + error.message);
+  }
+
   if (data) {
     clauses.value = data.map(c => {
       let parsedUrls = [];
@@ -34,8 +41,9 @@ const fetchClauses = async () => {
       }
       return { ...c, urls: parsedUrls };
     }).sort((a, b) => {
-      const numA = parseFloat(a.article_num.replace('-', '.'));
-      const numB = parseFloat(b.article_num.replace('-', '.'));
+      // 🌟 加入空值防呆，防止 article_num 為 null 時崩潰
+      const numA = parseFloat((a.article_num || '0').replace('-', '.'));
+      const numB = parseFloat((b.article_num || '0').replace('-', '.'));
       return numA - numB;
     });
   }
@@ -45,10 +53,11 @@ const fetchClauses = async () => {
 
 onMounted(fetchClauses);
 
+// 🌟 加入空值防呆：(c.title || '')，防止搜尋時遇到空值崩潰
 const groupedClauses = computed(() => {
   const groups = {};
   const data = searchQuery.value 
-    ? clauses.value.filter(c => c.title.includes(searchQuery.value) || c.content.includes(searchQuery.value))
+    ? clauses.value.filter(c => (c.title || '').includes(searchQuery.value) || (c.content || '').includes(searchQuery.value))
     : clauses.value;
 
   data.forEach(c => {
@@ -63,7 +72,7 @@ const groupedClauses = computed(() => {
 
 const filteredFlatClauses = computed(() => {
   if (!searchQuery.value) return clauses.value;
-  return clauses.value.filter(c => c.title.includes(searchQuery.value) || c.content.includes(searchQuery.value));
+  return clauses.value.filter(c => (c.title || '').includes(searchQuery.value) || (c.content || '').includes(searchQuery.value));
 });
 
 const selectClause = (clause) => {
