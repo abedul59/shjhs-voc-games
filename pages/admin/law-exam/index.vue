@@ -7,59 +7,71 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
     <div class="header">
       <NuxtLink to="/admin" class="back-btn">← 回網站主後台</NuxtLink>
       <h1>⚖️ 司律考試專區</h1>
-      <p>歡迎進入個人專屬題庫與法典系統</p>
+      <p>個人專屬題庫與五大法典學習系統</p>
     </div>
 
     <div class="cards-grid">
       <NuxtLink to="/admin/law-exam/practice" class="dash-card practice-card">
         <div class="icon">🎯</div>
         <h2>開始刷題練習</h2>
-        <p>依據年份、科目進行模擬測驗，並可隨時查看詳細解析與法條實務見解。</p>
+        <p>依據年份、科目進行模擬測驗與解析。</p>
       </NuxtLink>
 
       <NuxtLink to="/admin/law-exam/manage" class="dash-card manage-card">
         <div class="icon">📚</div>
         <h2>題庫與解析管理</h2>
-        <p>匯入/匯出 CSV 題庫檔案，手動編輯題目內容、正確答案以及各選項解析。</p>
+        <p>管理 CSV 題庫與各選項詳細解析。</p>
       </NuxtLink>
 
-      <NuxtLink to="/admin/law-exam/civil-law" class="dash-card law-card">
+      <NuxtLink to="/admin/law-exam/civil-law" class="dash-card law-indigo">
         <div class="icon">🏛️</div>
-        <h2>民法典籍與筆記</h2>
-        <p>逐條查閱民法條文，支援法條跳轉浮動視窗，並可自訂專屬筆記與相關網址。</p>
+        <h2>民法典籍</h2>
       </NuxtLink>
 
-      <NuxtLink to="/admin/law-exam/criminal-law" class="dash-card criminal-law-card">
+      <NuxtLink to="/admin/law-exam/criminal-law" class="dash-card law-rose">
         <div class="icon">⚖️</div>
-        <h2>刑法典籍與筆記</h2>
-        <p>逐條查閱刑法條文，支援法條跳轉浮動視窗，並可手動儲存實務見解與網址。</p>
+        <h2>刑法典籍</h2>
+      </NuxtLink>
+
+      <NuxtLink to="/admin/law-exam/civil-procedure-law" class="dash-card law-amber">
+        <div class="icon">📜</div>
+        <h2>民事訴訟法</h2>
+      </NuxtLink>
+
+      <NuxtLink to="/admin/law-exam/criminal-procedure-law" class="dash-card law-emerald">
+        <div class="icon">🚔</div>
+        <h2>刑事訴訟法</h2>
+      </NuxtLink>
+
+      <NuxtLink to="/admin/law-exam/constitutional-law" class="dash-card law-violet">
+        <div class="icon">👑</div>
+        <h2>憲法典籍</h2>
       </NuxtLink>
     </div>
   </div>
 </template>
 
 <style scoped>
-.dashboard-container { font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 1000px; margin: 0 auto; padding: 40px 20px; min-height: 100vh; color: #333; }
+.dashboard-container { font-family: sans-serif; max-width: 1100px; margin: 0 auto; padding: 40px 20px; }
 .header { text-align: center; margin-bottom: 40px; }
-.back-btn { display: inline-block; margin-bottom: 20px; color: #64748b; text-decoration: none; font-weight: bold; background: white; padding: 6px 16px; border-radius: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-.header h1 { font-size: 32px; color: #1e293b; margin-bottom: 10px; }
-.header p { color: #64748b; font-size: 16px; }
+.back-btn { color: #64748b; text-decoration: none; font-weight: bold; background: white; padding: 6px 16px; border-radius: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: inline-block; margin-bottom: 20px;}
+.header h1 { font-size: 32px; color: #1e293b; }
 
-.cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
-
-.dash-card { display: block; text-decoration: none; background: white; padding: 40px 30px; border-radius: 20px; text-align: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); border: 2px solid transparent; transition: 0.3s; }
+.cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
+.dash-card { display: block; text-decoration: none; background: white; padding: 30px 20px; border-radius: 20px; text-align: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); border: 2px solid transparent; transition: 0.3s; }
 .dash-card:hover { transform: translateY(-5px); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
-.icon { font-size: 48px; margin-bottom: 20px; }
-.dash-card h2 { color: #1e293b; margin-bottom: 15px; font-size: 22px; }
-.dash-card p { color: #64748b; line-height: 1.6; font-size: 15px; }
+.icon { font-size: 40px; margin-bottom: 15px; }
+.dash-card h2 { color: #1e293b; font-size: 18px; margin: 0; }
 
-.practice-card:hover { border-color: #3b82f6; background: #f8fafc; }
-.manage-card:hover { border-color: #10b981; background: #f0fdf4; }
-.law-card:hover { border-color: #8b5cf6; background: #f5f3ff; }
-.criminal-law-card:hover { border-color: #f43f5e; background: #fff1f2; }
+.practice-card:hover { border-color: #3b82f6; }
+.manage-card:hover { border-color: #10b981; }
 
-@media (max-width: 768px) {
-  .dashboard-container { padding: 20px 15px; }
-  .dash-card { padding: 30px 20px; }
-}
+/* 🌟 五大法律顏色 */
+.law-indigo:hover { border-color: #4f46e5; background: #eef2ff; }
+.law-rose:hover { border-color: #e11d48; background: #fff1f2; }
+.law-amber:hover { border-color: #d97706; background: #fffbeb; }
+.law-emerald:hover { border-color: #059669; background: #ecfdf5; }
+.law-violet:hover { border-color: #7c3aed; background: #f5f3ff; }
+
+@media (max-width: 768px) { .cards-grid { grid-template-columns: 1fr 1fr; } }
 </style>
