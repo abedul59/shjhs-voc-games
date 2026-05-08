@@ -17,14 +17,21 @@ const floatingReference = ref(null);
 
 const newUrlLabel = ref('');
 const newUrlLink = ref('');
-
-// 🌟 手動儲存狀態
 const isSaving = ref(false);
 const showSavedToast = ref(false);
 
+// 🌟 手機版側邊欄開關狀態
+const showSidebar = ref(false);
+
 const fetchClauses = async () => {
   isLoading.value = true;
-  const { data } = await supabase.from('civil_law_clauses').select('*');
+  const { data, error } = await supabase.from('civil_law_clauses').select('*');
+  
+  if (error) {
+    console.error(error);
+    alert('無法連線到資料庫：' + error.message);
+  }
+
   if (data) {
     clauses.value = data.map(c => {
       let parsedUrls = [];
@@ -35,8 +42,8 @@ const fetchClauses = async () => {
       }
       return { ...c, urls: parsedUrls };
     }).sort((a, b) => {
-      const numA = parseFloat(a.article_num.replace('-', '.'));
-      const numB = parseFloat(b.article_num.replace('-', '.'));
+      const numA = parseFloat((a.article_num || '0').replace('-', '.'));
+      const numB = parseFloat((b.article_num || '0').replace('-', '.'));
       return numA - numB;
     });
   }
@@ -49,7 +56,7 @@ onMounted(fetchClauses);
 const groupedClauses = computed(() => {
   const groups = {};
   const data = searchQuery.value 
-    ? clauses.value.filter(c => c.title.includes(searchQuery.value) || c.content.includes(searchQuery.value))
+    ? clauses.value.filter(c => (c.title || '').includes(searchQuery.value) || (c.content || '').includes(searchQuery.value))
     : clauses.value;
 
   data.forEach(c => {
@@ -64,42 +71,34 @@ const groupedClauses = computed(() => {
 
 const filteredFlatClauses = computed(() => {
   if (!searchQuery.value) return clauses.value;
-  return clauses.value.filter(c => c.title.includes(searchQuery.value) || c.content.includes(searchQuery.value));
+  return clauses.value.filter(c => (c.title || '').includes(searchQuery.value) || (c.content || '').includes(searchQuery.value));
 });
 
 const selectClause = (clause) => {
   selectedClause.value = clause;
   viewMode.value = 'single';
-  showSavedToast.value = false; // 切換法條時重置儲存提示
+  showSavedToast.value = false;
+  showSidebar.value = false; // 🌟 選擇後自動收起手機版側邊欄
   window.scrollTo({ top: 0, behavior: 'smooth' }); 
 };
 
-// 🌟 手動儲存功能 (取代原本的 blur 自動儲存)
 const saveManual = async (clause) => {
   if (!clause) return;
   isSaving.value = true;
-  const { error } = await supabase.from('civil_law_clauses')
-    .update({ notes: clause.notes, urls: clause.urls })
-    .eq('id', clause.id);
-  
+  const { error } = await supabase.from('civil_law_clauses').update({ notes: clause.notes, urls: clause.urls }).eq('id', clause.id);
   isSaving.value = false;
-  
-  if (error) {
-    alert('儲存失敗: ' + error.message);
-  } else {
+  if (error) alert('儲存失敗: ' + error.message);
+  else {
     showSavedToast.value = true;
-    setTimeout(() => { showSavedToast.value = false; }, 2500); // 2.5秒後隱藏提示
+    setTimeout(() => { showSavedToast.value = false; }, 2500); 
   }
 };
 
-// 🌟 網址管理 (新增/刪除後自動觸發儲存，保持流暢)
 const addNewUrl = async (clause) => {
   if (!newUrlLabel.value || !newUrlLink.value) return alert('請輸入名稱與網址');
   if (!clause.urls) clause.urls = [];
-  
   let link = newUrlLink.value;
   if (!link.startsWith('http')) link = 'https://' + link;
-  
   clause.urls.push({ label: newUrlLabel.value, url: link });
   newUrlLabel.value = ''; newUrlLink.value = '';
   await saveManual(clause);
@@ -110,14 +109,11 @@ const removeUrl = async (clause, index) => {
   await saveManual(clause);
 };
 
-// 中文數字轉阿拉伯數字
 const parseNum = (str) => {
   if (!str) return '';
   if (/^\d+$/.test(str)) return parseInt(str, 10).toString(); 
-  
   const dict = { '〇':0, '零':0, '一':1, '二':2, '三':3, '四':4, '五':5, '六':6, '七':7, '八':8, '九':9, '十':10, '百':100, '千':1000 };
-  let total = 0;
-  let current = 0;
+  let total = 0, current = 0;
   for (let i = 0; i < str.length; i++) {
     let val = dict[str[i]];
     if (val === undefined) continue;
@@ -125,19 +121,15 @@ const parseNum = (str) => {
       if (current === 0) current = 1;
       total += current * val;
       current = 0;
-    } else {
-      current = val;
-    }
+    } else current = val;
   }
-  total += current;
-  return total.toString();
+  return (total + current).toString();
 };
 
 const getNormalizedArticleNum = (rawText) => {
   let text = rawText.replace(/\s/g, ''); 
   let match = text.match(/^第(.+)條(?:之(.+))?$/); 
   if (!match) return null;
-  
   let mainNum = parseNum(match[1]);
   let subNum = match[2] ? '-' + parseNum(match[2]) : '';
   return mainNum + subNum;
@@ -146,11 +138,8 @@ const getNormalizedArticleNum = (rawText) => {
 const parseContentWithLinks = (text) => {
   if (!text) return '';
   const regex = /(第\s*[0-9一二三四五六七八九十百千-]+[條之]*[0-9一二三四五六七八九十百千-]*\s*條)/g;
-  
   return text.split(regex).map(part => {
-    if (regex.test(part)) {
-      return `<button class="ref-btn" data-raw="${part}">${part}</button>`;
-    }
+    if (regex.test(part)) return `<button class="ref-btn" data-raw="${part}">${part}</button>`;
     return part;
   }).join('');
 };
@@ -159,14 +148,9 @@ const handleContentClick = (e) => {
   if (e.target.classList.contains('ref-btn')) {
     const rawText = e.target.getAttribute('data-raw');
     const convertedNum = getNormalizedArticleNum(rawText);
-    
     const target = clauses.value.find(c => c.article_num === convertedNum);
-    
-    if (target) {
-      floatingReference.value = target;
-    } else {
-      alert(`系統暫時無法定位：${rawText} (解析為條號 ${convertedNum})`);
-    }
+    if (target) floatingReference.value = target;
+    else alert(`無法定位：${rawText} (條號 ${convertedNum})`);
   }
 };
 
@@ -198,13 +182,13 @@ const exportCSV = () => {
 
 const batchDelete = async () => {
   if (selectedIds.value.length === 0) return;
-  if (!confirm(`確定刪除選取的 ${selectedIds.value.length} 條法規？此動作無法復原。`)) return;
+  if (!confirm(`確定刪除選取的 ${selectedIds.value.length} 條法規？`)) return;
   await supabase.from('civil_law_clauses').delete().in('id', selectedIds.value);
   fetchClauses();
 };
 
 const clearAll = async () => {
-  if (!confirm('🚨 嚴重警告：確定要清空所有民法資料嗎？這將刪除所有筆記與網址。')) return;
+  if (!confirm('🚨 嚴重警告：確定要清空所有民法資料嗎？')) return;
   await supabase.from('civil_law_clauses').delete().neq('article_num', 'CLEAN_ALL');
   selectedClause.value = null;
   fetchClauses();
@@ -214,26 +198,38 @@ const clearAll = async () => {
 <template>
   <div class="law-layout" :class="{ 'mode-all': viewMode === 'all' }">
     
-    <div class="sidebar">
+    <div class="mobile-nav">
+      <button class="btn-menu" @click="showSidebar = true">☰ 目錄</button>
+      <div class="mode-toggle">
+        <button @click="viewMode = 'single'" :class="{ active: viewMode === 'single' }">逐條</button>
+        <button @click="viewMode = 'all'" :class="{ active: viewMode === 'all' }">全覽</button>
+      </div>
+    </div>
+
+    <div class="sidebar" :class="{ 'mobile-open': showSidebar }">
       <div class="sidebar-header">
         <div class="header-top">
           <NuxtLink to="/admin/law-exam" class="back-link">← 回專區</NuxtLink>
-          <div class="mode-toggle">
-            <button @click="viewMode = 'single'" :class="{ active: viewMode === 'single' }">逐條</button>
-            <button @click="viewMode = 'all'" :class="{ active: viewMode === 'all' }">全覽</button>
+          <button class="btn-close-sidebar" @click="showSidebar = false">✕</button>
+          <div class="mode-toggle desktop-only">
+            <button @click="viewMode = 'single'" :class="{ active: viewMode === 'single' }">逐條觀看</button>
+            <button @click="viewMode = 'all'" :class="{ active: viewMode === 'all' }">全部觀看</button>
           </div>
         </div>
         
-        <div class="top-actions">
-          <label class="btn-tool primary">📥 匯入<input type="file" @change="handleImport" hidden /></label>
-          <button @click="exportCSV" class="btn-tool">📤 匯出</button>
-        </div>
-        <div class="danger-zone">
-          <button @click="batchDelete" class="btn-tool danger" :disabled="!selectedIds.length">
-            🗑️ 刪除選取 ({{selectedIds.length}})
-          </button>
-          <button @click="clearAll" class="btn-tool danger-filled">🔥 全部清空</button>
-        </div>
+        <details class="admin-tools">
+          <summary>⚙️ 管理與批次工具</summary>
+          <div class="tools-panel">
+            <div class="top-actions">
+              <label class="btn-tool primary">📥 匯入<input type="file" @change="handleImport" hidden /></label>
+              <button @click="exportCSV" class="btn-tool">📤 匯出</button>
+            </div>
+            <div class="danger-zone">
+              <button @click="batchDelete" class="btn-tool danger" :disabled="!selectedIds.length">🗑️ 刪除 ({{selectedIds.length}})</button>
+              <button @click="clearAll" class="btn-tool danger-filled">🔥 清空</button>
+            </div>
+          </div>
+        </details>
         
         <input v-model="searchQuery" class="search-input" placeholder="🔍 搜尋條號或關鍵字..." />
       </div>
@@ -260,7 +256,13 @@ const clearAll = async () => {
     <div class="main-content">
       
       <div v-if="viewMode === 'single'">
-        <div v-if="!selectedClause" class="empty-state">⚖️ 請從左側目錄選擇法條以檢視內容</div>
+        <div v-if="!selectedClause" class="empty-state">
+          <div class="empty-box">
+            <h2>⚖️</h2>
+            <p>請從目錄選擇法條以檢視內容</p>
+            <button class="btn-open-menu-large" @click="showSidebar = true">開啟目錄</button>
+          </div>
+        </div>
         <div v-else class="clause-detail">
           <div class="clause-header">
             <div class="title-with-path">
@@ -351,18 +353,29 @@ const clearAll = async () => {
 </template>
 
 <style scoped>
-.law-layout { display: flex; height: 100vh; background: #f8fafc; font-family: 'Helvetica Neue', Arial, sans-serif; overflow: hidden; }
+.law-layout { display: flex; height: 100vh; background: #f8fafc; font-family: 'Helvetica Neue', Arial, sans-serif; overflow: hidden; position: relative;}
 
-/* 側邊欄與模式切換 */
-.sidebar { width: 340px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; }
+/* 🌟 手機版頂部導覽 */
+.mobile-nav { display: none; justify-content: space-between; align-items: center; background: white; padding: 10px 15px; border-bottom: 1px solid #e2e8f0; z-index: 50;}
+.btn-menu { background: #4f46e5; color: white; border: none; padding: 8px 15px; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; box-shadow: 0 2px 4px rgba(79,70,229,0.2);}
+
+/* 側邊欄 */
+.sidebar { width: 360px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; z-index: 200; transition: transform 0.3s ease;}
 .sidebar-header { padding: 15px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
 .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
 .back-link { font-size: 13px; font-weight: bold; color: #4f46e5; text-decoration: none; }
+.btn-close-sidebar { display: none; background: none; border: none; font-size: 20px; color: #64748b; cursor: pointer;}
+
 .mode-toggle { display: flex; background: #e2e8f0; padding: 4px; border-radius: 8px; }
 .mode-toggle button { border: none; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; transition: 0.2s; background: transparent; color: #64748b;}
 .mode-toggle button.active { background: white; color: #4f46e5; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
 
-.top-actions, .danger-zone { display: flex; gap: 8px; margin-bottom: 10px; }
+/* 🌟 管理工具收納區 */
+.admin-tools { margin-bottom: 15px; background: white; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;}
+.admin-tools summary { padding: 10px; font-size: 13px; font-weight: bold; color: #475569; cursor: pointer; background: #f1f5f9; list-style: none; text-align: center;}
+.tools-panel { padding: 10px; border-top: 1px solid #e2e8f0;}
+.top-actions, .danger-zone { display: flex; gap: 8px; margin-bottom: 8px; }
+.danger-zone { margin-bottom: 0; }
 .btn-tool { flex: 1; padding: 8px; background: white; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 12px; font-weight: bold; text-align: center; cursor: pointer; transition: 0.2s;}
 .btn-tool:hover { background: #f1f5f9; }
 .btn-tool.primary { background: #4f46e5; color: white; border: none; }
@@ -371,8 +384,8 @@ const clearAll = async () => {
 .btn-tool.danger-filled { background: #dc2626; color: white; border: none; }
 .search-input { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; box-sizing: border-box; }
 
-/* 左側樹狀列表 */
-.tree-list { flex: 1; overflow-y: auto; padding: 10px; }
+/* 樹狀列表 */
+.tree-list { flex: 1; overflow-y: auto; padding: 10px; background: #fff; }
 .list-msg { padding: 20px; text-align: center; color: #94a3b8; font-size: 14px;}
 .chapter-title { padding: 10px; font-weight: 800; color: #1e293b; background: #f1f5f9; border-radius: 8px; cursor: pointer; margin-top: 10px; font-size: 14px; }
 .section-title { padding: 8px 15px; font-size: 13px; font-weight: bold; color: #64748b; cursor: pointer; }
@@ -384,7 +397,12 @@ const clearAll = async () => {
 
 /* 內容區 */
 .main-content { flex: 1; overflow-y: auto; padding: 30px; position: relative; scroll-behavior: smooth;}
-.empty-state { height: 100%; display: flex; justify-content: center; align-items: center; font-size: 18px; color: #94a3b8; font-weight: bold;}
+.empty-state { height: 100%; display: flex; justify-content: center; align-items: center; text-align: center;}
+.empty-box { color: #94a3b8; }
+.empty-box h2 { font-size: 48px; margin: 0 0 10px 0;}
+.empty-box p { font-size: 16px; font-weight: bold; margin-bottom: 20px;}
+.btn-open-menu-large { display: none; background: #4f46e5; color: white; border: none; padding: 10px 24px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px rgba(79,70,229,0.2);}
+
 .clause-detail { max-width: 800px; margin: 0 auto; animation: fadeIn 0.3s ease;}
 .clause-header { margin-bottom: 25px; }
 .breadcrumb { font-size: 12px; color: #94a3b8; font-weight: bold; margin-bottom: 8px;}
@@ -393,14 +411,10 @@ const clearAll = async () => {
 .content-text { white-space: pre-wrap; color: #334155;}
 
 /* 參照按鈕 */
-:deep(.ref-btn) { 
-  background: #e0e7ff; color: #4338ca; border: none; 
-  padding: 2px 8px; border-radius: 4px; font-size: 15px; font-weight: 800; 
-  cursor: pointer; margin: 0 4px; transition: 0.2s; vertical-align: baseline;
-}
+:deep(.ref-btn) { background: #e0e7ff; color: #4338ca; border: none; padding: 2px 8px; border-radius: 4px; font-size: 15px; font-weight: 800; cursor: pointer; margin: 0 4px; transition: 0.2s; vertical-align: baseline;}
 :deep(.ref-btn:hover) { background: #4f46e5; color: white; transform: translateY(-1px); }
 
-/* 🌟 筆記區與手動儲存按鈕 */
+/* 筆記與網址管理 */
 .notes-section { background: white; padding: 30px; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
 .notes-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
 .notes-header h3 { margin: 0; font-size: 18px; color: #1e293b; }
@@ -410,7 +424,6 @@ const clearAll = async () => {
 .btn-save-manual:hover:not(:disabled) { background: #059669; transform: translateY(-1px); }
 .btn-save-manual:disabled { opacity: 0.7; cursor: not-allowed; }
 
-/* 確保 textarea 保留換行排版 */
 .note-edit { width: 100%; height: 250px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fffbeb; font-family: inherit; font-size: 15px; line-height: 1.6; resize: vertical; outline: none; margin-bottom: 25px; white-space: pre-wrap; }
 .note-edit:focus { border-color: #fbbf24; box-shadow: 0 0 0 4px rgba(251,191,36,0.1); }
 
@@ -437,13 +450,12 @@ const clearAll = async () => {
 .btn-jump-edit:hover { background: #4f46e5; color: white;}
 .card-main { flex: 1; padding: 25px; }
 .card-content { font-size: 17px; line-height: 1.8; color: #334155; white-space: pre-wrap;}
-/* 確保全覽模式預覽保留換行 */
 .card-note-preview { margin-top: 15px; padding: 12px 15px; background: #fffbeb; border-radius: 8px; font-size: 14px; color: #854d0e; border-left: 4px solid #fbbf24; white-space: pre-wrap; line-height: 1.6;}
 .card-url-preview { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px;}
 .preview-url-item { background: #e0e7ff; color: #4338ca; padding: 4px 10px; border-radius: 6px; font-size: 12px; text-decoration: none; font-weight: bold;}
 
 /* 浮動視窗 (Floating Reference) */
-.floating-modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); z-index: 100; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(2px);}
+.floating-modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); z-index: 300; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(2px);}
 .floating-modal { width: 450px; background: white; border-radius: 20px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); overflow: hidden; animation: popUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
 .float-header { padding: 18px 25px; background: #1e293b; color: white; display: flex; justify-content: space-between; align-items: center;}
 .float-header h4 { margin: 0; font-size: 18px; letter-spacing: 1px;}
@@ -451,7 +463,6 @@ const clearAll = async () => {
 .float-header button:hover { color: white; transform: rotate(90deg);}
 .float-body { padding: 25px; max-height: 500px; overflow-y: auto; }
 .float-content-text { line-height: 1.8; font-size: 16px; color: #334155; margin: 0 0 20px 0; white-space: pre-wrap;}
-/* 確保浮動視窗預覽保留換行 */
 .float-note-preview { background: #fef9c3; padding: 15px; border-radius: 12px; font-size: 14px; color: #854d0e; margin-bottom: 20px; border-left: 4px solid #fbbf24; white-space: pre-wrap; line-height: 1.6;}
 .btn-jump-main { width: 100%; padding: 14px; background: #4f46e5; border: none; border-radius: 10px; font-weight: 800; font-size: 15px; color: white; cursor: pointer; transition: 0.2s;}
 .btn-jump-main:hover { background: #4338ca; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);}
@@ -459,14 +470,23 @@ const clearAll = async () => {
 @keyframes popUp { from { transform: scale(0.95) translateY(10px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-/* 手機版 (Mobile) */
+/* 🌟 手機版 (Mobile) 徹底大改造 */
 @media (max-width: 768px) {
-  .law-layout { flex-direction: column; overflow: auto; }
-  .sidebar { width: 100%; height: 35vh; border-right: none; border-bottom: 2px solid #e2e8f0; }
-  .main-content { padding: 20px 15px; overflow: visible;}
+  .mobile-nav { display: flex; }
+  .desktop-only { display: none; }
+  .btn-open-menu-large { display: inline-block; }
+  
+  .law-layout { flex-direction: column; overflow: hidden; }
+  .main-content { padding: 20px 15px; height: calc(100vh - 60px); overflow-y: auto;}
+  
+  /* 側邊欄變身全螢幕抽屜 */
+  .sidebar { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; z-index: 200; transform: translateX(-100%); border-right: none; box-shadow: 5px 0 25px rgba(0,0,0,0.1);}
+  .sidebar.mobile-open { transform: translateX(0); }
+  .btn-close-sidebar { display: block; }
   
   .clause-header h1 { font-size: 24px; }
-  .content-box { padding: 20px; font-size: 16px; }
+  .content-box { padding: 20px; font-size: 16px; margin-bottom: 20px; }
+  .notes-section { padding: 20px; }
   .url-add-form { grid-template-columns: 1fr; }
   .btn-add-url { padding: 12px; }
 
