@@ -28,6 +28,12 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
         <h2>民法典籍與筆記</h2>
         <p>逐條查閱民法條文，支援法條跳轉浮動視窗，並可自訂專屬筆記與相關網址。</p>
       </NuxtLink>
+
+      <NuxtLink to="/admin/law-exam/criminal-law" class="dash-card criminal-law-card">
+        <div class="icon">⚖️</div>
+        <h2>刑法典籍與筆記</h2>
+        <p>逐條查閱刑法條文，支援法條跳轉浮動視窗，並可手動儲存實務見解與網址。</p>
+      </NuxtLink>
     </div>
   </div>
 </template>
@@ -50,6 +56,7 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
 .practice-card:hover { border-color: #3b82f6; background: #f8fafc; }
 .manage-card:hover { border-color: #10b981; background: #f0fdf4; }
 .law-card:hover { border-color: #8b5cf6; background: #f5f3ff; }
+.criminal-law-card:hover { border-color: #f43f5e; background: #fff1f2; }
 
 @media (max-width: 768px) {
   .dashboard-container { padding: 20px 15px; }
