@@ -4,19 +4,19 @@ import Papa from 'papaparse';
 
 definePageMeta({ middleware: ['auth', 'law-auth'] });
 
-// 🌟🌟🌟 請依據不同的法規專頁，替換此 CONFIG 區塊 🌟🌟🌟
+// 🌟🌟🌟 依據不同的法規專頁，替換此 CONFIG 區塊 🌟🌟🌟
 const CONFIG = {
   tableName: 'teachers_dismissal_regulations_clauses',
   pageTitle: '解聘不續聘停聘或資遣辦法',
-  parentLawName: '教師法', // 👈 獨立設定：本法的母法是教師法
-  primaryColor: '#ec4899', // 櫻花粉
+  parentLawName: '教師法', // 獨立設定母法
+  primaryColor: '#ec4899', 
   hoverColor: '#be185d',
   lightBg: '#fdf2f8',
   activeBg: '#fce7f3'
 };
-// 🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟
+// 🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟
 
-// 支援跨法參照的資料庫字典 (未來擴充新法，直接加在這裡)
+// 🌟 涵蓋系統內所有的母法與子法，讓下拉選單能選到所有選項
 const LAW_TABLE_MAP = {
   '民法': 'civil_law_clauses',
   '刑法': 'criminal_law_clauses',
@@ -26,7 +26,11 @@ const LAW_TABLE_MAP = {
   '憲法': 'constitutional_law_clauses',
   '中華民國憲法': 'constitutional_law_clauses',
   '教師法': 'teachers_act_clauses',
-  '教育基本法': 'educational_fundamental_act_clauses'
+  '教育基本法': 'educational_fundamental_act_clauses',
+  '教師法施行細則': 'teachers_act_enforcement_rules_clauses',
+  '校園霸凌防制準則': 'campus_bullying_prevention_guidelines_clauses',
+  '解聘不續聘停聘或資遣辦法': 'teachers_dismissal_regulations_clauses',
+  '高級中等以下學校教師解聘不續聘停聘或資遣辦法': 'teachers_dismissal_regulations_clauses'
 };
 
 const supabase = useSupabaseClient();
@@ -36,11 +40,11 @@ const parentClausesMap = ref({});
 // 本法專屬校正字典 (從資料庫載入)
 const customLawMap = ref({});
 const newMapWrong = ref('');
-const newMapCorrect = ref('教師法'); 
+const newMapCorrect = ref(CONFIG.pageTitle); 
 
 const isLoading = ref(true);
 const isUploading = ref(false);
-const viewMode = ref('single'); // 🌟 逐條/全覽 狀態變數
+const viewMode = ref('single'); 
 const searchQuery = ref('');
 const selectedClause = ref(null);
 const selectedIds = ref([]);
@@ -49,7 +53,6 @@ const isSaving = ref(false);
 const showSavedToast = ref(false);
 const showSidebar = ref(false);
 
-// 動態生成 CSS 變數
 const cssVars = computed(() => ({
   '--primary': CONFIG.primaryColor,
   '--hover': CONFIG.hoverColor,
@@ -57,10 +60,17 @@ const cssVars = computed(() => ({
   '--bg-active': CONFIG.activeBg
 }));
 
+// 🌟 過濾出不重複的法律名稱供下拉選單使用
+const uniqueLawNames = computed(() => {
+  const names = new Set(Object.keys(LAW_TABLE_MAP));
+  names.delete(CONFIG.pageTitle); // 排除自己，因為已經有【自身】選項
+  return Array.from(names);
+});
+
 const fetchData = async () => {
   isLoading.value = true;
   
-  // 1. 僅載入「本法規專屬」的校正字典
+  // 1. 載入本法規專屬的校正字典
   const { data: mapData } = await supabase.from('law_local_alias_mapping').select('*').eq('context_law', CONFIG.tableName);
   if (mapData) {
     const tempMap = {};
@@ -75,18 +85,23 @@ const fetchData = async () => {
       ...c, urls: Array.isArray(c.urls) ? c.urls : (typeof c.urls === 'string' ? JSON.parse(c.urls || '[]') : [])
     })).sort((a, b) => parseFloat(String(a.article_num || '0').replace('-', '.')) - parseFloat(String(b.article_num || '0').replace('-', '.')));
 
-    // 預載其他法規供參照
-    const fetchPromises = Object.keys(LAW_TABLE_MAP).map(name => supabase.from(LAW_TABLE_MAP[name]).select('*'));
+    // 🌟 3. 預載其他法規 (效能優化：相同 Table 只查一次)
+    const uniqueTables = [...new Set(Object.values(LAW_TABLE_MAP))];
+    const fetchPromises = uniqueTables.map(tName => supabase.from(tName).select('*'));
     const results = await Promise.all(fetchPromises);
-    Object.keys(LAW_TABLE_MAP).forEach((name, idx) => {
-      if (results[idx].data) parentClausesMap.value[name] = results[idx].data;
+
+    const tableDataMap = {};
+    uniqueTables.forEach((tName, idx) => { tableDataMap[tName] = results[idx].data; });
+
+    Object.keys(LAW_TABLE_MAP).forEach(lawName => {
+      const tName = LAW_TABLE_MAP[lawName];
+      if (tableDataMap[tName]) parentClausesMap.value[lawName] = tableDataMap[tName];
     });
   }
   isLoading.value = false;
 };
 onMounted(fetchData);
 
-// 儲存與刪除專屬字典項目
 const addCustomMap = async () => {
   if (!newMapWrong.value || !newMapCorrect.value) return;
   const wrong = newMapWrong.value.trim();
@@ -147,27 +162,26 @@ const getNormalizedArticleNum = (rawText) => {
   return parseNum(match[1]) + (match[2] ? '-' + parseNum(match[2]) : ''); 
 };
 
-// 🌟 分離式循序語境解析器 (不再誤抓項與款)
+// 🌟 解析器：保留原始字面，交給點擊事件處理
 const parseContentWithLinks = (text) => { 
   if (!text) return ''; 
   const articleRegex = /(第\s*[0-9一二三四五六七八九十百千-]+\s*條(?:之\s*[0-9一二三四五六七八九十百千-]+)?)/g; 
   
-  let currentContext = 'self'; 
+  let currentContextKeyword = '本辦法'; // 預設語境字眼
   const parts = text.split(articleRegex);
   
   return parts.map(part => {
     if (/^第\s*[0-9一二三四五六七八九十百千-]+\s*條/.test(part)) {
-      return `<button class="ref-btn" data-law="${currentContext}" data-raw="${part}">${part}</button>`;
+      // 🌟 將解析到的原始字面(Keyword)放入 data-law
+      return `<button class="ref-btn" data-law="${currentContextKeyword}" data-raw="${part}">${part}</button>`;
     } else {
-      if (part.includes('。') || part.includes('\n')) currentContext = 'self';
+      if (part.includes('。') || part.includes('\n')) currentContextKeyword = '本辦法'; 
       
-      const lawMatches = [...part.matchAll(/([一-龥]{2,12}(?:法|條例|辦法|細則|準則)|本法|本辦法|本細則|本準則|同法|該法)/g)];
+      const lawMatches = [...part.matchAll(/([一-龥]{2,12}(?:法|條例|辦法|細則|準則)|本法|本辦法|本細則|本準則|同法|該法|前法)/g)];
       if (lawMatches.length > 0) {
         let lastLaw = lawMatches[lawMatches.length - 1][1]; 
         if (!['方法', '無法', '依法', '合法', '修法', '用法'].includes(lastLaw)) {
-          if (['本法', '該法', '同法'].includes(lastLaw)) currentContext = 'parent';
-          else if (['本辦法', '本細則', '本準則'].includes(lastLaw)) currentContext = 'self';
-          else currentContext = lastLaw;
+          currentContextKeyword = lastLaw; // 記錄精確的詞彙 (如 "本法", "該法")
         }
       }
       return part; 
@@ -178,13 +192,19 @@ const parseContentWithLinks = (text) => {
 const handleContentClick = (e) => { 
   if (e.target.classList.contains('ref-btn')) { 
     const rawText = e.target.getAttribute('data-raw');
-    let targetLawName = e.target.getAttribute('data-law');
+    const keyword = e.target.getAttribute('data-law'); // 抓出原本的字，如「本法」
+    
+    let targetLawName = '';
 
-    if (targetLawName === 'parent') targetLawName = CONFIG.parentLawName;
-    if (targetLawName === 'self') targetLawName = CONFIG.pageTitle;
-
-    // 獨立字典優先套用
-    if (customLawMap.value[targetLawName]) targetLawName = customLawMap.value[targetLawName];
+    // 🌟 1. 字典優先：如果字典有設定這個詞的對應，強制覆寫！
+    if (customLawMap.value[keyword]) {
+      targetLawName = customLawMap.value[keyword];
+    } else {
+      // 🌟 2. 預設語境判斷
+      if (['本法', '該法', '同法', '前法'].includes(keyword)) targetLawName = CONFIG.parentLawName;
+      else if (['本辦法', '本細則', '本準則'].includes(keyword)) targetLawName = CONFIG.pageTitle;
+      else targetLawName = keyword;
+    }
     
     const convertedNum = getNormalizedArticleNum(rawText); 
     let target = null;
@@ -199,7 +219,7 @@ const handleContentClick = (e) => {
         target = parentClausesMap.value[targetLawName].find(c => String(c.article_num) === String(convertedNum));
         displayTitle = target ? `【${targetLawName}】${target.title}` : '';
       } else {
-        alert(`📚 系統尚未匯入或無法識別「${targetLawName}」。\n請在左側的【校正字典】中，將「${targetLawName}」對應到正確的法律！`);
+        alert(`📚 系統找不到「${targetLawName}」的資料庫。\n如果這是系統誤判，請在左側的【校正字典】中，將「${keyword}」對應到正確的法律！`);
         return;
       }
     }
@@ -220,7 +240,6 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 
 <template>
   <div class="law-layout" :style="cssVars" :class="{ 'mode-all': viewMode === 'all' }">
-    
     <div class="mobile-nav">
       <button class="btn-menu" @click="showSidebar = true">☰ 目錄</button>
       <div class="mode-toggle">
@@ -228,13 +247,11 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
         <button @click="viewMode = 'all'" :class="{ active: viewMode === 'all' }">全覽</button>
       </div>
     </div>
-
     <div class="sidebar" :class="{ 'mobile-open': showSidebar }">
       <div class="sidebar-header">
         <div class="header-top">
           <NuxtLink to="/admin/law-exam" class="back-link">← 回專區</NuxtLink>
           <button class="btn-close-sidebar" @click="showSidebar = false">✕</button>
-          
           <div class="mode-toggle desktop-only">
             <button @click="viewMode = 'single'" :class="{ active: viewMode === 'single' }">逐條觀看</button>
             <button @click="viewMode = 'all'" :class="{ active: viewMode === 'all' }">全部觀看</button>
@@ -251,7 +268,7 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
             
             <div class="mapping-tool">
               <h4>🔗 本法專屬校正字典</h4>
-              <p class="mapping-desc">此處新增的對應規則僅會套用於當前法規，避免與其他法律衝突。</p>
+              <p class="mapping-desc">此處新增的對應規則僅套用於當前法規。</p>
               <div class="map-list" v-if="Object.keys(customLawMap).length > 0">
                 <div v-for="(correct, wrong) in customLawMap" :key="wrong" class="map-item">
                   <span class="map-wrong">{{ wrong }}</span> ➔ <span class="map-correct">{{ correct }}</span>
@@ -259,10 +276,10 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
                 </div>
               </div>
               <div class="map-add-form">
-                <input v-model="newMapWrong" placeholder="錯誤字(如:該法)" class="map-input" />
+                <input v-model="newMapWrong" placeholder="錯誤字(如:本法)" class="map-input" />
                 <select v-model="newMapCorrect" class="map-select">
-                  <option :value="CONFIG.pageTitle">本法(自身)</option>
-                  <option v-for="law in Object.keys(LAW_TABLE_MAP)" :key="law" :value="law">{{ law }}</option>
+                  <option :value="CONFIG.pageTitle">【自身】{{ CONFIG.pageTitle }}</option>
+                  <option v-for="law in uniqueLawNames" :key="law" :value="law">{{ law }}</option>
                 </select>
                 <button @click="addCustomMap" class="btn-add-map">新增</button>
               </div>
@@ -297,7 +314,6 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
     </div>
 
     <div class="main-content">
-      
       <div v-if="viewMode === 'single'">
         <div v-if="!selectedClause" class="empty-state">
           <div class="empty-box"><h2>{{ CONFIG.pageTitle }}</h2><p>請開啟目錄選擇法條</p><button class="btn-open-menu-large" @click="showSidebar = true">開啟目錄</button></div>
@@ -354,7 +370,6 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
           </div>
         </div>
       </div>
-
     </div>
 
     <div v-if="floatingReference" class="floating-modal-overlay" @click.self="floatingReference = null">
@@ -375,22 +390,17 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 </template>
 
 <style scoped>
-/* 統一使用 CSS 變數 */
 .law-layout { display: flex; height: 100vh; background: #f8fafc; font-family: sans-serif; overflow: hidden; position: relative;}
-
 .mobile-nav { display: none; justify-content: space-between; align-items: center; background: white; padding: 10px 15px; border-bottom: 1px solid #e2e8f0; z-index: 50;}
 .btn-menu { background: var(--primary); color: white; border: none; padding: 8px 15px; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; }
-
 .sidebar { width: 360px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; z-index: 200; transition: transform 0.3s ease;}
 .sidebar-header { padding: 15px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
 .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
 .back-link { font-size: 13px; font-weight: bold; color: var(--primary); text-decoration: none; }
 .btn-close-sidebar { display: none; background: none; border: none; font-size: 20px; color: #64748b; cursor: pointer;}
-
 .mode-toggle { display: flex; background: #e2e8f0; padding: 4px; border-radius: 8px; }
 .mode-toggle button { border: none; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; transition: 0.2s; background: transparent; color: #64748b;}
 .mode-toggle button.active { background: white; color: var(--primary); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-
 .admin-tools { margin-bottom: 15px; background: white; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;}
 .admin-tools summary { padding: 10px; font-size: 13px; font-weight: bold; color: #475569; cursor: pointer; background: #f1f5f9; list-style: none; text-align: center;}
 .tools-panel { padding: 10px; border-top: 1px solid #e2e8f0;}
@@ -403,7 +413,7 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 .btn-tool.danger:disabled { opacity: 0.3; cursor: not-allowed; }
 .btn-tool.danger-filled { background: #dc2626; color: white; border: none; }
 
-.mapping-tool { background: #f8fafc; border: 1px dashed #cbd5e1; padding: 10px; border-radius: 8px; margin-top: 10px; }
+.mapping-tool { background: #f8fafc; border: 1px dashed #cbd5e1; padding: 10px; border-radius: 8px; margin-top: 10px; text-align: left; }
 .mapping-tool h4 { margin: 0 0 5px 0; font-size: 13px; color: #334155; }
 .mapping-desc { font-size: 11px; color: #64748b; margin-bottom: 10px; line-height: 1.4; }
 .map-list { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
