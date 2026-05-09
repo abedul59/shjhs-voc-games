@@ -390,17 +390,22 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 </template>
 
 <style scoped>
+/* 統一使用 CSS 變數 */
 .law-layout { display: flex; height: 100vh; background: #f8fafc; font-family: sans-serif; overflow: hidden; position: relative;}
+
 .mobile-nav { display: none; justify-content: space-between; align-items: center; background: white; padding: 10px 15px; border-bottom: 1px solid #e2e8f0; z-index: 50;}
 .btn-menu { background: var(--primary); color: white; border: none; padding: 8px 15px; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; }
+
 .sidebar { width: 360px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; z-index: 200; transition: transform 0.3s ease;}
 .sidebar-header { padding: 15px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
 .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
 .back-link { font-size: 13px; font-weight: bold; color: var(--primary); text-decoration: none; }
 .btn-close-sidebar { display: none; background: none; border: none; font-size: 20px; color: #64748b; cursor: pointer;}
+
 .mode-toggle { display: flex; background: #e2e8f0; padding: 4px; border-radius: 8px; }
 .mode-toggle button { border: none; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; transition: 0.2s; background: transparent; color: #64748b;}
 .mode-toggle button.active { background: white; color: var(--primary); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+
 .admin-tools { margin-bottom: 15px; background: white; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;}
 .admin-tools summary { padding: 10px; font-size: 13px; font-weight: bold; color: #475569; cursor: pointer; background: #f1f5f9; list-style: none; text-align: center;}
 .tools-panel { padding: 10px; border-top: 1px solid #e2e8f0;}
@@ -413,7 +418,8 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 .btn-tool.danger:disabled { opacity: 0.3; cursor: not-allowed; }
 .btn-tool.danger-filled { background: #dc2626; color: white; border: none; }
 
-.mapping-tool { background: #f8fafc; border: 1px dashed #cbd5e1; padding: 10px; border-radius: 8px; margin-top: 10px; text-align: left; }
+/* 🌟 補回遺失的字典 UI CSS，並確保按鈕不消失 🌟 */
+.mapping-tool { background: #f8fafc; border: 1px dashed #cbd5e1; padding: 10px; border-radius: 8px; margin-top: 10px; }
 .mapping-tool h4 { margin: 0 0 5px 0; font-size: 13px; color: #334155; }
 .mapping-desc { font-size: 11px; color: #64748b; margin-bottom: 10px; line-height: 1.4; }
 .map-list { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
@@ -421,9 +427,10 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 .map-wrong { color: #ef4444; font-weight: bold; }
 .map-correct { color: #10b981; font-weight: bold; }
 .btn-remove-map { background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 12px; }
-.map-add-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 5px; }
-.map-input, .map-select { font-size: 11px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; }
-.btn-add-map { font-size: 11px; background: #334155; color: white; border: none; border-radius: 4px; cursor: pointer; }
+.map-add-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 5px; align-items: stretch; }
+.map-input, .map-select { font-size: 11px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; outline: none; width: 100%; box-sizing: border-box;}
+.btn-add-map { font-size: 12px; background: #334155; color: white; border: none; border-radius: 4px; cursor: pointer; padding: 0 12px; font-weight: bold; transition: 0.2s; white-space: nowrap;}
+.btn-add-map:hover { background: #1e293b; }
 
 .search-input { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; box-sizing: border-box; }
 .tree-list { flex: 1; overflow-y: auto; padding: 10px; background: #fff; }
@@ -438,8 +445,6 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 
 .main-content { flex: 1; overflow-y: auto; padding: 30px; position: relative; scroll-behavior: smooth;}
 .empty-state { height: 100%; display: flex; justify-content: center; align-items: center; text-align: center; color: #94a3b8;}
-.empty-box h2 { font-size: 40px; margin: 0 0 10px 0;}
-.empty-box p { font-size: 16px; font-weight: bold; margin-bottom: 20px;}
 .btn-open-menu-large { display: none; background: var(--primary); color: white; border: none; padding: 10px 24px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer;}
 .clause-header { margin-bottom: 25px; }
 .breadcrumb { font-size: 12px; color: #94a3b8; font-weight: bold; margin-bottom: 8px;}
@@ -504,6 +509,7 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
   .card-side { width: 100%; flex-direction: row; justify-content: space-between; border-right: none; border-bottom: 1px solid #e2e8f0; padding: 15px 20px;}
   .floating-modal-overlay { align-items: flex-end; }
   .floating-modal { width: 100%; border-radius: 24px 24px 0 0; animation: slideUp 0.3s; }
+  .map-add-form { grid-template-columns: 1fr; } /* 手機版自動往下排列，防止破版 */
 }
 @keyframes popUp { from { transform: scale(0.95) translateY(10px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
 @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
