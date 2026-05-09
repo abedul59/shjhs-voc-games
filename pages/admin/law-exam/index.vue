@@ -56,6 +56,7 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
 
 /* 新增的粉色主題 */
 .law-pink:hover { border-color: #ec4899; background: #fdf2f8; }
-
+/* 新增的松石綠主題 */
+.law-teal:hover { border-color: #14b8a6; background: #f0fdfa; }
 @media (max-width: 768px) { .cards-grid { grid-template-columns: 1fr 1fr; } }
 </style>
