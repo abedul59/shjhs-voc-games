@@ -7,7 +7,7 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
 const CONFIG = {
   tableName: 'teachers_dismissal_regulations_clauses',
   pageTitle: '解聘不續聘停聘或資遣辦法',
-  primaryColor: '#ec4899', 
+  primaryColor: '#ec4899', // 櫻花粉
   hoverColor: '#be185d',
   lightBg: '#fdf2f8',
   activeBg: '#fce7f3'
@@ -26,8 +26,8 @@ const LAW_TABLE_MAP = {
 
 const supabase = useSupabaseClient();
 const clauses = ref([]);
-const parentClausesMap = ref({}); // 儲存多個母法的資料庫快照
-const definedParentLawName = ref(''); // 儲存「以下簡稱本法」的那個法律名稱
+const parentClausesMap = ref({});
+const definedParentLawName = ref(''); 
 
 const isLoading = ref(true);
 const isUploading = ref(false);
@@ -49,19 +49,21 @@ const fetchData = async () => {
       ...c, urls: Array.isArray(c.urls) ? c.urls : (typeof c.urls === 'string' ? JSON.parse(c.urls || '[]') : [])
     })).sort((a, b) => parseFloat(String(a.article_num || '0').replace('-', '.')) - parseFloat(String(b.article_num || '0').replace('-', '.')));
 
-    // 🌟 1. 偵測顯式定義（以下簡稱本法）
+    // 🌟 智慧偵測母法定義
     const art1 = clauses.value.find(c => String(c.article_num) === '1');
     if (art1 && art1.content) {
       const defMatch = art1.content.match(/([\u4e00-\u9fa5]{2,12}(?:法|條例))（以下簡稱本法）/);
       if (defMatch) definedParentLawName.value = defMatch[1];
+      else {
+        // 霸凌準則通常指教育基本法為母法
+        const refMatch = art1.content.match(/依([\u4e00-\u9fa5]{2,12}(?:法|條例))第/);
+        if (refMatch) definedParentLawName.value = refMatch[1];
+      }
     }
 
-    // 🌟 2. 預載所有可能用到的法律資料庫 (加快跳轉速度)
-    const allParentNames = Object.keys(LAW_TABLE_MAP);
-    const fetchPromises = allParentNames.map(name => supabase.from(LAW_TABLE_MAP[name]).select('*'));
+    const fetchPromises = Object.keys(LAW_TABLE_MAP).map(name => supabase.from(LAW_TABLE_MAP[name]).select('*'));
     const results = await Promise.all(fetchPromises);
-    
-    allParentNames.forEach((name, idx) => {
+    Object.keys(LAW_TABLE_MAP).forEach((name, idx) => {
       if (results[idx].data) parentClausesMap.value[name] = results[idx].data;
     });
   }
@@ -98,51 +100,49 @@ const parseNum = (str) => {
   return (total + current).toString(); 
 };
 
-// 🌟 精準過濾條文前的修飾語
+// 🌟 解析條號時，徹底移除法律前綴
 const getNormalizedArticleNum = (rawText) => { 
-  let text = rawText.replace(/\s/g, '').replace(/^(?:本法|本辦法|本細則|[\u4e00-\u9fa5]{2,12}(?:法|條例|辦法|細則))/, ''); 
-  let match = text.match(/第(.+)條(?:之(.+))?/); 
+  let text = rawText.replace(/\s/g, '');
+  const match = text.match(/第(.+)條(?:之(.+))?/); 
   if (!match) return null; 
-  let mainNum = parseNum(match[1]); 
-  let subNum = match[2] ? '-' + parseNum(match[2]) : ''; 
-  return mainNum + subNum; 
+  return parseNum(match[1]) + (match[2] ? '-' + parseNum(match[2]) : ''); 
 };
 
-// 🌟 核心：智慧語境追蹤引擎 (修復連接詞邏輯)
+// 🌟 核心：連接詞感知語境引擎
 const parseContentWithLinks = (text) => { 
   if (!text) return ''; 
-  const regex = /((?:(?:本法|本辦法|本細則|[\u4e00-\u9fa5]{2,12}(?:法|條例|辦法|細則))\s*)?第\s*[0-9一二三四五六七八九十百千-]+\s*條(?:之\s*[0-9一二三四五六七八九十百千-]+)?)/g; 
+  const regex = /((?:(?:本法|本辦法|本細則|本準則|[\u4e00-\u9fa5]{2,12}(?:法|條例|辦法|細則))\s*)?第\s*[0-9一二三四五六七八九十百千-]+\s*條(?:之\s*[0-9一二三四五六七八九十百千-]+)?)/g; 
   
-  let currentLawContext = 'self'; // 預設語境為本辦法
-  
+  let currentLawContext = 'self'; 
   const parts = text.split(regex);
   return parts.map(part => {
     if (regex.test(part)) {
       let targetLaw = currentLawContext;
+      const cleanPart = part.replace(/\s/g, '');
 
-      if (part.includes('本法')) {
-        targetLaw = definedParentLawName.value; // 指向被定義的母法 (例如教師法)
-        currentLawContext = targetLaw;
-      } else if (part.includes('本辦法') || part.includes('本細則')) {
-        targetLaw = 'self';
-        currentLawContext = 'self';
-      } else {
-        const specificLawMatch = part.match(/^([\u4e00-\u9fa5]{2,12}(?:法|條例|辦法|細則))/);
-        if (specificLawMatch && !specificLawMatch[1].includes('本')) {
-          targetLaw = specificLawMatch[1];
-          currentLawContext = targetLaw; 
+      // 1. 偵測顯式指定的法律名稱
+      const explicitMatch = cleanPart.match(/^(?:依|有|及|為|與)?([\u4e00-\u9fa5]{2,12}(?:法|條例|辦法|細則))/);
+      if (explicitMatch) {
+        const lawName = explicitMatch[1];
+        if (lawName === '本法') {
+          targetLaw = definedParentLawName.value || '教師法';
+          currentLawContext = 'parent';
+        } else if (['本辦法','本細則','本準則'].includes(lawName)) {
+          targetLaw = 'self';
+          currentLawContext = 'self';
         } else {
-          // 只寫「第X條」，透過「連接詞繼承」繼承目前的語境
-          targetLaw = currentLawContext;
+          targetLaw = lawName;
+          currentLawContext = lawName;
         }
+      } else {
+        // 2. 繼承當用語境
+        targetLaw = currentLawContext === 'parent' ? (definedParentLawName.value || '教師法') : currentLawContext;
       }
       return `<button class="ref-btn" data-law="${targetLaw}" data-raw="${part}">${part}</button>`;
     } else {
-      // 🌟 連接詞處理：如果是「、」或「及」，保留語境；如果是句號或換行，重置
-      if (!part.match(/[、及]/)) {
-        if (part.includes('。') || part.includes('\n')) {
-          currentLawContext = 'self';
-        }
+      // 遇到句號重置，遇到頓號/及保留語境
+      if (!part.match(/[、及]/) && (part.includes('。') || part.includes('\n'))) {
+        currentLawContext = 'self';
       }
       return part;
     }
@@ -152,38 +152,38 @@ const parseContentWithLinks = (text) => {
 const handleContentClick = (e) => { 
   if (e.target.classList.contains('ref-btn')) { 
     const rawText = e.target.getAttribute('data-raw');
-    const targetLawName = e.target.getAttribute('data-law');
+    const targetLaw = e.target.getAttribute('data-law').replace(/^(?:依|有|及|為|與)/, '');
     const convertedNum = getNormalizedArticleNum(rawText); 
     
     let target = null;
     let displayTitle = '';
 
-    if (targetLawName === 'self') {
+    if (targetLaw === 'self') {
       target = clauses.value.find(c => String(c.article_num) === String(convertedNum));
       displayTitle = target?.title;
     } else {
-      const db = parentClausesMap.value[targetLawName];
+      const db = parentClausesMap.value[targetLaw];
       if (db) {
         target = db.find(c => String(c.article_num) === String(convertedNum));
-        displayTitle = target ? `【${targetLawName}】${target.title}` : '';
+        displayTitle = target ? `【${targetLaw}】${target.title}` : '';
       } else {
-        alert(`📚 系統尚未匯入「${targetLawName}」的資料庫。`);
+        alert(`📚 系統尚未匯入「${targetLaw}」的資料庫。`);
         return;
       }
     }
 
     if (target) {
-      floatingReference.value = { ...target, displayTitle, canJump: targetLawName === 'self' };
+      floatingReference.value = { ...target, displayTitle, canJump: targetLaw === 'self' };
     } else {
-      alert(`無法定位：${targetLawName} 第 ${convertedNum} 條\n請確認該法資料已完整匯入。`);
+      alert(`無法定位：${targetLaw} 第 ${convertedNum} 條`);
     }
   } 
 };
 
 const handleImport = (e) => { const file = e.target.files[0]; if (!file) return; isUploading.value = true; Papa.parse(file, { header: true, skipEmptyLines: true, complete: async (results) => { await supabase.from(CONFIG.tableName).insert(results.data); fetchData(); isUploading.value = false; e.target.value = ''; } }); };
 const exportCSV = () => { const csv = Papa.unparse(clauses.value); const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `${CONFIG.pageTitle}_backup.csv`; link.click(); };
-const batchDelete = async () => { if (!confirm(`確定刪除選取法規？`)) return; await supabase.from(CONFIG.tableName).delete().in('id', selectedIds.value); fetchData(); };
-const clearAll = async () => { if (!confirm('確定清空所有資料嗎？')) return; await supabase.from(CONFIG.tableName).delete().neq('article_num', 'CLEAN_ALL'); selectedClause.value = null; fetchData(); };
+const batchDelete = async () => { if (!confirm(`確定刪除？`)) return; await supabase.from(CONFIG.tableName).delete().in('id', selectedIds.value); fetchData(); };
+const clearAll = async () => { if (!confirm('確定清空？')) return; await supabase.from(CONFIG.tableName).delete().neq('article_num', 'CLEAN_ALL'); selectedClause.value = null; fetchData(); };
 </script>
 
 <template>
@@ -195,56 +195,35 @@ const clearAll = async () => { if (!confirm('確定清空所有資料嗎？')) r
         <button @click="viewMode = 'all'" :class="{ active: viewMode === 'all' }">全覽</button>
       </div>
     </div>
-
     <div class="sidebar" :class="{ 'mobile-open': showSidebar }">
       <div class="sidebar-header">
-        <div class="header-top">
-          <NuxtLink to="/admin/law-exam" class="back-link">← 回專區</NuxtLink>
-          <button class="btn-close-sidebar" @click="showSidebar = false">✕</button>
-        </div>
-        <details class="admin-tools">
-          <summary>⚙️ 管理工具</summary>
+        <div class="header-top"><NuxtLink to="/admin/law-exam" class="back-link">← 回專區</NuxtLink><button class="btn-close-sidebar" @click="showSidebar = false">✕</button></div>
+        <details class="admin-tools"><summary>⚙️ 管理工具</summary>
           <div class="tools-panel">
-            <div class="top-actions">
-              <label class="btn-tool primary">📥 匯入<input type="file" @change="handleImport" hidden /></label>
-              <button @click="exportCSV" class="btn-tool">📤 匯出</button>
-            </div>
-            <div class="danger-zone">
-              <button @click="batchDelete" class="btn-tool danger" :disabled="!selectedIds.length">🗑️ 刪除</button>
-              <button @click="clearAll" class="btn-tool danger-filled">🔥 清空</button>
-            </div>
+            <div class="top-actions"><label class="btn-tool primary">📥 匯入<input type="file" @change="handleImport" hidden /></label><button @click="exportCSV" class="btn-tool">📤 匯出</button></div>
+            <div class="danger-zone"><button @click="batchDelete" class="btn-tool danger" :disabled="!selectedIds.length">🗑️ 刪除</button><button @click="clearAll" class="btn-tool danger-filled">🔥 清空</button></div>
           </div>
         </details>
         <input v-model="searchQuery" class="search-input" placeholder="🔍 搜尋條號..." />
       </div>
-
       <div class="tree-list">
-        <div v-if="isLoading" class="list-msg">資料載入中...</div>
+        <div v-if="isLoading" class="list-msg">載入中...</div>
         <div v-else v-for="(sections, chapter) in groupedClauses" :key="chapter" class="chapter-group">
           <details open><summary class="chapter-title">{{ chapter }}</summary>
             <div v-for="(items, section) in sections" :key="section" class="section-group">
               <details open><summary class="section-title">{{ section }}</summary>
-                <div v-for="c in items" :key="c.id" class="clause-item" :class="{active: selectedClause?.id === c.id}">
-                  <input type="checkbox" v-model="selectedIds" :value="c.id" class="q-checkbox" />
-                  <span @click="selectClause(c)" class="clause-label">{{ c.title }}</span>
-                </div>
+                <div v-for="c in items" :key="c.id" class="clause-item" :class="{active: selectedClause?.id === c.id}"><input type="checkbox" v-model="selectedIds" :value="c.id" class="q-checkbox" /><span @click="selectClause(c)" class="clause-label">{{ c.title }}</span></div>
               </details>
             </div>
           </details>
         </div>
       </div>
     </div>
-
     <div class="main-content">
       <div v-if="viewMode === 'single'">
-        <div v-if="!selectedClause" class="empty-state">
-          <div class="empty-box"><h2>🧑‍🏫</h2><p>請從目錄選擇法條以檢視內容</p><button class="btn-open-menu-large" @click="showSidebar = true">開啟目錄</button></div>
-        </div>
+        <div v-if="!selectedClause" class="empty-state"><div class="empty-box"><h2>🧑‍🏫</h2><p>請開啟目錄選擇法條</p><button class="btn-open-menu-large" @click="showSidebar = true">開啟目錄</button></div></div>
         <div v-else class="clause-detail">
-          <div class="clause-header">
-            <div class="breadcrumb">{{selectedClause.chapter_name}} > {{selectedClause.section_name}}</div>
-            <h1>{{ selectedClause.title }}</h1>
-          </div>
+          <div class="clause-header"><div class="breadcrumb">{{selectedClause.chapter_name}} > {{selectedClause.section_name}}</div><h1>{{ selectedClause.title }}</h1></div>
           <div class="content-box"><div class="content-text" v-html="parseContentWithLinks(selectedClause.content)" @click="handleContentClick"></div></div>
           <div class="notes-section">
             <div class="notes-header"><h3>📝 筆記與實務見解</h3><div class="save-actions"><span v-if="showSavedToast" class="save-success-tag">✅ 已儲存</span><button @click="saveManual(selectedClause)" class="btn-save-manual" :disabled="isSaving">💾 儲存筆記</button></div></div>
@@ -252,7 +231,6 @@ const clearAll = async () => { if (!confirm('確定清空所有資料嗎？')) r
           </div>
         </div>
       </div>
-
       <div v-else class="full-text-view">
         <div class="clauses-container">
           <div v-for="c in filteredFlatClauses" :key="c.id" class="full-clause-card">
@@ -262,12 +240,10 @@ const clearAll = async () => { if (!confirm('確定清空所有資料嗎？')) r
         </div>
       </div>
     </div>
-
     <div v-if="floatingReference" class="floating-modal-overlay" @click.self="floatingReference = null">
       <div class="floating-modal">
-        <div class="float-header" :style="{ background: CONFIG.primaryColor }"><h4>{{ floatingReference.displayTitle }} 參照</h4><button @click="floatingReference = null">✕</button></div>
-        <div class="float-body"><p class="float-content-text">{{ floatingReference.content }}</p>
-          <div v-if="floatingReference.notes" class="float-note-preview">{{ floatingReference.notes }}</div>
+        <div class="float-header" :style="{ background: CONFIG.primaryColor }"><h4>{{ floatingReference.displayTitle }}</h4><button @click="floatingReference = null">✕</button></div>
+        <div class="float-body"><p class="float-content-text">{{ floatingReference.content }}</p><div v-if="floatingReference.notes" class="float-note-preview">{{ floatingReference.notes }}</div>
           <button v-if="floatingReference.canJump" @click="selectClause(floatingReference); floatingReference = null" class="btn-jump-main" :style="{ background: CONFIG.primaryColor }">詳細內容與編輯 ➔</button>
           <button v-else @click="floatingReference = null" class="btn-jump-main" style="background: #94a3b8">關閉視窗</button>
         </div>
@@ -280,13 +256,13 @@ const clearAll = async () => { if (!confirm('確定清空所有資料嗎？')) r
 .law-layout { display: flex; height: 100vh; background: #f8fafc; font-family: sans-serif; overflow: hidden; position: relative;}
 .mobile-nav { display: none; justify-content: space-between; align-items: center; background: white; padding: 10px 15px; border-bottom: 1px solid #e2e8f0; z-index: 50;}
 .btn-menu { background: v-bind('CONFIG.primaryColor'); color: white; border: none; padding: 8px 15px; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; }
-.sidebar { width: 360px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; z-index: 200; transition: 0.3s;}
+.sidebar { width: 360px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; z-index: 200; transition: transform 0.3s ease;}
 .sidebar-header { padding: 15px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
 .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
 .back-link { font-size: 13px; font-weight: bold; color: v-bind('CONFIG.primaryColor'); text-decoration: none; }
 .btn-close-sidebar { display: none; background: none; border: none; font-size: 20px; color: #64748b; cursor: pointer;}
 .mode-toggle { display: flex; background: #e2e8f0; padding: 4px; border-radius: 8px; }
-.mode-toggle button { border: none; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; background: transparent; color: #64748b;}
+.mode-toggle button { border: none; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; transition: 0.2s; background: transparent; color: #64748b;}
 .mode-toggle button.active { background: white; color: v-bind('CONFIG.primaryColor'); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
 .admin-tools { margin-bottom: 15px; background: white; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;}
 .admin-tools summary { padding: 10px; font-size: 13px; font-weight: bold; color: #475569; cursor: pointer; background: #f1f5f9; list-style: none; text-align: center;}
@@ -298,15 +274,19 @@ const clearAll = async () => { if (!confirm('確定清空所有資料嗎？')) r
 .btn-tool.danger-filled { background: #dc2626; color: white; border: none; }
 .search-input { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; box-sizing: border-box; }
 .tree-list { flex: 1; overflow-y: auto; padding: 10px; background: #fff; }
+.list-msg { padding: 20px; text-align: center; color: #94a3b8; font-size: 14px;}
 .chapter-title { padding: 10px; font-weight: 800; color: #1e293b; background: #f1f5f9; border-radius: 8px; cursor: pointer; margin-top: 10px; font-size: 14px; }
 .section-title { padding: 8px 15px; font-size: 13px; font-weight: bold; color: #64748b; cursor: pointer; }
 .clause-item { display: flex; align-items: center; gap: 10px; padding: 6px 30px; transition: 0.2s; border-radius: 6px; }
 .clause-item:hover { background: #f8fafc; }
 .clause-item.active { background: v-bind('CONFIG.lightBg'); color: v-bind('CONFIG.primaryColor'); font-weight: bold; }
+.q-checkbox { width: 16px; height: 16px; cursor: pointer; flex-shrink: 0;}
 .clause-label { flex: 1; cursor: pointer; font-size: 14px; }
 .main-content { flex: 1; overflow-y: auto; padding: 30px; position: relative; scroll-behavior: smooth;}
 .empty-state { height: 100%; display: flex; justify-content: center; align-items: center; text-align: center; color: #94a3b8;}
 .btn-open-menu-large { display: none; background: v-bind('CONFIG.primaryColor'); color: white; border: none; padding: 10px 24px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer;}
+.clause-header { margin-bottom: 25px; }
+.breadcrumb { font-size: 12px; color: #94a3b8; font-weight: bold; margin-bottom: 8px;}
 .clause-header h1 { margin: 0; font-size: 28px; color: #1e293b; border-left: 5px solid v-bind('CONFIG.primaryColor'); padding-left: 15px;}
 .content-box { background: white; padding: 35px; border-radius: 16px; border: 1px solid #e2e8f0; line-height: 1.8; font-size: 18px; margin-bottom: 30px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
 .content-text { white-space: pre-wrap; color: #334155;}
@@ -327,12 +307,14 @@ const clearAll = async () => { if (!confirm('確定清空所有資料嗎？')) r
 .card-note-preview { margin-top: 15px; padding: 12px 15px; background: #fffbeb; border-radius: 8px; font-size: 14px; border-left: 4px solid #fbbf24; white-space: pre-wrap; line-height: 1.6;}
 .floating-modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); z-index: 300; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(2px);}
 .floating-modal { width: 450px; background: white; border-radius: 20px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); overflow: hidden; animation: popUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-.float-header { padding: 18px 25px; color: white; display: flex; justify-content: space-between; align-items: center;}
+.float-header { padding: 18px 25px; background: #1e293b; color: white; display: flex; justify-content: space-between; align-items: center;}
+.float-header h4 { margin: 0; font-size: 18px; letter-spacing: 1px;}
+.float-header button { background: none; border: none; color: white; opacity: 0.7; cursor: pointer; font-size: 22px; transition: 0.2s;}
+.float-header button:hover { opacity: 1; transform: rotate(90deg);}
 .float-body { padding: 25px; max-height: 500px; overflow-y: auto; }
 .float-content-text { line-height: 1.8; font-size: 16px; color: #334155; margin-bottom: 20px; white-space: pre-wrap;}
 .float-note-preview { background: #fef9c3; padding: 15px; border-radius: 12px; font-size: 14px; color: #854d0e; margin-bottom: 20px; border-left: 4px solid #fbbf24; white-space: pre-wrap; }
-.btn-jump-main { width: 100%; padding: 14px; border: none; border-radius: 10px; font-weight: 800; font-size: 15px; color: white; cursor: pointer; transition: 0.2s;}
-.btn-jump-main:hover { opacity: 0.9; box-shadow: 0 4px 12px rgba(0,0,0,0.15);}
+.btn-jump-main { width: 100%; padding: 14px; background: v-bind('CONFIG.primaryColor'); border: none; border-radius: 10px; font-weight: 800; font-size: 15px; color: white; cursor: pointer; transition: 0.2s;}
 
 @media (max-width: 768px) {
   .mobile-nav { display: flex; }
@@ -341,8 +323,6 @@ const clearAll = async () => { if (!confirm('確定清空所有資料嗎？')) r
   .sidebar.mobile-open { transform: translateX(0); }
   .btn-close-sidebar { display: block; }
   .main-content { padding: 20px 15px; height: calc(100vh - 60px); overflow-y: auto;}
-  .full-clause-card { flex-direction: column; }
-  .card-side { width: 100%; flex-direction: row; justify-content: space-between; border-right: none; border-bottom: 1px solid #e2e8f0; padding: 15px 20px;}
   .floating-modal-overlay { align-items: flex-end; }
   .floating-modal { width: 100%; border-radius: 24px 24px 0 0; animation: slideUp 0.3s; }
 }
