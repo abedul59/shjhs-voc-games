@@ -29,6 +29,9 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
       <NuxtLink to="/admin/law-exam/educational-fundamental-act" class="dash-card law-teal">
         <div class="icon">📖</div><h2>教育基本法</h2>
       </NuxtLink>
+      <NuxtLink to="/admin/law-exam/campus-bullying-prevention-guidelines" class="dash-card law-orange">
+        <div class="icon">🛡️</div><h2>校園霸凌防制準則</h2>
+      </NuxtLink>
     </div>
   </div>
 </template>
