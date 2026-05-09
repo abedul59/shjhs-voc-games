@@ -422,7 +422,23 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 .mapping-tool { background: #f8fafc; border: 1px dashed #cbd5e1; padding: 10px; border-radius: 8px; margin-top: 10px; }
 .mapping-tool h4 { margin: 0 0 5px 0; font-size: 13px; color: #334155; }
 .mapping-desc { font-size: 11px; color: #64748b; margin-bottom: 10px; line-height: 1.4; }
-.map-list { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+
+.map-list { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 5px; 
+  margin-bottom: 10px; 
+  max-height: 160px; /* 🌟 限制最大高度 */
+  overflow-y: auto;  /* 🌟 超過高度時自動出現捲軸 */
+  padding-right: 4px; /* 留出捲軸空間避免蓋到文字 */
+}
+
+/* 🌟 美化字典區塊的專屬小捲軸 */
+.map-list::-webkit-scrollbar { width: 5px; }
+.map-list::-webkit-scrollbar-track { background: transparent; }
+.map-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+
+
 .map-item { font-size: 12px; background: white; padding: 4px 8px; border-radius: 4px; border: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
 .map-wrong { color: #ef4444; font-weight: bold; }
 .map-correct { color: #10b981; font-weight: bold; }
