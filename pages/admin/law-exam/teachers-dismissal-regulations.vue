@@ -4,17 +4,17 @@ import Papa from 'papaparse';
 
 definePageMeta({ middleware: ['auth', 'law-auth'] });
 
+// 🌟 獨立且明確的本法與母法設定
 const CONFIG = {
   tableName: 'teachers_dismissal_regulations_clauses',
   pageTitle: '解聘不續聘停聘或資遣辦法',
+  parentLawName: '教師法', // 👈 獨立設定：本法的母法是教師法
   primaryColor: '#ec4899', // 櫻花粉
   hoverColor: '#be185d',
   lightBg: '#fdf2f8',
   activeBg: '#fce7f3'
 };
-
-// ... 從 const LAW_TABLE_MAP 開始，後面的幾百行程式碼與《校園霸凌防制準則》完全一模一樣，直接貼上即可 ...
-
+  
 const LAW_TABLE_MAP = {
   '民法': 'civil_law_clauses',
   '刑法': 'criminal_law_clauses',
@@ -30,9 +30,7 @@ const LAW_TABLE_MAP = {
 const supabase = useSupabaseClient();
 const clauses = ref([]);
 const parentClausesMap = ref({});
-const definedParentLawName = ref(''); 
 
-// 全站共用校正字典
 const customLawMap = ref({});
 const newMapWrong = ref('');
 const newMapCorrect = ref('教師法'); 
@@ -51,7 +49,6 @@ const showSidebar = ref(false);
 const fetchData = async () => {
   isLoading.value = true;
   
-  // 1. 載入全站共用校正字典
   const { data: mapData } = await supabase.from('law_alias_mapping').select('*');
   if (mapData) {
     const tempMap = {};
@@ -59,23 +56,11 @@ const fetchData = async () => {
     customLawMap.value = tempMap;
   }
 
-  // 2. 載入法規本體
   const { data, error } = await supabase.from(CONFIG.tableName).select('*');
   if (data) {
     clauses.value = data.map(c => ({
       ...c, urls: Array.isArray(c.urls) ? c.urls : (typeof c.urls === 'string' ? JSON.parse(c.urls || '[]') : [])
     })).sort((a, b) => parseFloat(String(a.article_num || '0').replace('-', '.')) - parseFloat(String(b.article_num || '0').replace('-', '.')));
-
-    // 智慧偵測母法
-    const art1 = clauses.value.find(c => String(c.article_num) === '1');
-    if (art1 && art1.content) {
-      const defMatch = art1.content.match(/([\u4e00-\u9fa5]{2,12}(?:法|條例))（以下簡稱本法）/);
-      if (defMatch) definedParentLawName.value = defMatch[1];
-      else {
-        const refMatch = art1.content.match(/依([\u4e00-\u9fa5]{2,12}(?:法|條例))第/);
-        if (refMatch) definedParentLawName.value = refMatch[1];
-      }
-    }
 
     const fetchPromises = Object.keys(LAW_TABLE_MAP).map(name => supabase.from(LAW_TABLE_MAP[name]).select('*'));
     const results = await Promise.all(fetchPromises);
@@ -87,7 +72,6 @@ const fetchData = async () => {
 };
 onMounted(fetchData);
 
-// 儲存與刪除字典項目
 const addCustomMap = async () => {
   if (!newMapWrong.value || !newMapCorrect.value) return;
   const wrong = newMapWrong.value.trim();
@@ -146,39 +130,35 @@ const getNormalizedArticleNum = (rawText) => {
   return parseNum(match[1]) + (match[2] ? '-' + parseNum(match[2]) : ''); 
 };
 
+// 🌟 革命性升級：分離式循序語境解析器
 const parseContentWithLinks = (text) => { 
   if (!text) return ''; 
-  const regex = /((?:(?:本法|本辦法|本細則|本準則|[\u4e00-\u9fa5]{2,12}(?:法|條例|辦法|細則|準則))\s*)?第\s*[0-9一二三四五六七八九十百千-]+\s*條(?:之\s*[0-9一二三四五六七八九十百千-]+)?)/g; 
+  // 嚴格只切分「第 X 條」，排除項與款
+  const articleRegex = /(第\s*[0-9一二三四五六七八九十百千-]+\s*條(?:之\s*[0-9一二三四五六七八九十百千-]+)?)/g; 
   
-  let currentLawContext = 'self'; 
-  const parts = text.split(regex);
+  let currentContext = 'self'; // 記錄當下語境，預設為自己
+  const parts = text.split(articleRegex);
+  
   return parts.map(part => {
-    if (regex.test(part)) {
-      let targetLaw = currentLawContext;
-      const cleanPart = part.replace(/\s/g, '');
-
-      const explicitMatch = cleanPart.match(/^(?:依|有|及|為|與)?([\u4e00-\u9fa5]{2,12}(?:法|條例|辦法|細則|準則))/);
-      if (explicitMatch) {
-        const lawName = explicitMatch[1];
-        if (lawName === '本法') {
-          targetLaw = definedParentLawName.value || '教師法';
-          currentLawContext = 'parent';
-        } else if (['本辦法','本細則','本準則'].includes(lawName)) {
-          targetLaw = 'self';
-          currentLawContext = 'self';
-        } else {
-          targetLaw = lawName;
-          currentLawContext = lawName;
-        }
-      } else {
-        targetLaw = currentLawContext === 'parent' ? (definedParentLawName.value || '教師法') : currentLawContext;
-      }
-      return `<button class="ref-btn" data-law="${targetLaw}" data-raw="${part}">${part}</button>`;
+    // 如果是「第 X 條」，直接做成按鈕，賦予當下的語境
+    if (/^第\s*[0-9一二三四五六七八九十百千-]+\s*條/.test(part)) {
+      return `<button class="ref-btn" data-law="${currentContext}" data-raw="${part}">${part}</button>`;
     } else {
-      if (!part.match(/[、及]/) && (part.includes('。') || part.includes('\n'))) {
-        currentLawContext = 'self';
+      // 遇到句號或換行，語境回歸本法規
+      if (part.includes('。') || part.includes('\n')) currentContext = 'self';
+      
+      // 在純文字區塊中，尋找所有的法律名稱來切換語境
+      const lawMatches = [...part.matchAll(/([一-龥]{2,12}(?:法|條例|辦法|細則|準則)|本法|本辦法|本細則|本準則|同法|該法)/g)];
+      if (lawMatches.length > 0) {
+        let lastLaw = lawMatches[lawMatches.length - 1][1]; // 抓取最後一個出現的法律
+        // 過濾掉非法律的普通名詞
+        if (!['方法', '無法', '依法', '合法', '修法', '用法'].includes(lastLaw)) {
+          if (['本法', '該法', '同法'].includes(lastLaw)) currentContext = 'parent';
+          else if (['本辦法', '本細則', '本準則'].includes(lastLaw)) currentContext = 'self';
+          else currentContext = lastLaw;
+        }
       }
-      return part;
+      return part; // 把「項」、「款」和法律名稱當作普通文字顯示
     }
   }).join(''); 
 };
@@ -186,37 +166,37 @@ const parseContentWithLinks = (text) => {
 const handleContentClick = (e) => { 
   if (e.target.classList.contains('ref-btn')) { 
     const rawText = e.target.getAttribute('data-raw');
-    let rawTargetLaw = e.target.getAttribute('data-law');
-    let targetLawName = rawTargetLaw.replace(/^(?:依|有|及|為|與)/, '');
+    let targetLawName = e.target.getAttribute('data-law');
 
-    if (customLawMap.value[rawTargetLaw]) {
-      targetLawName = customLawMap.value[rawTargetLaw];
-    } else if (customLawMap.value[targetLawName]) {
-      targetLawName = customLawMap.value[targetLawName];
-    }
+    // 依據 CONFIG 獨立定義的參數還原代稱
+    if (targetLawName === 'parent') targetLawName = CONFIG.parentLawName;
+    if (targetLawName === 'self') targetLawName = CONFIG.pageTitle;
+
+    // 套用校正字典
+    if (customLawMap.value[targetLawName]) targetLawName = customLawMap.value[targetLawName];
     
     const convertedNum = getNormalizedArticleNum(rawText); 
     let target = null;
     let displayTitle = '';
 
-    if (targetLawName === 'self') {
+    if (targetLawName === CONFIG.pageTitle) {
       target = clauses.value.find(c => String(c.article_num) === String(convertedNum));
       displayTitle = target?.title;
     } else {
-      const db = parentClausesMap.value[targetLawName];
-      if (db) {
-        target = db.find(c => String(c.article_num) === String(convertedNum));
+      const targetTable = LAW_TABLE_MAP[targetLawName];
+      if (targetTable && parentClausesMap.value[targetLawName]) {
+        target = parentClausesMap.value[targetLawName].find(c => String(c.article_num) === String(convertedNum));
         displayTitle = target ? `【${targetLawName}】${target.title}` : '';
       } else {
-        alert(`📚 系統找不到「${targetLawName}」的資料庫。\n如果這是系統誤判，請在左側的【管理工具 > 法律名稱校正】中，將「${targetLawName}」對應到正確的法律！`);
+        alert(`📚 系統尚未匯入或無法識別「${targetLawName}」。\n請在左側的【校正字典】中，將「${targetLawName}」對應到正確的法律！`);
         return;
       }
     }
 
     if (target) {
-      floatingReference.value = { ...target, displayTitle, canJump: targetLawName === 'self' };
+      floatingReference.value = { ...target, displayTitle, canJump: (targetLawName === CONFIG.pageTitle) };
     } else {
-      alert(`無法定位：${targetLawName} 第 ${convertedNum} 條\n請確認該法資料已完整匯入。`);
+      alert(`無法定位：${targetLawName} 第 ${convertedNum} 條\n可能原因：資料庫無此條文，或校正字典對應錯誤。`);
     }
   } 
 };
@@ -252,9 +232,9 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
                 </div>
               </div>
               <div class="map-add-form">
-                <input v-model="newMapWrong" placeholder="錯誤字(如:該法)" class="map-input" />
+                <input v-model="newMapWrong" placeholder="錯誤字" class="map-input" />
                 <select v-model="newMapCorrect" class="map-select">
-                  <option value="self">本辦法(自身)</option>
+                  <option :value="CONFIG.pageTitle">本法(自身)</option>
                   <option v-for="law in Object.keys(LAW_TABLE_MAP)" :key="law" :value="law">{{ law }}</option>
                 </select>
                 <button @click="addCustomMap" class="btn-add-map">新增</button>
@@ -331,7 +311,6 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 .btn-tool.primary { background: v-bind('CONFIG.primaryColor'); color: white; border: none; }
 .btn-tool.danger { color: #dc2626; border-color: #fecaca; }
 .btn-tool.danger-filled { background: #dc2626; color: white; border: none; }
-
 .mapping-tool { background: #f8fafc; border: 1px dashed #cbd5e1; padding: 10px; border-radius: 8px; margin-top: 10px; }
 .mapping-tool h4 { margin: 0 0 5px 0; font-size: 13px; color: #334155; }
 .mapping-desc { font-size: 11px; color: #64748b; margin-bottom: 10px; line-height: 1.4; }
@@ -343,7 +322,6 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 .map-add-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 5px; }
 .map-input, .map-select { font-size: 11px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; }
 .btn-add-map { font-size: 11px; background: #334155; color: white; border: none; border-radius: 4px; cursor: pointer; }
-
 .search-input { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; box-sizing: border-box; }
 .tree-list { flex: 1; overflow-y: auto; padding: 10px; background: #fff; }
 .list-msg { padding: 20px; text-align: center; color: #94a3b8; font-size: 14px;}
@@ -352,7 +330,6 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 .clause-item { display: flex; align-items: center; gap: 10px; padding: 6px 30px; transition: 0.2s; border-radius: 6px; }
 .clause-item:hover { background: #f8fafc; }
 .clause-item.active { background: v-bind('CONFIG.lightBg'); color: v-bind('CONFIG.primaryColor'); font-weight: bold; }
-.q-checkbox { width: 16px; height: 16px; cursor: pointer; flex-shrink: 0;}
 .clause-label { flex: 1; cursor: pointer; font-size: 14px; }
 .main-content { flex: 1; overflow-y: auto; padding: 30px; position: relative; scroll-behavior: smooth;}
 .empty-state { height: 100%; display: flex; justify-content: center; align-items: center; text-align: center; color: #94a3b8;}
@@ -378,11 +355,15 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 .card-note-preview { margin-top: 15px; padding: 12px 15px; background: #fffbeb; border-radius: 8px; font-size: 14px; border-left: 4px solid #fbbf24; white-space: pre-wrap; line-height: 1.6;}
 .floating-modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); z-index: 300; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(2px);}
 .floating-modal { width: 450px; background: white; border-radius: 20px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); overflow: hidden; animation: popUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-.float-header { padding: 18px 25px; color: white; display: flex; justify-content: space-between; align-items: center;}
+.float-header { padding: 18px 25px; background: v-bind('CONFIG.primaryColor'); color: white; display: flex; justify-content: space-between; align-items: center;}
+.float-header h4 { margin: 0; font-size: 18px; letter-spacing: 1px;}
+.float-header button { background: none; border: none; color: white; opacity: 0.7; cursor: pointer; font-size: 22px; transition: 0.2s;}
+.float-header button:hover { opacity: 1; transform: rotate(90deg);}
 .float-body { padding: 25px; max-height: 500px; overflow-y: auto; }
 .float-content-text { line-height: 1.8; font-size: 16px; color: #334155; margin-bottom: 20px; white-space: pre-wrap;}
 .float-note-preview { background: #fef9c3; padding: 15px; border-radius: 12px; font-size: 14px; color: #854d0e; margin-bottom: 20px; border-left: 4px solid #fbbf24; white-space: pre-wrap; }
 .btn-jump-main { width: 100%; padding: 14px; background: v-bind('CONFIG.primaryColor'); border: none; border-radius: 10px; font-weight: 800; font-size: 15px; color: white; cursor: pointer; transition: 0.2s;}
+.btn-jump-main:hover { opacity: 0.9; box-shadow: 0 4px 12px rgba(0,0,0,0.15);}
 
 @media (max-width: 768px) {
   .mobile-nav { display: flex; }
