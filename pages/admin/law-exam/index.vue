@@ -26,6 +26,9 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
       <NuxtLink to="/admin/law-exam/teachers-dismissal-regulations" class="dash-card law-pink">
         <div class="icon">🛑</div><h2>教師解聘不續聘辦法</h2>
       </NuxtLink>
+      <NuxtLink to="/admin/law-exam/educational-fundamental-act" class="dash-card law-teal">
+        <div class="icon">📖</div><h2>教育基本法</h2>
+      </NuxtLink>
     </div>
   </div>
 </template>
