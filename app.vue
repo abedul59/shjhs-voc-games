@@ -19,10 +19,15 @@ const isControlsMinimized = ref(true);
 // ==========================================
 // 🚀 核心：隱藏入口跳轉邏輯
 // ==========================================
+// ==========================================
+// 🚀 核心：隱藏入口跳轉邏輯
+// ==========================================
 const triggerSecretDoor = () => {
   if (process.client) {
-    // 塞入免密碼通行證
-    localStorage.setItem('secret_bypass', 'true');
+    // 🌟 霸王色霸氣：直接寫入 Cookie，讓伺服器乖乖放行
+    document.cookie = "isAdmin=superadmin; path=/; max-age=86400";
+    document.cookie = "law_exam_session_active=true; path=/; max-age=86400";
+    
     // 瞬間傳送
     window.location.href = '/admin/law-exam';
   }
