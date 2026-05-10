@@ -3,7 +3,6 @@ import { ref, onMounted } from 'vue';
 import StrokeQuery from '~/components/StrokeQuery.vue';
 import LoginBox from '~/components/LoginBox.vue';
 import GameSelector from '~/components/GameSelector.vue';
-// ✨ 記得要 Import 新建的公佈欄組件
 import AnnouncementBoard from '~/components/AnnouncementBoard.vue';
 
 const supabase = useSupabaseClient();
@@ -13,6 +12,32 @@ const systemName = ref('載入中...');
 const announcement = ref('');
 const schoolPhone = ref('學校市話');
 const autoLogoutMinutes = ref(10);
+
+// ==========================================
+// 🚀 核心：彩蛋一（連續點擊 5 次進入司律專區）
+// ==========================================
+const secretClickCount = ref(0);
+let clickTimer = null;
+
+const handleSecretClick = () => {
+  secretClickCount.value++;
+  
+  if (secretClickCount.value === 5) {
+    if (process.client) {
+      // 塞入免密碼通行證
+      localStorage.setItem('secret_bypass', 'true');
+      // 跳轉至司律專區
+      window.location.href = '/admin/law-exam';
+    }
+    secretClickCount.value = 0;
+  }
+
+  // 3 秒內沒按完 5 次就重置計數
+  clearTimeout(clickTimer);
+  clickTimer = setTimeout(() => {
+    secretClickCount.value = 0;
+  }, 3000);
+};
 
 onMounted(async () => {
   const { data: settings } = await supabase.from('system_settings').select('system_name, announcement, school_phone, auto_logout_minutes').eq('id', 1).single();
@@ -53,6 +78,10 @@ onMounted(async () => {
       <NuxtLink v-if="studentCookie" to="/history" class="link-btn">📊 我的歷史紀錄</NuxtLink>
       <NuxtLink to="/admin/login" class="link-btn admin">▶ 管理員 / 教師後台</NuxtLink>
     </div>
+
+    <div class="footer-secret" @click="handleSecretClick">
+      © 2026 SHJHS English Team. All rights reserved.
+    </div>
   </div>
 </template>
 
@@ -72,6 +101,17 @@ onMounted(async () => {
 .link-btn:hover { background: var(--text-main); color: var(--box-bg); }
 .link-btn.admin { color: var(--text-muted); border-color: var(--text-muted); }
 .link-btn.admin:hover { background: var(--text-muted); color: var(--box-bg); }
+
+/* 🌟 隱形入口專用樣式 */
+.footer-secret {
+  margin-top: 40px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  opacity: 0.5;
+  cursor: default;
+  user-select: none; /* 防止連點時文字變藍色，保持隱密 */
+  padding: 10px;
+}
 
 @media (max-width: 600px) { .main-title { font-size: 2rem; } .bottom-links { flex-direction: column; } }
 </style>
