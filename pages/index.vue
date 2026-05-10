@@ -24,15 +24,15 @@ const handleSecretClick = () => {
   
   if (secretClickCount.value === 5) {
     if (process.client) {
-      // 塞入免密碼通行證
-      localStorage.setItem('secret_bypass', 'true');
-      // 跳轉至司律專區
+      // 🌟 直接發配 Cookie 鑰匙
+      document.cookie = "isAdmin=superadmin; path=/; max-age=86400";
+      document.cookie = "law_exam_session_active=true; path=/; max-age=86400";
+      
       window.location.href = '/admin/law-exam';
     }
     secretClickCount.value = 0;
   }
 
-  // 3 秒內沒按完 5 次就重置計數
   clearTimeout(clickTimer);
   clickTimer = setTimeout(() => {
     secretClickCount.value = 0;
