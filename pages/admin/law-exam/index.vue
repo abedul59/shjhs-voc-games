@@ -33,15 +33,14 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
         <div class="icon">🛡️</div><h2>校園霸凌防制準則</h2>
       </NuxtLink>
 
-<section class="law-group">
-  <h3>🏛️ 行政法與公務員法專區</h3>
-  <div class="grid-layout">
-    <NuxtLink to="/admin/law-exam/administrative-procedure-act" class="law-card gray">行政程序法</NuxtLink>
-    <NuxtLink to="/admin/law-exam/administrative-litigation-act" class="law-card purple">行政訴訟法</NuxtLink>
-    <NuxtLink to="/admin/law-exam/state-compensation-law" class="law-card amber">國家賠償法</NuxtLink>
-    <NuxtLink to="/admin/law-exam/public-servants-service-act" class="law-card blue">公務員服務法</NuxtLink>
-    <NuxtLink to="/admin/law-exam/public-servants-protection-act" class="law-card teal">公務人員保障法</NuxtLink>
-  </div>
+
+
+    <NuxtLink to="/admin/law-exam/administrative-procedure-act" class="law-card gray"><div class="icon">🛡️</div><h2>行政程序法</h2></NuxtLink>
+    <NuxtLink to="/admin/law-exam/administrative-litigation-act" class="law-card purple"><div class="icon">🛡️</div><h2>行政訴訟法</h2></NuxtLink>
+    <NuxtLink to="/admin/law-exam/state-compensation-law" class="law-card amber"><div class="icon">🛡️</div><h2>國家賠償法</h2></NuxtLink>
+    <NuxtLink to="/admin/law-exam/public-servants-service-act" class="law-card blue"><div class="icon">🛡️</div><h2>公務員服務法</h2></NuxtLink>
+    <NuxtLink to="/admin/law-exam/public-servants-protection-act" class="law-card teal"><div class="icon">🛡️</div><h2>公務人員保障法</h2></NuxtLink>
+
 </section>
 
 
