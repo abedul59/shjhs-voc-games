@@ -2,6 +2,8 @@
 import { ref, computed, onMounted } from 'vue';
 import Papa from 'papaparse';
 
+// 🌟 只要加這一行，引入全站共用的法律清單！
+import { LAW_TABLE_MAP } from '~/utils/lawMap';
 definePageMeta({ middleware: ['auth', 'law-auth'] });
 
 // 🌟 法典基本設定
@@ -17,16 +19,7 @@ const CONFIG = {
 };
 
 // 用於對照中文名稱與資料表名稱的字典 (未來擴充新法，直接加在這裡)
-const LAW_TABLE_MAP = {
-  '民法': 'civil_law_clauses',
-  '刑法': 'criminal_law_clauses',
-  '中華民國刑法': 'criminal_law_clauses',
-  '民事訴訟法': 'civil_procedure_law_clauses',
-  '刑事訴訟法': 'criminal_procedure_law_clauses',
-  '憲法': 'constitutional_law_clauses',
-  '中華民國憲法': 'constitutional_law_clauses',
-  '教師法': 'teachers_act_clauses'
-};
+
 
 const supabase = useSupabaseClient();
 const clauses = ref([]);
