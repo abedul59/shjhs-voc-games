@@ -13,39 +13,41 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
     <div class="cards-grid">
       <NuxtLink to="/admin/law-exam/practice" class="dash-card practice-card"><div class="icon">🎯</div><h2>開始刷題練習</h2></NuxtLink>
       <NuxtLink to="/admin/law-exam/manage" class="dash-card manage-card"><div class="icon">📚</div><h2>題庫與解析管理</h2></NuxtLink>
+    </div>
 
+    <hr class="section-divider" />
+
+    <h3 class="section-title">🏛️ 基礎法學專區</h3>
+    <div class="cards-grid">
+      <NuxtLink to="/admin/law-exam/constitutional-law" class="dash-card law-violet"><div class="icon">👑</div><h2>憲法典籍</h2></NuxtLink>
       <NuxtLink to="/admin/law-exam/civil-law" class="dash-card law-indigo"><div class="icon">🏛️</div><h2>民法典籍</h2></NuxtLink>
       <NuxtLink to="/admin/law-exam/criminal-law" class="dash-card law-rose"><div class="icon">⚖️</div><h2>刑法典籍</h2></NuxtLink>
       <NuxtLink to="/admin/law-exam/civil-procedure-law" class="dash-card law-amber"><div class="icon">📜</div><h2>民事訴訟法</h2></NuxtLink>
       <NuxtLink to="/admin/law-exam/criminal-procedure-law" class="dash-card law-emerald"><div class="icon">🚔</div><h2>刑事訴訟法</h2></NuxtLink>
-      <NuxtLink to="/admin/law-exam/constitutional-law" class="dash-card law-violet"><div class="icon">👑</div><h2>憲法典籍</h2></NuxtLink>
+    </div>
 
+    <hr class="section-divider" />
+
+    <h3 class="section-title">🏛️ 行政法與公務員法專區</h3>
+    <div class="cards-grid">
+      <NuxtLink to="/admin/law-exam/administrative-procedure-act" class="dash-card law-gray"><div class="icon">⚙️</div><h2>行政程序法</h2></NuxtLink>
+      <NuxtLink to="/admin/law-exam/administrative-litigation-act" class="dash-card law-deep-purple"><div class="icon">🏛️</div><h2>行政訴訟法</h2></NuxtLink>
+      <NuxtLink to="/admin/law-exam/state-compensation-law" class="dash-card law-rust"><div class="icon">💰</div><h2>國家賠償法</h2></NuxtLink>
+      <NuxtLink to="/admin/law-exam/public-servants-service-act" class="dash-card law-marine"><div class="icon">👔</div><h2>公務員服務法</h2></NuxtLink>
+      <NuxtLink to="/admin/law-exam/public-servants-protection-act" class="dash-card law-forest"><div class="icon">🛡️</div><h2>公務人員保障法</h2></NuxtLink>
+    </div>
+
+    <hr class="section-divider" />
+
+    <h3 class="section-title">🎓 教育法規專區</h3>
+    <div class="cards-grid">
+      <NuxtLink to="/admin/law-exam/educational-fundamental-act" class="dash-card law-teal"><div class="icon">📖</div><h2>教育基本法</h2></NuxtLink>
       <NuxtLink to="/admin/law-exam/teachers-act" class="dash-card law-cyan"><div class="icon">🧑‍🏫</div><h2>教師法</h2></NuxtLink>
       <NuxtLink to="/admin/law-exam/teachers-act-enforcement-rules" class="dash-card law-sky"><div class="icon">📋</div><h2>教師法施行細則</h2></NuxtLink>
-      
-      <NuxtLink to="/admin/law-exam/teachers-dismissal-regulations" class="dash-card law-pink">
-        <div class="icon">🛑</div><h2>教師解聘不續聘辦法</h2>
-      </NuxtLink>
-      <NuxtLink to="/admin/law-exam/educational-fundamental-act" class="dash-card law-teal">
-        <div class="icon">📖</div><h2>教育基本法</h2>
-      </NuxtLink>
-      <NuxtLink to="/admin/law-exam/campus-bullying-prevention-guidelines" class="dash-card law-orange">
-        <div class="icon">🛡️</div><h2>校園霸凌防制準則</h2>
-      </NuxtLink>
-
-
-
-    <NuxtLink to="/admin/law-exam/administrative-procedure-act" class="law-card gray"><div class="icon">🛡️</div><h2>行政程序法</h2></NuxtLink>
-    <NuxtLink to="/admin/law-exam/administrative-litigation-act" class="law-card purple"><div class="icon">🛡️</div><h2>行政訴訟法</h2></NuxtLink>
-    <NuxtLink to="/admin/law-exam/state-compensation-law" class="law-card amber"><div class="icon">🛡️</div><h2>國家賠償法</h2></NuxtLink>
-    <NuxtLink to="/admin/law-exam/public-servants-service-act" class="law-card blue"><div class="icon">🛡️</div><h2>公務員服務法</h2></NuxtLink>
-    <NuxtLink to="/admin/law-exam/public-servants-protection-act" class="law-card teal"><div class="icon">🛡️</div><h2>公務人員保障法</h2></NuxtLink>
-
-</section>
-
-
-      
+      <NuxtLink to="/admin/law-exam/campus-bullying-prevention-guidelines" class="dash-card law-orange"><div class="icon">🛑</div><h2>校園霸凌防制準則</h2></NuxtLink>
+      <NuxtLink to="/admin/law-exam/teachers-dismissal-regulations" class="dash-card law-pink"><div class="icon">🚫</div><h2>解聘不續聘辦法</h2></NuxtLink>
     </div>
+
   </div>
 </template>
 
@@ -54,11 +56,16 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
 .header { text-align: center; margin-bottom: 40px; }
 .back-btn { color: #64748b; text-decoration: none; font-weight: bold; background: white; padding: 6px 16px; border-radius: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: inline-block; margin-bottom: 20px;}
 .header h1 { font-size: 32px; color: #1e293b; }
-.cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
-.dash-card { display: block; text-decoration: none; background: white; padding: 30px 20px; border-radius: 20px; text-align: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); border: 2px solid transparent; transition: 0.3s; }
-.dash-card:hover { transform: translateY(-5px); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
-.icon { font-size: 40px; margin-bottom: 15px; }
-.dash-card h2 { color: #1e293b; font-size: 18px; margin: 0; }
+
+.section-title { font-size: 20px; color: #334155; margin: 0 0 15px 5px; font-weight: bold;}
+.section-divider { border: none; border-top: 1px dashed #cbd5e1; margin: 30px 0; }
+
+.cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; }
+.dash-card { display: block; text-decoration: none; background: white; padding: 25px 15px; border-radius: 16px; text-align: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 2px solid transparent; transition: 0.2s; }
+.dash-card:hover { transform: translateY(-3px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+.icon { font-size: 36px; margin-bottom: 12px; }
+.dash-card h2 { color: #1e293b; font-size: 16px; margin: 0; }
+
 .practice-card:hover { border-color: #3b82f6; }
 .manage-card:hover { border-color: #10b981; }
 
@@ -67,14 +74,20 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
 .law-amber:hover { border-color: #d97706; background: #fffbeb; }
 .law-emerald:hover { border-color: #059669; background: #ecfdf5; }
 .law-violet:hover { border-color: #7c3aed; background: #f5f3ff; }
+
+/* 行政與公務員法 */
+.law-gray:hover { border-color: #374151; background: #f3f4f6; }
+.law-deep-purple:hover { border-color: #6d28d9; background: #ede9fe; }
+.law-rust:hover { border-color: #92400e; background: #fef3c7; }
+.law-marine:hover { border-color: #1e40af; background: #dbeafe; }
+.law-forest:hover { border-color: #065f46; background: #d1fae5; }
+
+/* 教育法規 */
 .law-cyan:hover { border-color: #0891b2; background: #ecfeff; }
 .law-sky:hover { border-color: #0284c7; background: #f0f9ff; }
-
-/* 新增的粉色主題 */
 .law-pink:hover { border-color: #ec4899; background: #fdf2f8; }
-/* 新增的松石綠主題 */
 .law-teal:hover { border-color: #14b8a6; background: #f0fdfa; }
-/* 新增的活力橘主題 */
 .law-orange:hover { border-color: #ea580c; background: #fff7ed; }
+
 @media (max-width: 768px) { .cards-grid { grid-template-columns: 1fr 1fr; } }
 </style>
