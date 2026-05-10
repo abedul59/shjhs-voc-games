@@ -2,6 +2,8 @@
 import { ref, computed, onMounted } from 'vue';
 import Papa from 'papaparse';
 
+// 🌟 只要加這一行，引入全站共用的法律清單！
+import { LAW_TABLE_MAP } from '~/utils/lawMap';
 definePageMeta({ middleware: ['auth', 'law-auth'] });
 
 // 🌟🌟🌟 依據不同的法規專頁，替換此 CONFIG 區塊 🌟🌟🌟
@@ -18,20 +20,7 @@ const CONFIG = {
 // 🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟
 
 // 涵蓋系統內所有的母法與子法
-const LAW_TABLE_MAP = {
-  '民法': 'civil_law_clauses',
-  '刑法': 'criminal_law_clauses',
-  '中華民國刑法': 'criminal_law_clauses',
-  '民事訴訟法': 'civil_procedure_law_clauses',
-  '刑事訴訟法': 'criminal_procedure_law_clauses',
-  '憲法': 'constitutional_law_clauses',
-  '中華民國憲法': 'constitutional_law_clauses',
-  '教師法': 'teachers_act_clauses',
-  '教育基本法': 'educational_fundamental_act_clauses',
-  '教師法施行細則': 'teachers_act_enforcement_rules_clauses',
-  '校園霸凌防制準則': 'campus_bullying_prevention_guidelines_clauses',
-  '解聘不續聘停聘或資遣辦法': 'teachers_dismissal_regulations_clauses'
-};
+
 
 const supabase = useSupabaseClient();
 const clauses = ref([]);
