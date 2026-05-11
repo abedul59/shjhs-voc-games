@@ -45,7 +45,7 @@ onMounted(async () => {
     }
     if (error) {
       alert('找不到該筆記資料，可能已被刪除。');
-      router.push('/admin/law-exam/civil-course');
+      router.push('/admin/law-exam/criminal-course');
       return; // 提早結束
     }
   } else if (lessonNum) {
@@ -92,7 +92,7 @@ const saveNote = async () => {
     if (error) {
       alert('更新失敗：' + error.message);
     } else {
-      router.push(`/admin/law-exam/civil-course/${form.value.id}`);
+      router.push(`/admin/law-exam/criminal-course/${form.value.id}`);
     }
   } else {
     // 插入新資料
@@ -105,7 +105,7 @@ const saveNote = async () => {
     if (error) {
       alert('新增失敗：' + error.message);
     } else {
-      router.push(`/admin/law-exam/civil-course/${data.id}`);
+      router.push(`/admin/law-exam/criminal-course/${data.id}`);
     }
   }
   
