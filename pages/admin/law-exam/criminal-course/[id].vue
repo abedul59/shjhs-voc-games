@@ -34,8 +34,8 @@ const openPortal = (url) => {
     <template v-else-if="noteData">
       <div class="reader-header">
         <div class="nav-bar">
-          <NuxtLink to="/admin/law-exam/civil-course" class="btn-back">← 回課程列表</NuxtLink>
-          <NuxtLink :to="`/admin/law-exam/civil-course/edit?id=${noteData.id}`" class="btn-edit">⚙️ 編輯內容</NuxtLink>
+          <NuxtLink to="/admin/law-exam/criminal-course" class="btn-back">← 回課程列表</NuxtLink>
+          <NuxtLink :to="`/admin/law-exam/criminal-course/edit?id=${noteData.id}`" class="btn-edit">⚙️ 編輯內容</NuxtLink>
         </div>
         <div class="title-section">
           <span class="subject-label">{{ noteData.subject }}學分班</span>
