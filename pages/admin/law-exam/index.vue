@@ -19,7 +19,7 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
 
     <h3 class="section-title">🎓 學分班筆記專區</h3>
     <div class="cards-grid course-grid">
-      <NuxtLink to="/admin/law-exam/civil-law/course" class="dash-card course-card">
+      <NuxtLink to="/admin/law-exam/civil-course" class="dash-card course-card">
         <div class="icon">📘</div>
         <div class="course-info">
           <span class="course-tag">學分班</span>
