@@ -20,7 +20,7 @@ const showBlockModal = ref(false);
 const blockMessage = ref('');
 
 // ==========================================
-// 🚀 核心：彩蛋三（雙標籤按鈕輪流按 6 次）
+// 🚀 核心：彩蛋三（雙標籤按鈕輪流按 8 次）
 // ==========================================
 const btnSequence = ref([]);
 const setMode = (mode) => {
@@ -28,7 +28,7 @@ const setMode = (mode) => {
   
   btnSequence.value.push(mode);
   
-  if (btnSequence.value.length > 6) {
+  if (btnSequence.value.length > 8) {
     btnSequence.value.shift();
   }
 
