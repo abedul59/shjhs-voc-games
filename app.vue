@@ -33,13 +33,13 @@ const triggerSecretDoor = () => {
   }
 };
 
-// 🌟 彩蛋二：鍵盤盲打 "lawlaw"
+// 🌟 彩蛋二：鍵盤盲打 "law"
 let keyBuffer = '';
 const handleKeydown = (e) => {
   if (e.key.length !== 1) return;
   keyBuffer += e.key.toLowerCase();
   if (keyBuffer.length > 3) keyBuffer = keyBuffer.slice(-3);
-  if (keyBuffer === 'lawlaw') {
+  if (keyBuffer === 'law') {
     triggerSecretDoor();
     keyBuffer = '';
   }
