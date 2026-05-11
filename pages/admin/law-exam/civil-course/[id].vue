@@ -1,7 +1,8 @@
 <script setup>
 import { ref, onMounted } from 'vue';
+// 🌟 引入 markdown 解析器
+import { marked } from 'marked';
 
-// 確保權限驗證
 definePageMeta({ middleware: ['auth', 'law-auth'] });
 
 const route = useRoute();
@@ -9,11 +10,10 @@ const supabase = useSupabaseClient();
 
 const noteData = ref(null);
 const isLoading = ref(true);
-const activeTab = ref('summary'); // 預設顯示摘要
+const activeTab = ref('summary');
 
 onMounted(async () => {
   isLoading.value = true;
-  // 根據網址列的 ID 取得特定筆記資料
   const { data, error } = await supabase
     .from('course_notes')
     .select('*')
@@ -23,7 +23,6 @@ onMounted(async () => {
   if (data) {
     noteData.value = data;
   }
-  
   if (error) {
     console.error('載入失敗:', error);
     alert('找不到該筆記內容，請回列表重試。');
@@ -31,11 +30,15 @@ onMounted(async () => {
   isLoading.value = false;
 });
 
-// 開啟外部資源的輔助函式
 const openPortal = (url) => {
-  if (url) {
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }
+  if (url) window.open(url, '_blank', 'noopener,noreferrer');
+};
+
+// 🌟 建立一個將純文字轉換為 HTML 的函式
+const renderMarkdown = (text) => {
+  if (!text) return '';
+  // 使用 marked 解析文字，它會自動把 |---|---| 變成漂亮的 <table>
+  return marked.parse(text);
 };
 </script>
 
@@ -67,24 +70,14 @@ const openPortal = (url) => {
           </section>
 
           <div class="tabs-nav">
-            <button 
-              :class="{ active: activeTab === 'summary' }" 
-              @click="activeTab = 'summary'"
-            >
-              📝 重點摘要
-            </button>
-            <button 
-              :class="{ active: activeTab === 'transcript' }" 
-              @click="activeTab = 'transcript'"
-            >
-              📜 完整逐字稿
-            </button>
+            <button :class="{ active: activeTab === 'summary' }" @click="activeTab = 'summary'">📝 重點摘要</button>
+            <button :class="{ active: activeTab === 'transcript' }" @click="activeTab = 'transcript'">📜 完整逐字稿</button>
           </div>
 
           <div class="reading-window">
-            <div v-if="activeTab === 'summary'" class="formatted-text">
+            <div v-if="activeTab === 'summary'" class="markdown-body">
               <template v-if="noteData.summary">
-                {{ noteData.summary }}
+                <div v-html="renderMarkdown(noteData.summary)"></div>
               </template>
               <p v-else class="empty-hint">（尚未新增摘要內容）</p>
             </div>
@@ -105,11 +98,7 @@ const openPortal = (url) => {
           </div>
 
           <div class="portal-list">
-            <button 
-              class="portal-btn video" 
-              :disabled="!noteData.class_video_link"
-              @click="openPortal(noteData.class_video_link)"
-            >
+            <button class="portal-btn video" :disabled="!noteData.class_video_link" @click="openPortal(noteData.class_video_link)">
               <span class="icon">▶️</span>
               <div class="label">
                 <strong>影片摘要</strong>
@@ -117,11 +106,7 @@ const openPortal = (url) => {
               </div>
             </button>
 
-            <button 
-              class="portal-btn audio" 
-              :disabled="!noteData.notebook_audio_link"
-              @click="openPortal(noteData.notebook_audio_link)"
-            >
+            <button class="portal-btn audio" :disabled="!noteData.notebook_audio_link" @click="openPortal(noteData.notebook_audio_link)">
               <span class="icon">🎧</span>
               <div class="label">
                 <strong>聲音摘要 (Podcast)</strong>
@@ -129,11 +114,7 @@ const openPortal = (url) => {
               </div>
             </button>
 
-            <button 
-              class="portal-btn document" 
-              :disabled="!noteData.document_link"
-              @click="openPortal(noteData.document_link)"
-            >
+            <button class="portal-btn document" :disabled="!noteData.document_link" @click="openPortal(noteData.document_link)">
               <span class="icon">📄</span>
               <div class="label">
                 <strong>NotebookLM簡報</strong>
@@ -152,175 +133,82 @@ const openPortal = (url) => {
 </template>
 
 <style scoped>
-.reader-container {
-  max-width: 1300px;
-  margin: 0 auto;
-  padding: 20px;
-  font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif;
-  color: #1e293b;
-}
-
-/* --- Header --- */
-.reader-header {
-  margin-bottom: 30px;
-}
-.nav-bar {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 20px;
-}
-.btn-back, .btn-edit {
-  text-decoration: none;
-  font-weight: bold;
-  font-size: 14px;
-  padding: 8px 16px;
-  border-radius: 8px;
-  transition: 0.2s;
-}
+.reader-container { max-width: 1300px; margin: 0 auto; padding: 20px; font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif; color: #1e293b; }
+.reader-header { margin-bottom: 30px; }
+.nav-bar { display: flex; justify-content: space-between; margin-bottom: 20px; }
+.btn-back, .btn-edit { text-decoration: none; font-weight: bold; font-size: 14px; padding: 8px 16px; border-radius: 8px; transition: 0.2s; }
 .btn-back { background: #f1f5f9; color: #475569; }
 .btn-back:hover { background: #e2e8f0; }
 .btn-edit { background: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe; }
 .btn-edit:hover { background: #c7d2fe; }
-
-.subject-label {
-  background: #1e3a8a;
-  color: white;
-  padding: 4px 12px;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 900;
-}
-.title-section h1 {
-  margin: 10px 0 0 0;
-  font-size: 32px;
-  color: #0f172a;
-}
-
-/* --- Layout --- */
-.content-layout {
-  display: grid;
-  grid-template-columns: 1fr 350px;
-  gap: 30px;
-  align-items: start;
-}
-
-/* --- 文字區 --- */
-.intro-card {
-  background: #fffbeb;
-  border-left: 6px solid #f59e0b;
-  padding: 20px;
-  border-radius: 12px;
-  margin-bottom: 25px;
-}
+.subject-label { background: #1e3a8a; color: white; padding: 4px 12px; border-radius: 6px; font-size: 14px; font-weight: 900; }
+.title-section h1 { margin: 10px 0 0 0; font-size: 32px; color: #0f172a; }
+.content-layout { display: grid; grid-template-columns: 1fr 350px; gap: 30px; align-items: start; }
+.intro-card { background: #fffbeb; border-left: 6px solid #f59e0b; padding: 20px; border-radius: 12px; margin-bottom: 25px; }
 .intro-card h3 { margin: 0 0 8px 0; font-size: 16px; color: #92400e; }
 .intro-card p { margin: 0; line-height: 1.6; font-size: 15px; color: #78350f; }
-
-.tabs-nav {
-  display: flex;
-  gap: 8px;
-}
-.tabs-nav button {
-  padding: 12px 25px;
-  border: none;
-  background: #e2e8f0;
-  color: #64748b;
-  font-weight: 900;
-  cursor: pointer;
-  border-radius: 12px 12px 0 0;
-  transition: 0.2s;
-}
-.tabs-nav button.active {
-  background: white;
-  color: #1e3a8a;
-  border-top: 3px solid #1e3a8a;
-}
-
-.reading-window {
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 0 12px 12px 12px;
-  padding: 40px;
-  min-height: 600px;
-  box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);
-}
-.formatted-text {
-  white-space: pre-wrap;
-  line-height: 2;
-  font-size: 17px;
-  letter-spacing: 0.5px;
-}
-.transcript-font {
-  font-size: 16px;
-  color: #334155;
-}
+.tabs-nav { display: flex; gap: 8px; }
+.tabs-nav button { padding: 12px 25px; border: none; background: #e2e8f0; color: #64748b; font-weight: 900; cursor: pointer; border-radius: 12px 12px 0 0; transition: 0.2s; }
+.tabs-nav button.active { background: white; color: #1e3a8a; border-top: 3px solid #1e3a8a; }
+.reading-window { background: white; border: 1px solid #e2e8f0; border-radius: 0 12px 12px 12px; padding: 40px; min-height: 600px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05); }
+.formatted-text { white-space: pre-wrap; line-height: 2; font-size: 17px; letter-spacing: 0.5px; }
+.transcript-font { font-size: 16px; color: #334155; }
 .empty-hint { color: #94a3b8; font-style: italic; text-align: center; margin-top: 50px; }
 
-/* --- 傳送門 Sidebar --- */
-.portal-sidebar {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 20px;
-  padding: 25px;
-  position: sticky;
-  top: 20px;
+/* 🌟 Markdown 專屬渲染樣式 (保護表格不散掉) */
+:deep(.markdown-body table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+  margin-bottom: 25px;
+  font-size: 15px;
+  background-color: white;
 }
+:deep(.markdown-body th) {
+  background-color: #f1f5f9;
+  font-weight: 900;
+  text-align: left;
+  color: #1e293b;
+}
+:deep(.markdown-body th), :deep(.markdown-body td) {
+  border: 1px solid #cbd5e1;
+  padding: 12px 15px;
+  line-height: 1.6;
+}
+:deep(.markdown-body tr:nth-child(even)) {
+  background-color: #f8fafc;
+}
+:deep(.markdown-body h1), :deep(.markdown-body h2), :deep(.markdown-body h3) {
+  color: #1e293b;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+:deep(.markdown-body p) {
+  line-height: 1.8;
+  margin-bottom: 1em;
+}
+:deep(.markdown-body ul), :deep(.markdown-body ol) {
+  padding-left: 20px;
+  margin-bottom: 1em;
+}
+:deep(.markdown-body li) {
+  line-height: 1.8;
+  margin-bottom: 0.5em;
+}
+
+.portal-sidebar { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px; padding: 25px; position: sticky; top: 20px; }
 .portal-header h3 { margin: 0; font-size: 20px; }
 .portal-header p { margin: 5px 0 20px 0; font-size: 13px; color: #64748b; }
-
-.portal-list {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
-.portal-btn {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  padding: 18px;
-  border: 1px solid #cbd5e1;
-  background: white;
-  border-radius: 15px;
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.2s;
-}
+.portal-list { display: flex; flex-direction: column; gap: 15px; }
+.portal-btn { display: flex; align-items: center; gap: 15px; padding: 18px; border: 1px solid #cbd5e1; background: white; border-radius: 15px; cursor: pointer; text-align: left; transition: all 0.2s; }
 .portal-btn .icon { font-size: 28px; }
 .portal-btn .label strong { display: block; font-size: 15px; margin-bottom: 2px; }
 .portal-btn .label span { font-size: 12px; color: #64748b; }
-
-.portal-btn:hover:not(:disabled) {
-  transform: translateY(-3px);
-  box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
-  border-color: #1e3a8a;
-}
-.portal-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  background: #f1f5f9;
-}
-
-.sidebar-footer {
-  margin-top: 30px;
-  text-align: center;
-  font-size: 12px;
-  color: #94a3b8;
-}
-
-/* --- Loading --- */
+.portal-btn:hover:not(:disabled) { transform: translateY(-3px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); border-color: #1e3a8a; }
+.portal-btn:disabled { opacity: 0.5; cursor: not-allowed; background: #f1f5f9; }
+.sidebar-footer { margin-top: 30px; text-align: center; font-size: 12px; color: #94a3b8; }
 .loading-overlay { text-align: center; padding: 100px; color: #64748b; }
-.loader {
-  border: 4px solid #f3f3f3;
-  border-top: 4px solid #1e3a8a;
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  animation: spin 1s linear infinite;
-  margin: 0 auto 20px;
-}
+.loader { border: 4px solid #f3f3f3; border-top: 4px solid #1e3a8a; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
-@media (max-width: 1000px) {
-  .content-layout { grid-template-columns: 1fr; }
-  .portal-sidebar { position: static; }
-}
+@media (max-width: 1000px) { .content-layout { grid-template-columns: 1fr; } .portal-sidebar { position: static; } }
 </style>
