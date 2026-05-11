@@ -112,7 +112,7 @@ const openPortal = (url) => {
             >
               <span class="icon">▶️</span>
               <div class="label">
-                <strong>課程原始影片</strong>
+                <strong>影片摘要</strong>
                 <span>{{ noteData.class_video_link ? '立即觀看' : '尚未提供連結' }}</span>
               </div>
             </button>
@@ -136,8 +136,8 @@ const openPortal = (url) => {
             >
               <span class="icon">📄</span>
               <div class="label">
-                <strong>課程講義 / 原始檔</strong>
-                <span>{{ noteData.document_link ? '開啟講義' : '尚未提供連結' }}</span>
+                <strong>NotebookLM簡報</strong>
+                <span>{{ noteData.document_link ? '開啟簡報' : '尚未提供連結' }}</span>
               </div>
             </button>
           </div>
