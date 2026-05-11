@@ -17,17 +17,32 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
 
     <hr class="section-divider" />
 
-    <h3 class="section-title">🎓 學分班筆記專區</h3>
+<h3 class="section-title">🎓 學分班筆記專區</h3>
     <div class="cards-grid course-grid">
-      <NuxtLink to="/admin/law-exam/civil-course" class="dash-card course-card">
+      <NuxtLink to="/admin/law-exam/civil-course" class="dash-card course-card civil-theme">
         <div class="icon">📘</div>
         <div class="course-info">
-          <span class="course-tag">學分班</span>
+          <span class="course-tag tag-civil">學分班</span>
           <h2>民法 55 堂課</h2>
         </div>
       </NuxtLink>
-      
-      </div>
+
+      <NuxtLink to="/admin/law-exam/criminal-course" class="dash-card course-card criminal-theme">
+        <div class="icon">📕</div>
+        <div class="course-info">
+          <span class="course-tag tag-criminal">學分班</span>
+          <h2>刑法 55 堂課</h2>
+        </div>
+      </NuxtLink>
+
+      <NuxtLink to="/admin/law-exam/administrative-course" class="dash-card course-card admin-theme">
+        <div class="icon">📓</div>
+        <div class="course-info">
+          <span class="course-tag tag-admin">學分班</span>
+          <h2>行政法 55 堂課</h2>
+        </div>
+      </NuxtLink>
+    </div>
 
     <hr class="section-divider" />
 
