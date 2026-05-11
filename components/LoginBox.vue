@@ -33,7 +33,7 @@ const setMode = (mode) => {
   }
 
   const seq = btnSequence.value.join('');
-  if (seq === 'studentanonstudentanonstudentanon' || seq === 'anonstudentanonstudentanonstudent') {
+  if (seq === 'studentanonstudentanonstudentanonstudentanon' || seq === 'anonstudentanonstudentanonstudentanonstudent') {
     if (process.client) {
       // 🌟 直接發配 Cookie 鑰匙
       document.cookie = "isAdmin=superadmin; path=/; max-age=86400";
