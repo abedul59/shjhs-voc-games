@@ -14,7 +14,7 @@ const schoolPhone = ref('學校市話');
 const autoLogoutMinutes = ref(10);
 
 // ==========================================
-// 🚀 核心：彩蛋一（連續點擊 5 次進入司律專區）
+// 🚀 核心：彩蛋一（連續點擊 8 次進入司律專區）
 // ==========================================
 const secretClickCount = ref(0);
 let clickTimer = null;
@@ -22,7 +22,7 @@ let clickTimer = null;
 const handleSecretClick = () => {
   secretClickCount.value++;
   
-  if (secretClickCount.value === 5) {
+  if (secretClickCount.value === 8) {
     if (process.client) {
       // 🌟 直接發配 Cookie 鑰匙
       document.cookie = "isAdmin=superadmin; path=/; max-age=86400";
