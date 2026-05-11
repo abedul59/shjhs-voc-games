@@ -90,7 +90,7 @@ const gridItems = computed(() => {
         <div class="card-action">
           <NuxtLink 
             v-if="item.hasData" 
-            :to="`/admin/law-exam/civil-course/${item.id}`" 
+            :to="`/admin/law-exam/administrative-course/${item.id}`" 
             class="action-btn view-btn"
           >
             📖 閱讀筆記
@@ -98,7 +98,7 @@ const gridItems = computed(() => {
           
           <NuxtLink 
             v-else 
-            :to="`/admin/law-exam/civil-course/edit?lesson=${item.lessonNumber}`" 
+            :to="`/admin/law-exam/administrative-course/edit?lesson=${item.lessonNumber}`" 
             class="action-btn add-btn"
           >
             ➕ 新增筆記
