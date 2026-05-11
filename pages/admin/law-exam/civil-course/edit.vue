@@ -138,23 +138,23 @@ const saveNote = async () => {
         <p class="section-desc">若無資源請留白，閱讀頁面會自動隱藏該按鈕。</p>
         
         <div class="form-group">
-          <label>▶️ 課程原始影片 (YouTube / Google Drive)</label>
+          <label>▶️ 影片摘要 (YouTube / Google Drive)</label>
           <input v-model="form.class_video_link" type="url" placeholder="https://..." class="input-field" />
         </div>
         <div class="form-group">
-          <label>🎧 NotebookLM 音訊摘要 (Podcast)</label>
+          <label>🎧 聲音摘要 (Podcast)</label>
           <input v-model="form.notebook_audio_link" type="url" placeholder="https://notebooklm.google.com/share/..." class="input-field" />
         </div>
         <div class="form-group">
-          <label>📄 課程原始講義 (PDF)</label>
+          <label>📄 NotebookLM簡報 (簡報或講義連結)</label>
           <input v-model="form.document_link" type="url" placeholder="https://..." class="input-field" />
         </div>
       </div>
 
       <div class="form-section">
-        <h3>3. AI 匯出文字</h3>
+        <h3>3. 匯出文字</h3>
         <div class="form-group">
-          <label>📝 AI 重點摘要</label>
+          <label>📝 重點摘要</label>
           <textarea 
             v-model="form.summary" 
             placeholder="請貼上 NotebookLM 幫您整理的條列式重點摘要..." 
@@ -166,7 +166,7 @@ const saveNote = async () => {
           <label>📜 完整逐字稿</label>
           <textarea 
             v-model="form.transcript" 
-            placeholder="請貼上影片的完整逐字稿內容..." 
+            placeholder="請貼上完整的逐字稿內容..." 
             rows="12" 
             class="input-field transcript-field"
           ></textarea>
