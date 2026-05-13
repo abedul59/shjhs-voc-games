@@ -1,12 +1,9 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import Papa from 'papaparse';
-
-// 🌟 只要加這一行，引入全站共用的法律清單！
 import { LAW_TABLE_MAP } from '~/utils/lawMap';
 definePageMeta({ middleware: ['auth', 'law-auth'] });
 
-// 🌟🌟🌟 核心配置：請依據不同的法規專頁修改此處 🌟🌟🌟
 const CONFIG = {
   tableName: 'administrative_litigation_act_clauses',
   pageTitle: '行政訴訟法',
@@ -17,17 +14,14 @@ const CONFIG = {
   activeBg: '#ddd6fe'
 };
 
-// 🌟 全站法規對照表：用於跨法規自動連結定位
-
 const supabase = useSupabaseClient();
 const clauses = ref([]);
 const parentClausesMap = ref({});
-const customLawMap = ref({}); // 儲存本法專屬校正字典
+const customLawMap = ref({}); 
 
 const isLoading = ref(true);
 const isUploading = ref(false);
 
-// 🌟 觀看狀態控制：'single'(逐條), 'chapter'(分章節), 'all'(全覽)
 const viewMode = ref('single'); 
 const selectedChapter = ref(null); 
 const selectedSection = ref(null); 
@@ -50,7 +44,6 @@ const cssVars = computed(() => ({
   '--bg-active': CONFIG.activeBg
 }));
 
-// 過濾下拉選單法律名稱
 const uniqueLawNames = computed(() => {
   const names = new Set(Object.keys(LAW_TABLE_MAP));
   return Array.from(names).sort();
@@ -58,8 +51,6 @@ const uniqueLawNames = computed(() => {
 
 const fetchData = async () => {
   isLoading.value = true;
-  
-  // 1. 載入本法專屬校正字典
   const { data: mapData } = await supabase.from('law_local_alias_mapping').select('*').eq('context_law', CONFIG.tableName);
   if (mapData) {
     const tempMap = {};
@@ -67,14 +58,12 @@ const fetchData = async () => {
     customLawMap.value = tempMap;
   }
 
-  // 2. 載入條文本體
   const { data, error } = await supabase.from(CONFIG.tableName).select('*');
   if (data) {
     clauses.value = data.map(c => ({
       ...c, urls: Array.isArray(c.urls) ? c.urls : (typeof c.urls === 'string' ? JSON.parse(c.urls || '[]') : [])
     })).sort((a, b) => parseFloat(String(a.article_num || '0').replace('-', '.')) - parseFloat(String(b.article_num || '0').replace('-', '.')));
 
-    // 3. 預載關聯法規 (效能優化)
     const uniqueTables = [...new Set(Object.values(LAW_TABLE_MAP))];
     const fetchPromises = uniqueTables.map(tName => supabase.from(tName).select('*'));
     const results = await Promise.all(fetchPromises);
@@ -89,7 +78,6 @@ const fetchData = async () => {
 };
 onMounted(fetchData);
 
-// 字典管理邏輯
 const addCustomMap = async () => {
   if (!newMapWrong.value || !newMapCorrect.value) return;
   const wrong = newMapWrong.value.trim().replace(/\s/g, ''); 
@@ -103,7 +91,6 @@ const removeCustomMap = async (wrongName) => {
   await supabase.from('law_local_alias_mapping').delete().eq('context_law', CONFIG.tableName).eq('wrong_name', wrongName);
 };
 
-// 樹狀結構與篩選邏輯
 const groupedClauses = computed(() => {
   const groups = {};
   const data = searchQuery.value ? clauses.value.filter(c => (c.title || '').includes(searchQuery.value) || (c.content || '').includes(searchQuery.value)) : clauses.value;
@@ -122,55 +109,26 @@ const filteredFlatClauses = computed(() => {
   return clauses.value.filter(c => (c.title || '').includes(searchQuery.value) || (c.content || '').includes(searchQuery.value));
 });
 
-// 🌟 分章節觀看：篩選邏輯
 const chapterClauses = computed(() => {
   return filteredFlatClauses.value.filter(c => {
     const matchChap = (c.chapter_name || '未分類編') === selectedChapter.value;
-    if (selectedSection.value) {
-      return matchChap && (c.section_name || '未分類章') === selectedSection.value;
-    }
+    if (selectedSection.value) return matchChap && (c.section_name || '未分類章') === selectedSection.value;
     return matchChap;
   });
 });
 
-const viewChapter = (chapter) => {
-  selectedChapter.value = chapter;
-  selectedSection.value = null; 
-  viewMode.value = 'chapter';
-  showSidebar.value = false;
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-};
-
-const viewSection = (chapter, section) => {
-  selectedChapter.value = chapter;
-  selectedSection.value = section;
-  viewMode.value = 'chapter';
-  showSidebar.value = false;
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-};
-
-// 🌟 智慧返回鍵
-const goBackToChapter = () => {
-  if (selectedClause.value) {
-    selectedChapter.value = selectedClause.value.chapter_name || '未分類編';
-    selectedSection.value = selectedClause.value.section_name || '未分類章';
-  }
-  viewMode.value = 'chapter';
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-};
-
+const viewChapter = (chapter) => { selectedChapter.value = chapter; selectedSection.value = null; viewMode.value = 'chapter'; showSidebar.value = false; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const viewSection = (chapter, section) => { selectedChapter.value = chapter; selectedSection.value = section; viewMode.value = 'chapter'; showSidebar.value = false; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const goBackToChapter = () => { if (selectedClause.value) { selectedChapter.value = selectedClause.value.chapter_name || '未分類編'; selectedSection.value = selectedClause.value.section_name || '未分類章'; } viewMode.value = 'chapter'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
 const selectClause = (clause) => { selectedClause.value = clause; viewMode.value = 'single'; showSidebar.value = false; window.scrollTo({ top: 0, behavior: 'smooth' }); };
 const saveManual = async (clause) => { if (!clause) return; isSaving.value = true; await supabase.from(CONFIG.tableName).update({ notes: clause.notes, urls: clause.urls }).eq('id', clause.id); isSaving.value = false; showSavedToast.value = true; setTimeout(() => { showSavedToast.value = false; }, 2500); };
 
-// 文字解析邏輯 (精準過濾項款)
 const parseNum = (str) => { 
-  if (!str) return ''; 
-  if (/^[0-9-]+$/.test(str)) return str; 
+  if (!str) return ''; if (/^[0-9-]+$/.test(str)) return str; 
   const dict = { '〇':0, '零':0, '一':1, '二':2, '三':3, '四':4, '五':5, '六':6, '七':7, '八':8, '九':9, '十':10, '百':100, '千':1000 }; 
   let total = 0, current = 0; 
   for (let i = 0; i < str.length; i++) { 
-    let val = dict[str[i]]; 
-    if (val === undefined) continue; 
+    let val = dict[str[i]]; if (val === undefined) continue; 
     if (val >= 10) { if (current === 0) current = 1; total += current * val; current = 0; } else current = val; 
   } 
   return (total + current).toString(); 
@@ -179,8 +137,7 @@ const parseNum = (str) => {
 const getNormalizedArticleNum = (rawText) => { 
   let text = rawText.replace(/\s/g, '');
   const match = text.match(/第(.+)條(?:之(.+))?/); 
-  if (!match) return null; 
-  return parseNum(match[1]) + (match[2] ? '-' + parseNum(match[2]) : ''); 
+  if (!match) return null; return parseNum(match[1]) + (match[2] ? '-' + parseNum(match[2]) : ''); 
 };
 
 const parseContentWithLinks = (text) => { 
@@ -189,21 +146,17 @@ const parseContentWithLinks = (text) => {
   let currentContextKeyword = 'self'; 
   const parts = text.split(articleRegex);
   return parts.map(part => {
-    if (/^第\s*[0-9一二三四五六七八九十百千-]+\s*條/.test(part)) {
-      return `<button class="ref-btn" data-law="${currentContextKeyword}" data-raw="${part}">${part}</button>`;
-    } else {
-      if (part.includes('。') || part.includes('\n')) currentContextKeyword = 'self'; 
-      const lawMatches = [...part.matchAll(/([一-龥]{2,12}(?:法|條例|辦法|細則|準則)|本法|本辦法|本細則|本準則|同法|該法|前法)/g)];
-      if (lawMatches.length > 0) {
-        let lastLaw = lawMatches[lawMatches.length - 1][1]; 
-        if (!['方法', '無法', '依法', '合法', '修法', '用法'].includes(lastLaw)) currentContextKeyword = lastLaw; 
-      }
-      return part; 
+    if (/^第\s*[0-9一二三四五六七八九十百千-]+\s*條/.test(part)) return `<button class="ref-btn" data-law="${currentContextKeyword}" data-raw="${part}">${part}</button>`;
+    if (part.includes('。') || part.includes('\n')) currentContextKeyword = 'self'; 
+    const lawMatches = [...part.matchAll(/([一-龥]{2,12}(?:法|條例|辦法|細則|準則)|本法|本辦法|本細則|本準則|同法|該法|前法)/g)];
+    if (lawMatches.length > 0) {
+      let lastLaw = lawMatches[lawMatches.length - 1][1]; 
+      if (!['方法', '無法', '依法', '合法', '修法', '用法'].includes(lastLaw)) currentContextKeyword = lastLaw; 
     }
+    return part; 
   }).join(''); 
 };
 
-// 🌟 點擊處理 (含雙重攔截校正)
 const handleContentClick = (e) => { 
   if (e.target.classList.contains('ref-btn')) { 
     const rawText = e.target.getAttribute('data-raw');
@@ -211,20 +164,14 @@ const handleContentClick = (e) => {
     let inheritedContext = e.target.getAttribute('data-law');
     let finalTargetLaw = '';
 
-    // A. 處理預設代稱
-    if (['self', '本法', '該法', '同法', '前法'].includes(inheritedContext)) {
-        finalTargetLaw = (inheritedContext === 'self') ? CONFIG.pageTitle : CONFIG.parentLawName;
-    } else {
-        finalTargetLaw = inheritedContext;
-    }
+    if (['self', '本法', '該法', '同法', '前法'].includes(inheritedContext)) finalTargetLaw = (inheritedContext === 'self') ? CONFIG.pageTitle : CONFIG.parentLawName;
+    else finalTargetLaw = inheritedContext;
 
-    // B. 雙重攔截校正
     if (customLawMap.value[cleanRawText]) finalTargetLaw = customLawMap.value[cleanRawText];
     else if (customLawMap.value[inheritedContext]) finalTargetLaw = customLawMap.value[inheritedContext];
     
     const convertedNum = getNormalizedArticleNum(rawText); 
-    let target = null;
-    let displayTitle = '';
+    let target = null; let displayTitle = '';
 
     if (finalTargetLaw === CONFIG.pageTitle) {
       target = clauses.value.find(c => String(c.article_num) === String(convertedNum));
@@ -235,8 +182,7 @@ const handleContentClick = (e) => {
         target = db.find(c => String(c.article_num) === String(convertedNum));
         displayTitle = target ? `【${finalTargetLaw}】${target.title}` : '';
       } else {
-        alert(`📚 系統找不到「${finalTargetLaw}」的資料庫。請在側邊欄校正字典將「${cleanRawText}」對應到正確法律！`);
-        return;
+        alert(`📚 找不到「${finalTargetLaw}」的資料。請在左側校正字典將「${cleanRawText}」對應到正確法律！`); return;
       }
     }
 
@@ -264,6 +210,7 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
     
     <div class="sidebar" :class="{ 'mobile-open': showSidebar }">
       <div class="sidebar-header">
+        <button class="btn-close-sidebar" @click="showSidebar = false" v-show="showSidebar">✖ 關閉目錄</button>
         <div class="header-top">
           <NuxtLink to="/admin/law-exam" class="back-link">← 回專區</NuxtLink>
           <div class="mode-toggle desktop-only">
@@ -284,8 +231,7 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
               <h4>🔗 條文指涉校正</h4>
               <div class="map-list" v-if="Object.keys(customLawMap).length > 0">
                 <div v-for="(correct, wrong) in customLawMap" :key="wrong" class="map-item">
-                  <span>{{ wrong }} ➔ {{ correct }}</span>
-                  <button @click="removeCustomMap(wrong)">✕</button>
+                  <span>{{ wrong }} ➔ {{ correct }}</span><button @click="removeCustomMap(wrong)">✕</button>
                 </div>
               </div>
               <div class="map-add-form">
@@ -308,14 +254,12 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
         <div v-else v-for="(sections, chapter) in groupedClauses" :key="chapter" class="chapter-group">
           <details open>
             <summary class="chapter-title">
-              <span>{{ chapter }}</span>
-              <button @click.prevent="viewChapter(chapter)" class="btn-view-group">📖 讀此編</button>
+              <span>{{ chapter }}</span><button @click.prevent="viewChapter(chapter)" class="btn-view-group">📖 讀此編</button>
             </summary>
             <div v-for="(items, section) in sections" :key="section" class="section-group">
               <details open>
                 <summary class="section-title">
-                  <span>{{ section }}</span>
-                  <button @click.prevent="viewSection(chapter, section)" class="btn-view-group">📖 讀此節</button>
+                  <span>{{ section }}</span><button @click.prevent="viewSection(chapter, section)" class="btn-view-group">📖 讀此節</button>
                 </summary>
                 <div v-for="c in items" :key="c.id" class="clause-item" :class="{active: selectedClause?.id === c.id}">
                   <input type="checkbox" v-model="selectedIds" :value="c.id" class="q-checkbox" />
@@ -329,7 +273,6 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
     </div>
 
     <div class="main-content">
-      
       <div v-if="viewMode === 'single'">
         <div v-if="!selectedClause" class="empty-state">
             <div class="empty-box"><h2>{{ CONFIG.pageTitle }}</h2><p>請從左側目錄選擇條文</p><button class="btn-open-menu-large" @click="showSidebar = true">開啟目錄</button></div>
@@ -370,7 +313,6 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
           </div>
         </div>
       </div>
-      
     </div>
 
     <div v-if="floatingReference" class="floating-modal-overlay" @click.self="floatingReference = null">
@@ -390,6 +332,8 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 .law-layout { display: flex; height: 100vh; background: #f8fafc; font-family: sans-serif; overflow: hidden; position: relative;}
 .mobile-nav { display: none; justify-content: space-between; align-items: center; background: white; padding: 10px; border-bottom: 1px solid #e2e8f0; z-index: 50;}
 .btn-menu { background: var(--primary); color: white; border: none; padding: 8px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+.btn-close-sidebar { display: none; } 
+
 .sidebar { width: 360px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; z-index: 200; transition: 0.3s;}
 .sidebar-header { padding: 15px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
 .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
@@ -431,6 +375,8 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 .content-box { background: white; padding: 30px; border-radius: 16px; border: 1px solid #e2e8f0; line-height: 1.8; font-size: 18px; margin-bottom: 30px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
 .content-text { white-space: pre-wrap; color: #334155;}
 :deep(.ref-btn) { background: var(--bg-active); color: var(--primary); border: none; padding: 2px 8px; border-radius: 4px; font-size: 16px; font-weight: 800; cursor: pointer; margin: 0 4px; vertical-align: baseline;}
+:deep(table) { display: block; width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-collapse: collapse; margin: 15px 0; }
+:deep(th), :deep(td) { border: 1px solid #cbd5e1; padding: 8px 12px; }
 
 .notes-section { background: white; padding: 25px; border-radius: 16px; border: 1px solid #e2e8f0; }
 .notes-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
@@ -452,13 +398,28 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 .float-note-preview { background: #fef9c3; padding: 12px; border-radius: 10px; font-size: 14px; border-left: 4px solid #fbbf24; margin-bottom: 15px; }
 .btn-jump-main { width: 100%; padding: 12px; background: var(--primary); border: none; border-radius: 10px; font-weight: bold; color: white; cursor: pointer; }
 
+/* =========================================
+   🌟 手機版排版深度優化 (Mobile RWD Fixes)
+   ========================================= */
 @media (max-width: 768px) {
+  .law-layout { height: 100dvh; } 
   .mobile-nav { display: flex; }
   .desktop-only { display: none; }
-  .sidebar { position: fixed; left: 0; width: 100%; height: 100vh; transform: translateX(-100%); }
+  
+  .sidebar { position: fixed; top: 0; left: 0; width: 100%; height: 100dvh; transform: translateX(-100%); z-index: 999; padding-bottom: env(safe-area-inset-bottom); }
   .sidebar.mobile-open { transform: translateX(0); }
-  .main-content { padding: 15px; height: calc(100vh - 60px); overflow-y: auto;}
+  .btn-close-sidebar { display: block; background: var(--primary); color: white; border: none; padding: 10px; border-radius: 8px; font-weight: bold; margin-bottom: 15px; width: 100%; font-size: 16px;}
+  
+  .main-content { padding: 15px; height: calc(100dvh - 60px); overflow-y: auto;}
+  .content-box { padding: 15px; margin-bottom: 20px; font-size: 16px; }
+  .clause-header h1 { font-size: 20px; }
+  .content-text { word-break: break-word; overflow-wrap: break-word; }
+
   .full-clause-card { flex-direction: column; }
   .card-side { width: 100%; flex-direction: row; justify-content: space-between; border-right: none; border-bottom: 1px solid #e2e8f0; padding: 10px 15px;}
+  .card-main { padding: 15px; }
+
+  .floating-modal { width: 90vw; max-height: 80dvh; }
+  .float-body { max-height: calc(80dvh - 60px); }
 }
 </style>
