@@ -330,9 +330,9 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 
 <style scoped>
 .law-layout { display: flex; height: 100vh; background: #f8fafc; font-family: sans-serif; overflow: hidden; position: relative;}
-.mobile-nav { display: none; justify-content: space-between; align-items: center; background: white; padding: 10px; border-bottom: 1px solid #e2e8f0; z-index: 50;}
+.mobile-nav { display: none; justify-content: space-between; align-items: center; background: white; padding: 10px 15px; border-bottom: 1px solid #e2e8f0; z-index: 50;}
 .btn-menu { background: var(--primary); color: white; border: none; padding: 8px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; }
-.btn-close-sidebar { display: none; } /* 電腦版隱藏 */
+.btn-close-sidebar { display: none; }
 
 .sidebar { width: 360px; background: white; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; z-index: 200; transition: 0.3s;}
 .sidebar-header { padding: 15px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
@@ -340,13 +340,14 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 .back-link { font-size: 13px; font-weight: bold; color: var(--primary); text-decoration: none; }
 
 .mode-toggle { display: flex; background: #e2e8f0; padding: 4px; border-radius: 8px; }
-.mode-toggle button { border: none; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; background: transparent; color: #64748b;}
+.mode-toggle button { flex: 1; border: none; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; background: transparent; color: #64748b; transition: 0.2s;}
 .mode-toggle button.active { background: white; color: var(--primary); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
 
 .admin-tools { margin-bottom: 15px; background: white; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;}
 .admin-tools summary { padding: 8px; font-size: 13px; font-weight: bold; color: #475569; cursor: pointer; background: #f1f5f9; text-align: center;}
 .tools-panel { padding: 10px; border-top: 1px solid #e2e8f0;}
-.btn-tool { flex: 1; padding: 6px; background: white; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 11px; font-weight: bold; cursor: pointer; }
+.btn-tool { flex: 1; padding: 6px; background: white; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 11px; font-weight: bold; cursor: pointer; text-align: center;}
+.top-actions { display: flex; gap: 5px; }
 .btn-tool.primary { background: var(--primary); color: white; border: none; }
 .btn-tool.danger { color: #dc2626; border-color: #fecaca; }
 .btn-tool.danger-filled { background: #dc2626; color: white; border: none; }
@@ -355,8 +356,10 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 .map-list { max-height: 120px; overflow-y: auto; margin-bottom: 8px; }
 .map-item { font-size: 11px; background: white; padding: 4px 8px; border-radius: 4px; border: 1px solid #e2e8f0; display: flex; justify-content: space-between; margin-bottom: 4px;}
 .map-add-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 4px; }
-.map-add-form input, .map-add-form select { font-size: 11px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; width: 100%; }
+.map-add-form input, .map-add-form select { font-size: 11px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; width: 100%; box-sizing: border-box;}
 .btn-add-map { font-size: 11px; background: #334155; color: white; border: none; border-radius: 4px; padding: 0 8px; cursor: pointer; }
+
+.danger-zone { display: flex; gap: 5px; }
 
 .search-input { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; box-sizing: border-box; }
 .tree-list { flex: 1; overflow-y: auto; padding: 10px; }
@@ -370,29 +373,54 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 .clause-item.active { background: var(--bg-light); color: var(--primary); font-weight: bold; }
 .clause-label { flex: 1; cursor: pointer; font-size: 13px; }
 
+/* 🌟 主內容區塊 */
 .main-content { flex: 1; overflow-y: auto; padding: 30px; position: relative; scroll-behavior: smooth;}
 .btn-back-inner { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: bold; color: #475569; cursor: pointer; margin-bottom: 15px;}
+
+/* 🌟 修正重點 1：空白提示狀態 (Empty State)，修復照片中的巨大按鈕破版 */
+.empty-state { display: flex; justify-content: center; align-items: center; min-height: 60vh; }
+.empty-box { background: white; padding: 40px 20px; border-radius: 16px; border: 1px solid #e2e8f0; text-align: center; width: 100%; max-width: 400px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05); }
+.empty-box h2 { color: var(--primary); margin: 0 0 10px 0; font-size: 24px; }
+.empty-box p { color: #64748b; margin-bottom: 25px; font-size: 15px; }
+.btn-open-menu-large { background: var(--primary); color: white; border: none; padding: 14px 24px; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+
+/* 🌟 修正重點 2：逐條檢視的排版補回 */
+.clause-detail { width: 100%; }
+.clause-header { margin-bottom: 20px; }
+.breadcrumb { font-size: 13px; color: #64748b; margin-bottom: 8px; }
+.clause-header h1 { margin: 0; color: var(--primary); font-size: 24px; line-height: 1.4; }
+
 .content-box { background: white; padding: 30px; border-radius: 16px; border: 1px solid #e2e8f0; line-height: 1.8; font-size: 18px; margin-bottom: 30px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
 .content-text { white-space: pre-wrap; color: #334155;}
 :deep(.ref-btn) { background: var(--bg-active); color: var(--primary); border: none; padding: 2px 8px; border-radius: 4px; font-size: 16px; font-weight: 800; cursor: pointer; margin: 0 4px; vertical-align: baseline;}
 :deep(table) { display: block; width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-collapse: collapse; margin: 15px 0; }
-:deep(th), :deep(td) { border: 1px solid #cbd5e1; padding: 8px 12px; }
+:deep(th), :deep(td) { border: 1px solid #cbd5e1; padding: 8px 12px; min-width: 100px;}
 
 .notes-section { background: white; padding: 25px; border-radius: 16px; border: 1px solid #e2e8f0; }
 .notes-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+.notes-header h3 { margin: 0; font-size: 18px; color: #1e293b;}
 .btn-save-manual { background: #10b981; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
-.note-edit { width: 100%; height: 200px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fffbeb; font-family: inherit; resize: vertical; }
+.note-edit { width: 100%; height: 200px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fffbeb; font-family: inherit; resize: vertical; box-sizing: border-box;}
+
+/* 🌟 修正重點 3：章節/全覽檢視標題補回 */
+.full-text-view { width: 100%; }
+.view-header { margin-bottom: 20px; border-bottom: 2px solid var(--primary); padding-bottom: 10px; }
+.view-header h1 { margin: 0; font-size: 22px; color: var(--primary); }
+.clauses-container { display: flex; flex-direction: column; gap: 20px; }
 
 .full-clause-card { background: white; border-radius: 16px; border: 1px solid #e2e8f0; display: flex; margin-bottom: 20px; overflow: hidden;}
 .card-side { width: 120px; background: #f8fafc; padding: 20px 10px; display: flex; flex-direction: column; align-items: center; border-right: 1px solid #e2e8f0; flex-shrink: 0;}
 .card-num { font-weight: 800; color: var(--primary); margin-bottom: 10px; text-align: center;}
-.btn-jump-edit { font-size: 11px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--primary); background: white; color: var(--primary); cursor: pointer;}
+.btn-jump-edit { font-size: 11px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--primary); background: white; color: var(--primary); cursor: pointer;}
 .card-main { flex: 1; padding: 20px; }
+.card-content { white-space: pre-wrap; line-height: 1.8; font-size: 17px; color: #334155; }
 .card-note-preview { margin-top: 15px; padding: 12px; background: #fffbeb; border-radius: 8px; font-size: 14px; border-left: 4px solid #fbbf24; white-space: pre-wrap; }
 
 .floating-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 300; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(2px);}
 .floating-modal { width: 450px; background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
-.float-header { padding: 15px 20px; background: var(--primary); color: white; display: flex; justify-content: space-between; }
+.float-header { padding: 15px 20px; background: var(--primary); color: white; display: flex; justify-content: space-between; align-items: center; }
+.float-header h4 { margin: 0; font-size: 16px; }
+.float-header button { background: transparent; border: none; color: white; font-size: 18px; cursor: pointer; }
 .float-body { padding: 20px; max-height: 450px; overflow-y: auto; }
 .float-content-text { line-height: 1.7; font-size: 16px; color: #334155; white-space: pre-wrap; margin-bottom: 15px;}
 .float-note-preview { background: #fef9c3; padding: 12px; border-radius: 10px; font-size: 14px; border-left: 4px solid #fbbf24; margin-bottom: 15px; }
@@ -402,27 +430,23 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
    🌟 手機版排版深度優化 (Mobile RWD Fixes)
    ========================================= */
 @media (max-width: 768px) {
-  .law-layout { height: 100dvh; } /* 使用 dvh 解決 Safari 網址列遮擋 */
+  .law-layout { height: 100dvh; flex-direction: column; } 
   .mobile-nav { display: flex; }
   .desktop-only { display: none; }
   
-  /* Sidebar 滿版覆蓋與關閉按鈕 */
   .sidebar { position: fixed; top: 0; left: 0; width: 100%; height: 100dvh; transform: translateX(-100%); z-index: 999; padding-bottom: env(safe-area-inset-bottom); }
   .sidebar.mobile-open { transform: translateX(0); }
-  .btn-close-sidebar { display: block; background: var(--primary); color: white; border: none; padding: 10px; border-radius: 8px; font-weight: bold; margin-bottom: 15px; width: 100%; font-size: 16px;}
+  .btn-close-sidebar { display: block; background: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; margin-bottom: 15px; width: 100%; font-size: 16px;}
   
-  /* 主內容區縮小內距，把空間還給法條 */
   .main-content { padding: 15px; height: calc(100dvh - 60px); overflow-y: auto;}
   .content-box { padding: 15px; margin-bottom: 20px; font-size: 16px; }
   .clause-header h1 { font-size: 20px; }
-  .content-text { word-break: break-word; overflow-wrap: break-word; } /* 防止長文字破版 */
+  .content-text { word-break: break-word; overflow-wrap: break-word; }
 
-  /* 章節預覽卡片排版 */
   .full-clause-card { flex-direction: column; }
-  .card-side { width: 100%; flex-direction: row; justify-content: space-between; border-right: none; border-bottom: 1px solid #e2e8f0; padding: 10px 15px;}
+  .card-side { width: 100%; flex-direction: row; justify-content: space-between; border-right: none; border-bottom: 1px solid #e2e8f0; padding: 12px 15px;}
   .card-main { padding: 15px; }
 
-  /* 浮動視窗縮小 */
   .floating-modal { width: 90vw; max-height: 80dvh; }
   .float-body { max-height: calc(80dvh - 60px); }
 }
