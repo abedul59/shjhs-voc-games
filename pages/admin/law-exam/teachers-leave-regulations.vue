@@ -195,4 +195,4 @@ const saveManual = async (c) => { isSaving.value = true; await supabase.from(CON
   .floating-modal { width: 90vw; }
 }
 </style>
-</style>
+
