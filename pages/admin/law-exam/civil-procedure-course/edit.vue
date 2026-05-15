@@ -84,38 +84,37 @@ const removePersonalNote = async (index) => {
   }
 };
 
-// 🌟 智慧網址解析引擎：自動超連結、強制開新分頁、智慧編號
+// 🌟 強化版智慧網址解析引擎 (TreeWalker)：絕對不吃字，保證轉換成功
 const formatRichTextUrls = (htmlString, autoNumber = false) => {
   if (!htmlString) return '';
   const tempDiv = document.createElement('div');
   tempDiv.innerHTML = htmlString;
 
-  // 步驟 A：將純文字網址轉換為 <a> 標籤
-  const walkTextNodes = (node) => {
-    if (node.nodeType === 3) { // 文字節點
-      const urlRegex = /(https?:\/\/[^\s<]+)/g;
-      if (urlRegex.test(node.nodeValue)) {
-        const span = document.createElement('span');
-        span.innerHTML = node.nodeValue.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-        node.parentNode.replaceChild(span, node);
-      }
-    } else if (node.nodeType === 1 && node.nodeName !== 'A') { 
-      Array.from(node.childNodes).forEach(walkTextNodes);
-    }
-  };
-  Array.from(tempDiv.childNodes).forEach(walkTextNodes);
+  // 步驟 A：安全走訪所有文字節點，將純文字網址轉為 <a>
+  const walker = document.createTreeWalker(tempDiv, NodeFilter.SHOW_TEXT, null, false);
+  const nodes = [];
+  let node;
+  while ((node = walker.nextNode())) { nodes.push(node); }
 
-  // 步驟 B：處理所有 <a> 標籤屬性與編號
+  nodes.forEach(n => {
+    if (n.parentNode && n.parentNode.nodeName === 'A') return; // 已經是連結就不管
+    const urlRegex = /(https?:\/\/[^\s<]+)/g;
+    if (urlRegex.test(n.nodeValue)) {
+      const span = document.createElement('span');
+      span.innerHTML = n.nodeValue.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+      n.parentNode.replaceChild(span, n);
+    }
+  });
+
+  // 步驟 B：強制開新分頁與自動編號
   let urlCounter = 1;
   tempDiv.querySelectorAll('a').forEach(a => {
-    // 確保一定是在新分頁開啟
     a.setAttribute('target', '_blank');
     a.setAttribute('rel', 'noopener noreferrer');
 
     if (autoNumber) {
       let text = a.innerHTML;
-      // 智慧移除舊的編號 (例如 "1. " 或 "[1] ")，防止重複存檔造成 "1. 1. URL"
-      text = text.replace(/^(\d+\.\s*|\[\d+\]\s*)/, '');
+      text = text.replace(/^(\d+\.\s*|\[\d+\]\s*)/, ''); // 智慧移除舊編號，防重複
       a.innerHTML = `${urlCounter}. ${text}`;
       urlCounter++;
     }
@@ -129,11 +128,12 @@ const handleSave = async () => {
   if (transcriptRef.value) form.value.transcript = transcriptRef.value.innerHTML;
   
   savePersonalNotesToState();
-  // 🌟 個人筆記：轉網址、開新分頁，但「不」強制編號以免破壞文字排版
+  
+  // 🌟 關鍵修復：轉網址後，必須回寫更新 personalNotesList，畫面才會同步顯示連結！
   const processedNotes = personalNotesList.value.map(note => formatRichTextUrls(note, false));
+  personalNotesList.value = processedNotes; 
   form.value.personal_notes = JSON.stringify(processedNotes);
 
-  // 🌟 關聯網址：轉網址、開新分頁，且「強制」加上 1. 2. 3. 編號
   if (urlsRef.value) {
     form.value.associated_urls = formatRichTextUrls(urlsRef.value.innerHTML, true);
   }
@@ -145,11 +145,12 @@ const handleSave = async () => {
   if (!payload.id) delete payload.id;
 
   const { data, error } = await supabase.from('course_notes').upsert([payload], { onConflict: 'id' }).select().single();
-  if (error) alert('儲存失敗：' + error.message);
-  else {
+  if (error) {
+    alert('儲存失敗：' + error.message);
+  } else {
     form.value.id = data.id; 
     alert('✅ 本分頁內容已儲存成功！');
-    syncEditorsToForm(); // 存檔後立即更新畫面，顯示最新的編號
+    syncEditorsToForm(); // 存檔後立即更新畫面 DOM
   }
   isSaving.value = false;
 };
@@ -159,7 +160,9 @@ const switchTab = async (tabName) => {
   if (transcriptRef.value) form.value.transcript = transcriptRef.value.innerHTML;
   
   savePersonalNotesToState();
-  personalNotesList.value = personalNotesList.value.map(note => formatRichTextUrls(note, false));
+  const processedNotes = personalNotesList.value.map(note => formatRichTextUrls(note, false));
+  personalNotesList.value = processedNotes;
+  form.value.personal_notes = JSON.stringify(processedNotes);
   
   if (urlsRef.value) {
     form.value.associated_urls = formatRichTextUrls(urlsRef.value.innerHTML, true);
@@ -230,7 +233,7 @@ const switchTab = async (tabName) => {
               <span class="note-badge">筆記 {{ index + 1 }}</span>
               <button @click.prevent="removePersonalNote(index)" class="btn-remove-note">🗑️ 刪除</button>
             </div>
-            <div :id="'personal-note-' + index" contenteditable="true" class="rich-textarea input-field personal-bg" placeholder="在此整理您的專屬筆記，貼上網址存檔後會自動變成超連結..."></div>
+            <div :id="'personal-note-' + index" contenteditable="true" class="rich-textarea input-field personal-bg" placeholder="在此整理您的專屬筆記，貼上網址存檔後會自動變成可點擊的超連結..."></div>
           </div>
 
           <button @click.prevent="addPersonalNote" class="btn-add-note">➕ 新增一筆筆記</button>
@@ -286,6 +289,10 @@ const switchTab = async (tabName) => {
 
 :deep(table) { width: 100%; border-collapse: collapse; margin: 10px 0; }
 :deep(td), :deep(th) { border: 1px solid #cbd5e1; padding: 8px; }
+
+/* 🌟 美化編輯器內的超連結，讓存檔後立刻有感 */
+:deep(a) { color: #2563eb; text-decoration: underline; font-weight: 500; cursor: pointer; }
+:deep(.urls-font a) { display: block; padding: 5px; margin: 5px 0; background: #f1f5f9; border-radius: 5px; border: 1px solid #cbd5e1; }
 
 .tab-actions { display: flex; justify-content: flex-end; padding-bottom: 40px; }
 .save-btn { background: #10b981; color: white; border: none; padding: 15px 40px; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3); }
