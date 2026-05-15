@@ -15,7 +15,6 @@ const summaryRef = ref(null);
 const transcriptRef = ref(null);
 const urlsRef = ref(null);
 
-// 🌟 新增：用陣列來管理複數筆記
 const personalNotesList = ref(['']); 
 
 const form = ref({
@@ -30,14 +29,12 @@ onMounted(async () => {
     const { data, error } = await supabase.from('course_notes').select('*').eq('id', noteId).single();
     if (data) {
       form.value = { ...data };
-      
-      // 🌟 解析資料庫裡的筆記，相容舊版的單一字串與新版的 JSON 陣列
       if (data.personal_notes) {
         try {
           const parsed = JSON.parse(data.personal_notes);
           personalNotesList.value = Array.isArray(parsed) ? parsed : [data.personal_notes];
         } catch (e) {
-          personalNotesList.value = [data.personal_notes]; // 舊資料轉為陣列的第一筆
+          personalNotesList.value = [data.personal_notes]; 
         }
       } else {
         personalNotesList.value = [''];
@@ -52,20 +49,17 @@ onMounted(async () => {
   syncEditorsToForm();
 });
 
-// 將變數內容同步到畫面上的編輯區
 const syncEditorsToForm = () => {
   if (summaryRef.value) summaryRef.value.innerHTML = form.value.summary || '';
   if (transcriptRef.value) transcriptRef.value.innerHTML = form.value.transcript || '';
   if (urlsRef.value) urlsRef.value.innerHTML = form.value.associated_urls || '';
 
-  // 同步複數筆記的編輯區
   personalNotesList.value.forEach((note, index) => {
     const el = document.getElementById('personal-note-' + index);
     if (el) el.innerHTML = note || '';
   });
 };
 
-// 將畫面上所有筆記區的內容回寫到陣列中
 const savePersonalNotesToState = () => {
   personalNotesList.value = personalNotesList.value.map((_, index) => {
     const el = document.getElementById('personal-note-' + index);
@@ -73,60 +67,75 @@ const savePersonalNotesToState = () => {
   });
 };
 
-// 🌟 新增一筆筆記
 const addPersonalNote = async () => {
-  savePersonalNotesToState(); // 先暫存現有輸入
-  personalNotesList.value.push(''); // 塞入空白筆記
+  savePersonalNotesToState(); 
+  personalNotesList.value.push(''); 
   await nextTick();
   syncEditorsToForm();
 };
 
-// 🌟 刪除一筆筆記
 const removePersonalNote = async (index) => {
   if (confirm('確定要刪除這筆筆記嗎？格式與內容將無法復原。')) {
     savePersonalNotesToState();
     personalNotesList.value.splice(index, 1);
-    if (personalNotesList.value.length === 0) personalNotesList.value.push(''); // 至少留一個
+    if (personalNotesList.value.length === 0) personalNotesList.value.push(''); 
     await nextTick();
     syncEditorsToForm();
   }
+};
+
+// 🌟 智慧網址解析引擎：自動超連結、強制開新分頁、智慧編號
+const formatRichTextUrls = (htmlString, autoNumber = false) => {
+  if (!htmlString) return '';
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = htmlString;
+
+  // 步驟 A：將純文字網址轉換為 <a> 標籤
+  const walkTextNodes = (node) => {
+    if (node.nodeType === 3) { // 文字節點
+      const urlRegex = /(https?:\/\/[^\s<]+)/g;
+      if (urlRegex.test(node.nodeValue)) {
+        const span = document.createElement('span');
+        span.innerHTML = node.nodeValue.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+        node.parentNode.replaceChild(span, node);
+      }
+    } else if (node.nodeType === 1 && node.nodeName !== 'A') { 
+      Array.from(node.childNodes).forEach(walkTextNodes);
+    }
+  };
+  Array.from(tempDiv.childNodes).forEach(walkTextNodes);
+
+  // 步驟 B：處理所有 <a> 標籤屬性與編號
+  let urlCounter = 1;
+  tempDiv.querySelectorAll('a').forEach(a => {
+    // 確保一定是在新分頁開啟
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener noreferrer');
+
+    if (autoNumber) {
+      let text = a.innerHTML;
+      // 智慧移除舊的編號 (例如 "1. " 或 "[1] ")，防止重複存檔造成 "1. 1. URL"
+      text = text.replace(/^(\d+\.\s*|\[\d+\]\s*)/, '');
+      a.innerHTML = `${urlCounter}. ${text}`;
+      urlCounter++;
+    }
+  });
+
+  return tempDiv.innerHTML;
 };
 
 const handleSave = async () => {
   if (summaryRef.value) form.value.summary = summaryRef.value.innerHTML;
   if (transcriptRef.value) form.value.transcript = transcriptRef.value.innerHTML;
   
-  // 🌟 將陣列轉換為 JSON 字串存入資料庫
   savePersonalNotesToState();
-  form.value.personal_notes = JSON.stringify(personalNotesList.value);
+  // 🌟 個人筆記：轉網址、開新分頁，但「不」強制編號以免破壞文字排版
+  const processedNotes = personalNotesList.value.map(note => formatRichTextUrls(note, false));
+  form.value.personal_notes = JSON.stringify(processedNotes);
 
-  // 🌟 網址智慧處理：自動連結純文字，並強制所有 <a> 標籤開新分頁
+  // 🌟 關聯網址：轉網址、開新分頁，且「強制」加上 1. 2. 3. 編號
   if (urlsRef.value) {
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = urlsRef.value.innerHTML;
-    
-    // 步驟 A：尋找純文字並轉換為超連結
-    const walkTextNodes = (node) => {
-      if (node.nodeType === 3) { // 文字節點
-        const urlRegex = /(https?:\/\/[^\s<]+)/g;
-        if (urlRegex.test(node.nodeValue)) {
-          const span = document.createElement('span');
-          span.innerHTML = node.nodeValue.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-          node.parentNode.replaceChild(span, node);
-        }
-      } else if (node.nodeType === 1 && node.nodeName !== 'A') { 
-        Array.from(node.childNodes).forEach(walkTextNodes);
-      }
-    };
-    walkTextNodes(tempDiv);
-
-    // 步驟 B：將所有 <a> 標籤加上 target="_blank"
-    tempDiv.querySelectorAll('a').forEach(a => {
-      a.setAttribute('target', '_blank');
-      a.setAttribute('rel', 'noopener noreferrer');
-    });
-
-    form.value.associated_urls = tempDiv.innerHTML;
+    form.value.associated_urls = formatRichTextUrls(urlsRef.value.innerHTML, true);
   }
 
   if (!form.value.topic.trim()) { alert('請填寫課程主題！'); return; }
@@ -140,6 +149,7 @@ const handleSave = async () => {
   else {
     form.value.id = data.id; 
     alert('✅ 本分頁內容已儲存成功！');
+    syncEditorsToForm(); // 存檔後立即更新畫面，顯示最新的編號
   }
   isSaving.value = false;
 };
@@ -147,8 +157,14 @@ const handleSave = async () => {
 const switchTab = async (tabName) => {
   if (summaryRef.value) form.value.summary = summaryRef.value.innerHTML;
   if (transcriptRef.value) form.value.transcript = transcriptRef.value.innerHTML;
-  if (urlsRef.value) form.value.associated_urls = urlsRef.value.innerHTML;
+  
   savePersonalNotesToState();
+  // 切換分頁時同樣執行一次整理，確保預覽一致
+  personalNotesList.value = personalNotesList.value.map(note => formatRichTextUrls(note, false));
+  
+  if (urlsRef.value) {
+    form.value.associated_urls = formatRichTextUrls(urlsRef.value.innerHTML, true);
+  }
 
   activeTab.value = tabName;
   await nextTick();
@@ -208,14 +224,14 @@ const switchTab = async (tabName) => {
 
       <section v-show="activeTab === 'study'" class="tab-content">
         <div class="form-section">
-          <h3>專屬學習筆記 (支援複數筆記)</h3>
+          <h3>專屬學習筆記 (支援複數網頁自動轉超連結)</h3>
           
           <div v-for="(note, index) in personalNotesList" :key="index" class="personal-note-wrapper">
             <div class="note-header">
               <span class="note-badge">筆記 {{ index + 1 }}</span>
               <button @click.prevent="removePersonalNote(index)" class="btn-remove-note">🗑️ 刪除</button>
             </div>
-            <div :id="'personal-note-' + index" contenteditable="true" class="rich-textarea input-field personal-bg" placeholder="在此整理您的專屬筆記..."></div>
+            <div :id="'personal-note-' + index" contenteditable="true" class="rich-textarea input-field personal-bg" placeholder="在此整理您的專屬筆記，貼上網址存檔後會自動變成超連結..."></div>
           </div>
 
           <button @click.prevent="addPersonalNote" class="btn-add-note">➕ 新增一筆筆記</button>
@@ -223,14 +239,13 @@ const switchTab = async (tabName) => {
           <hr class="divider">
 
           <div class="form-group">
-            <label>🔗 關聯複數網址 (存檔後自動轉為新分頁超連結)</label>
-            <div ref="urlsRef" contenteditable="true" class="rich-textarea input-field" placeholder="直接貼上網址或超連結..."></div>
+            <label>🔗 關聯複數網址 (存檔後自動編號並可點擊)</label>
+            <div ref="urlsRef" contenteditable="true" class="rich-textarea input-field" placeholder="直接貼上一堆網址，系統會幫您自動排版編號..."></div>
           </div>
         </div>
         
         <div class="tab-actions"><button @click="handleSave" class="save-btn" :disabled="isSaving">💾 儲存學習筆記</button></div>
       </section>
-
     </div>
   </div>
 </template>
@@ -259,7 +274,6 @@ const switchTab = async (tabName) => {
 .rich-textarea:empty:before { content: attr(placeholder); color: #94a3b8; pointer-events: none; }
 .transcript-bg { background: #fafaf9; }
 
-/* 🌟 複數筆記專屬樣式 */
 .personal-note-wrapper { margin-bottom: 20px; background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0;}
 .note-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .note-badge { background: #10b981; color: white; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: bold; }
