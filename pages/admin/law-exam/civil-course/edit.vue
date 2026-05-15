@@ -1,7 +1,6 @@
 <script setup>
 import { ref, onMounted, nextTick } from 'vue';
 
-// 確保只有登入且有權限的管理者可以進入
 definePageMeta({ middleware: ['auth', 'law-auth'] });
 
 const route = useRoute();
@@ -10,31 +9,17 @@ const supabase = useSupabaseClient();
 
 const isLoading = ref(true);
 const isSaving = ref(false);
-const activeTab = ref('basic'); // basic: 基礎與連結, ai: AI匯出內容, study: 個人筆記區
+const activeTab = ref('basic'); 
 
-// Rich Text 編輯框的引用 (DOM Refs)
 const summaryRef = ref(null);
 const transcriptRef = ref(null);
-const personalRef = ref(null);
 const urlsRef = ref(null);
 
-// 表單預設資料
+// 🌟 新增：用陣列來管理複數筆記
+const personalNotesList = ref(['']); 
+
 const form = ref({
-  id: null,
-  subject: '民法',
-  topic: '',
-  introduction: '',
-  class_video_link: '',
-  notebook_audio_link: '',
-  document_link: '',
-  notebook_infographic_link: '',
-  notebook_quiz_link: '',
-  notebook_flashcard_link: '',
-  notebook_overall_link: '',
-  summary: '',
-  transcript: '',
-  personal_notes: '',
-  associated_urls: ''
+  id: null, subject: '民法', topic: '', introduction: '', class_video_link: '', notebook_audio_link: '', document_link: '', notebook_infographic_link: '', notebook_quiz_link: '', notebook_flashcard_link: '', notebook_overall_link: '', summary: '', transcript: '', personal_notes: '', associated_urls: ''
 });
 
 onMounted(async () => {
@@ -42,91 +27,130 @@ onMounted(async () => {
   const lessonNum = route.query.lesson;
 
   if (noteId) {
-    // 編輯模式：抓取舊資料
-    const { data, error } = await supabase
-      .from('course_notes')
-      .select('*')
-      .eq('id', noteId)
-      .single();
-      
+    const { data, error } = await supabase.from('course_notes').select('*').eq('id', noteId).single();
     if (data) {
       form.value = { ...data };
-    }
-    if (error) {
-      alert('找不到該筆記資料，可能已被刪除。');
-      router.push('/admin/law-exam/civil-course');
-      return;
+      
+      // 🌟 解析資料庫裡的筆記，相容舊版的單一字串與新版的 JSON 陣列
+      if (data.personal_notes) {
+        try {
+          const parsed = JSON.parse(data.personal_notes);
+          personalNotesList.value = Array.isArray(parsed) ? parsed : [data.personal_notes];
+        } catch (e) {
+          personalNotesList.value = [data.personal_notes]; // 舊資料轉為陣列的第一筆
+        }
+      } else {
+        personalNotesList.value = [''];
+      }
     }
   } else if (lessonNum) {
-    // 新增模式：自動帶入堂數
     form.value.topic = `第${lessonNum}講：`;
   }
   
   isLoading.value = false;
-  
-  // 等待 Vue 將畫面渲染出來後，把資料庫裡的 HTML 塞進編輯區
   await nextTick();
   syncEditorsToForm();
 });
 
-// 將 form 變數內容同步到 Rich Text 編輯區
+// 將變數內容同步到畫面上的編輯區
 const syncEditorsToForm = () => {
   if (summaryRef.value) summaryRef.value.innerHTML = form.value.summary || '';
   if (transcriptRef.value) transcriptRef.value.innerHTML = form.value.transcript || '';
-  if (personalRef.value) personalRef.value.innerHTML = form.value.personal_notes || '';
   if (urlsRef.value) urlsRef.value.innerHTML = form.value.associated_urls || '';
+
+  // 同步複數筆記的編輯區
+  personalNotesList.value.forEach((note, index) => {
+    const el = document.getElementById('personal-note-' + index);
+    if (el) el.innerHTML = note || '';
+  });
 };
 
-// 儲存邏輯
+// 將畫面上所有筆記區的內容回寫到陣列中
+const savePersonalNotesToState = () => {
+  personalNotesList.value = personalNotesList.value.map((_, index) => {
+    const el = document.getElementById('personal-note-' + index);
+    return el ? el.innerHTML : '';
+  });
+};
+
+// 🌟 新增一筆筆記
+const addPersonalNote = async () => {
+  savePersonalNotesToState(); // 先暫存現有輸入
+  personalNotesList.value.push(''); // 塞入空白筆記
+  await nextTick();
+  syncEditorsToForm();
+};
+
+// 🌟 刪除一筆筆記
+const removePersonalNote = async (index) => {
+  if (confirm('確定要刪除這筆筆記嗎？格式與內容將無法復原。')) {
+    savePersonalNotesToState();
+    personalNotesList.value.splice(index, 1);
+    if (personalNotesList.value.length === 0) personalNotesList.value.push(''); // 至少留一個
+    await nextTick();
+    syncEditorsToForm();
+  }
+};
+
 const handleSave = async () => {
-  // 1. 儲存前，強制將畫面上編輯區的最新 HTML 抓進 form 變數中
   if (summaryRef.value) form.value.summary = summaryRef.value.innerHTML;
   if (transcriptRef.value) form.value.transcript = transcriptRef.value.innerHTML;
-  if (personalRef.value) form.value.personal_notes = personalRef.value.innerHTML;
-  if (urlsRef.value) form.value.associated_urls = urlsRef.value.innerHTML;
+  
+  // 🌟 將陣列轉換為 JSON 字串存入資料庫
+  savePersonalNotesToState();
+  form.value.personal_notes = JSON.stringify(personalNotesList.value);
 
-  if (!form.value.topic.trim() || form.value.topic === `第${route.query.lesson}講：`) {
-    alert('請填寫完整的「課程主題」！');
-    return;
+  // 🌟 網址智慧處理：自動連結純文字，並強制所有 <a> 標籤開新分頁
+  if (urlsRef.value) {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = urlsRef.value.innerHTML;
+    
+    // 步驟 A：尋找純文字並轉換為超連結
+    const walkTextNodes = (node) => {
+      if (node.nodeType === 3) { // 文字節點
+        const urlRegex = /(https?:\/\/[^\s<]+)/g;
+        if (urlRegex.test(node.nodeValue)) {
+          const span = document.createElement('span');
+          span.innerHTML = node.nodeValue.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+          node.parentNode.replaceChild(span, node);
+        }
+      } else if (node.nodeType === 1 && node.nodeName !== 'A') { 
+        Array.from(node.childNodes).forEach(walkTextNodes);
+      }
+    };
+    walkTextNodes(tempDiv);
+
+    // 步驟 B：將所有 <a> 標籤加上 target="_blank"
+    tempDiv.querySelectorAll('a').forEach(a => {
+      a.setAttribute('target', '_blank');
+      a.setAttribute('rel', 'noopener noreferrer');
+    });
+
+    form.value.associated_urls = tempDiv.innerHTML;
   }
+
+  if (!form.value.topic.trim()) { alert('請填寫課程主題！'); return; }
 
   isSaving.value = true;
-
-  // 2. 準備送出給資料庫的包裹
   const payload = { ...form.value };
+  if (!payload.id) delete payload.id;
 
-  // 🌟【關鍵修復】：如果是全新的筆記 (id 是 null)，就把 id 欄位刪除，讓 Supabase 自動生成
-  if (!payload.id) {
-    delete payload.id;
-  }
-
-  const { data, error } = await supabase
-    .from('course_notes')
-    .upsert([payload], { onConflict: 'id' })
-    .select()
-    .single();
-
-  if (error) {
-    alert('儲存失敗：' + error.message);
-  } else {
-    // 儲存成功後，把資料庫新配發的 ID 塞回 form，這樣繼續點儲存就會是「更新」而不是「新增」
+  const { data, error } = await supabase.from('course_notes').upsert([payload], { onConflict: 'id' }).select().single();
+  if (error) alert('儲存失敗：' + error.message);
+  else {
     form.value.id = data.id; 
     alert('✅ 本分頁內容已儲存成功！');
   }
-  
   isSaving.value = false;
 };
 
-// 換頁時自動備份當前輸入，避免切換時內容遺失
 const switchTab = async (tabName) => {
   if (summaryRef.value) form.value.summary = summaryRef.value.innerHTML;
   if (transcriptRef.value) form.value.transcript = transcriptRef.value.innerHTML;
-  if (personalRef.value) form.value.personal_notes = personalRef.value.innerHTML;
   if (urlsRef.value) form.value.associated_urls = urlsRef.value.innerHTML;
-  
+  savePersonalNotesToState();
+
   activeTab.value = tabName;
-  
-  // 換頁後重新把資料倒回編輯區
   await nextTick();
   syncEditorsToForm(); 
 };
@@ -134,7 +158,6 @@ const switchTab = async (tabName) => {
 
 <template>
   <div class="edit-container">
-    
     <div class="header">
       <button @click="router.back()" class="back-btn">← 取消並返回</button>
       <div class="title-wrap">
@@ -152,22 +175,15 @@ const switchTab = async (tabName) => {
     <div v-if="isLoading" class="loading-state">載入中，請稍候...</div>
 
     <div v-else class="form-body">
-      
       <section v-show="activeTab === 'basic'" class="tab-content">
         <div class="form-section">
           <h3>課程基本資訊</h3>
-          <div class="form-group">
-            <label>課程主題 (必填)</label>
-            <input v-model="form.topic" type="text" placeholder="例：第1講：權利主體" class="input-field" />
-          </div>
-          <div class="form-group">
-            <label>課程簡介</label>
-            <textarea v-model="form.introduction" placeholder="簡單描述這堂課的核心概念..." rows="3" class="input-field"></textarea>
-          </div>
+          <div class="form-group"><label>課程主題 (必填)</label><input v-model="form.topic" type="text" class="input-field" /></div>
+          <div class="form-group"><label>課程簡介</label><textarea v-model="form.introduction" rows="3" class="input-field"></textarea></div>
         </div>
 
         <div class="form-section link-grid-section">
-          <h3>🤖 NotebookLM 資源連結 (請貼上共享網址)</h3>
+          <h3>🤖 NotebookLM 資源連結</h3>
           <div class="link-grid">
             <div class="form-group"><label>▶️ 影片摘要</label><input v-model="form.class_video_link" class="input-field" /></div>
             <div class="form-group"><label>🎧 聲音摘要</label><input v-model="form.notebook_audio_link" class="input-field" /></div>
@@ -178,66 +194,41 @@ const switchTab = async (tabName) => {
             <div class="form-group"><label>📁 整體資源</label><input v-model="form.notebook_overall_link" class="input-field" /></div>
           </div>
         </div>
-        
-        <div class="tab-actions">
-          <button @click="handleSave" class="save-btn" :disabled="isSaving">💾 儲存此頁內容</button>
-        </div>
+        <div class="tab-actions"><button @click="handleSave" class="save-btn" :disabled="isSaving">💾 儲存此頁內容</button></div>
       </section>
 
       <section v-show="activeTab === 'ai'" class="tab-content">
         <div class="form-section">
-          <h3>AI 生成文本 (支援直接貼上表格)</h3>
-          <div class="form-group">
-            <label>📝 重點摘要</label>
-            <div 
-              ref="summaryRef" 
-              contenteditable="true" 
-              class="rich-textarea input-field"
-              placeholder="請直接從 NotebookLM 複製並貼上摘要..."
-            ></div>
-          </div>
-          <div class="form-group">
-            <label>📜 完整逐字稿</label>
-            <div 
-              ref="transcriptRef" 
-              contenteditable="true" 
-              class="rich-textarea input-field transcript-bg"
-              placeholder="請貼上完整的逐字稿內容..."
-            ></div>
-          </div>
+          <h3>AI 生成文本</h3>
+          <div class="form-group"><label>📝 重點摘要</label><div ref="summaryRef" contenteditable="true" class="rich-textarea input-field"></div></div>
+          <div class="form-group"><label>📜 完整逐字稿</label><div ref="transcriptRef" contenteditable="true" class="rich-textarea input-field transcript-bg"></div></div>
         </div>
-        
-        <div class="tab-actions">
-          <button @click="handleSave" class="save-btn" :disabled="isSaving">💾 儲存 AI 內容</button>
-        </div>
+        <div class="tab-actions"><button @click="handleSave" class="save-btn" :disabled="isSaving">💾 儲存 AI 內容</button></div>
       </section>
 
       <section v-show="activeTab === 'study'" class="tab-content">
         <div class="form-section">
-          <h3>專屬學習筆記 (支援直接貼上超連結)</h3>
-          <div class="form-group">
-            <label>✍️ 自己的筆記</label>
-            <div 
-              ref="personalRef" 
-              contenteditable="true" 
-              class="rich-textarea input-field personal-bg"
-              placeholder="在此整理您的專屬筆記、實務見解或心得..."
-            ></div>
+          <h3>專屬學習筆記 (支援複數筆記)</h3>
+          
+          <div v-for="(note, index) in personalNotesList" :key="index" class="personal-note-wrapper">
+            <div class="note-header">
+              <span class="note-badge">筆記 {{ index + 1 }}</span>
+              <button @click.prevent="removePersonalNote(index)" class="btn-remove-note">🗑️ 刪除</button>
+            </div>
+            <div :id="'personal-note-' + index" contenteditable="true" class="rich-textarea input-field personal-bg" placeholder="在此整理您的專屬筆記..."></div>
           </div>
+
+          <button @click.prevent="addPersonalNote" class="btn-add-note">➕ 新增一筆筆記</button>
+          
+          <hr class="divider">
+
           <div class="form-group">
-            <label>🔗 關聯複數網址</label>
-            <div 
-              ref="urlsRef" 
-              contenteditable="true" 
-              class="rich-textarea input-field"
-              placeholder="直接貼上其他參考網址清單，格式不會跑掉..."
-            ></div>
+            <label>🔗 關聯複數網址 (存檔後自動轉為新分頁超連結)</label>
+            <div ref="urlsRef" contenteditable="true" class="rich-textarea input-field" placeholder="直接貼上網址或超連結..."></div>
           </div>
         </div>
         
-        <div class="tab-actions">
-          <button @click="handleSave" class="save-btn" :disabled="isSaving">💾 儲存學習筆記</button>
-        </div>
+        <div class="tab-actions"><button @click="handleSave" class="save-btn" :disabled="isSaving">💾 儲存學習筆記</button></div>
       </section>
 
     </div>
@@ -247,18 +238,15 @@ const switchTab = async (tabName) => {
 <style scoped>
 .edit-container { max-width: 1000px; margin: 0 auto; padding: 20px; font-family: sans-serif; color: #334155; }
 .header { margin-bottom: 20px; }
-.back-btn { padding: 6px 14px; border-radius: 20px; border: 1px solid #ddd; background: white; cursor: pointer; transition: 0.2s; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.05);}
-.back-btn:hover { background: #f1f5f9; color: #1e293b;}
+.back-btn { padding: 6px 14px; border-radius: 20px; border: 1px solid #ddd; background: white; cursor: pointer; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.05);}
 .title-wrap { display: flex; align-items: center; gap: 15px; margin-top: 10px;}
 .header h1 { margin: 0; font-size: 24px; color: #1e293b; }
 .subject-tag { background: #1e3a8a; color: white; padding: 4px 10px; border-radius: 6px; font-size: 13px; font-weight: bold; }
 
-/* 🌟 分頁導覽列 */
 .tabs-nav { display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; flex-wrap: wrap;}
 .tabs-nav button { padding: 12px 24px; border: none; background: #f1f5f9; color: #64748b; font-weight: bold; cursor: pointer; border-radius: 10px 10px 0 0; transition: 0.2s; }
 .tabs-nav button.active { background: #3b82f6; color: white; }
 
-/* 폼 內容 */
 .form-section { background: white; padding: 25px; border-radius: 15px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px; }
 .form-section h3 { margin: 0 0 20px 0; font-size: 18px; color: #1e293b; border-left: 5px solid #3b82f6; padding-left: 12px; }
 .link-grid-section { background: #f8fafc; }
@@ -266,21 +254,28 @@ const switchTab = async (tabName) => {
 .form-group { margin-bottom: 18px; }
 .form-group label { display: block; font-weight: bold; margin-bottom: 8px; font-size: 14px; color: #475569; }
 .input-field { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 15px; box-sizing: border-box; background: #fff; line-height: 1.6;}
-.input-field:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
 
-/* Rich Text */
 .rich-textarea { min-height: 250px; overflow-y: auto; }
 .rich-textarea:empty:before { content: attr(placeholder); color: #94a3b8; pointer-events: none; }
 .transcript-bg { background: #fafaf9; }
-.personal-bg { background: #f0fdf4; border-color: #86efac; }
+
+/* 🌟 複數筆記專屬樣式 */
+.personal-note-wrapper { margin-bottom: 20px; background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0;}
+.note-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.note-badge { background: #10b981; color: white; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: bold; }
+.btn-remove-note { background: #fee2e2; color: #ef4444; border: 1px solid #fca5a5; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold;}
+.btn-remove-note:hover { background: #fecaca; }
+.personal-bg { background: #f0fdf4; border-color: #86efac; min-height: 200px;}
+.btn-add-note { display: block; width: 100%; padding: 12px; background: #e0f2fe; color: #0284c7; border: 2px dashed #7dd3fc; border-radius: 10px; font-weight: bold; font-size: 15px; cursor: pointer; transition: 0.2s;}
+.btn-add-note:hover { background: #bae6fd; }
+
+.divider { border: none; border-top: 1px dashed #cbd5e1; margin: 30px 0; }
+
 :deep(table) { width: 100%; border-collapse: collapse; margin: 10px 0; }
 :deep(td), :deep(th) { border: 1px solid #cbd5e1; padding: 8px; }
 
-/* 儲存按鈕 */
 .tab-actions { display: flex; justify-content: flex-end; padding-bottom: 40px; }
-.save-btn { background: #10b981; color: white; border: none; padding: 15px 40px; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3); }
-.save-btn:hover:not(:disabled) { background: #059669; transform: translateY(-2px); }
-.save-btn:disabled { background: #94a3b8; cursor: not-allowed; opacity: 0.8;}
+.save-btn { background: #10b981; color: white; border: none; padding: 15px 40px; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3); }
 
 .loading-state { text-align: center; padding: 100px; font-weight: bold; color: #94a3b8; font-size: 18px;}
 
