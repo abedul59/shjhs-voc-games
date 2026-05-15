@@ -1,84 +1,301 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, nextTick } from 'vue';
+
 definePageMeta({ middleware: ['auth', 'law-auth'] });
-const route = useRoute(); const supabase = useSupabaseClient();
-const noteData = ref(null); const isLoading = ref(true); const activeTab = ref('summary'); 
+
+const route = useRoute();
+const router = useRouter();
+const supabase = useSupabaseClient();
+
+const isLoading = ref(true);
+const isSaving = ref(false);
+const activeTab = ref('basic'); 
+
+const summaryRef = ref(null);
+const transcriptRef = ref(null);
+const urlsRef = ref(null);
+
+const personalNotesList = ref(['']); 
+
+const form = ref({
+  id: null, subject: '民事訴訟法', topic: '', introduction: '', class_video_link: '', notebook_audio_link: '', document_link: '', notebook_infographic_link: '', notebook_quiz_link: '', notebook_flashcard_link: '', notebook_overall_link: '', summary: '', transcript: '', personal_notes: '', associated_urls: ''
+});
 
 onMounted(async () => {
-  const { data } = await supabase.from('course_notes').select('*').eq('id', route.params.id).single();
-  if (data) noteData.value = data;
+  const noteId = route.query.id;
+  const lessonNum = route.query.lesson;
+
+  if (noteId) {
+    const { data, error } = await supabase.from('course_notes').select('*').eq('id', noteId).single();
+    if (data) {
+      form.value = { ...data };
+      if (data.personal_notes) {
+        try {
+          const parsed = JSON.parse(data.personal_notes);
+          personalNotesList.value = Array.isArray(parsed) ? parsed : [data.personal_notes];
+        } catch (e) {
+          personalNotesList.value = [data.personal_notes]; 
+        }
+      } else {
+        personalNotesList.value = [''];
+      }
+    }
+  } else if (lessonNum) {
+    form.value.topic = `第${lessonNum}講：`;
+  }
+  
   isLoading.value = false;
+  await nextTick();
+  syncEditorsToForm();
 });
-const openPortal = (url) => { if (url) window.open(url, '_blank'); };
+
+const syncEditorsToForm = () => {
+  if (summaryRef.value) summaryRef.value.innerHTML = form.value.summary || '';
+  if (transcriptRef.value) transcriptRef.value.innerHTML = form.value.transcript || '';
+  if (urlsRef.value) urlsRef.value.innerHTML = form.value.associated_urls || '';
+
+  personalNotesList.value.forEach((note, index) => {
+    const el = document.getElementById('personal-note-' + index);
+    if (el) el.innerHTML = note || '';
+  });
+};
+
+const savePersonalNotesToState = () => {
+  personalNotesList.value = personalNotesList.value.map((_, index) => {
+    const el = document.getElementById('personal-note-' + index);
+    return el ? el.innerHTML : '';
+  });
+};
+
+const addPersonalNote = async () => {
+  savePersonalNotesToState(); 
+  personalNotesList.value.push(''); 
+  await nextTick();
+  syncEditorsToForm();
+};
+
+const removePersonalNote = async (index) => {
+  if (confirm('確定要刪除這筆筆記嗎？格式與內容將無法復原。')) {
+    savePersonalNotesToState();
+    personalNotesList.value.splice(index, 1);
+    if (personalNotesList.value.length === 0) personalNotesList.value.push(''); 
+    await nextTick();
+    syncEditorsToForm();
+  }
+};
+
+// 🌟 智慧網址解析引擎：自動超連結、強制開新分頁、智慧編號
+const formatRichTextUrls = (htmlString, autoNumber = false) => {
+  if (!htmlString) return '';
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = htmlString;
+
+  // 步驟 A：將純文字網址轉換為 <a> 標籤
+  const walkTextNodes = (node) => {
+    if (node.nodeType === 3) { // 文字節點
+      const urlRegex = /(https?:\/\/[^\s<]+)/g;
+      if (urlRegex.test(node.nodeValue)) {
+        const span = document.createElement('span');
+        span.innerHTML = node.nodeValue.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+        node.parentNode.replaceChild(span, node);
+      }
+    } else if (node.nodeType === 1 && node.nodeName !== 'A') { 
+      Array.from(node.childNodes).forEach(walkTextNodes);
+    }
+  };
+  Array.from(tempDiv.childNodes).forEach(walkTextNodes);
+
+  // 步驟 B：處理所有 <a> 標籤屬性與編號
+  let urlCounter = 1;
+  tempDiv.querySelectorAll('a').forEach(a => {
+    // 確保一定是在新分頁開啟
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener noreferrer');
+
+    if (autoNumber) {
+      let text = a.innerHTML;
+      // 智慧移除舊的編號 (例如 "1. " 或 "[1] ")，防止重複存檔造成 "1. 1. URL"
+      text = text.replace(/^(\d+\.\s*|\[\d+\]\s*)/, '');
+      a.innerHTML = `${urlCounter}. ${text}`;
+      urlCounter++;
+    }
+  });
+
+  return tempDiv.innerHTML;
+};
+
+const handleSave = async () => {
+  if (summaryRef.value) form.value.summary = summaryRef.value.innerHTML;
+  if (transcriptRef.value) form.value.transcript = transcriptRef.value.innerHTML;
+  
+  savePersonalNotesToState();
+  // 🌟 個人筆記：轉網址、開新分頁，但「不」強制編號以免破壞文字排版
+  const processedNotes = personalNotesList.value.map(note => formatRichTextUrls(note, false));
+  form.value.personal_notes = JSON.stringify(processedNotes);
+
+  // 🌟 關聯網址：轉網址、開新分頁，且「強制」加上 1. 2. 3. 編號
+  if (urlsRef.value) {
+    form.value.associated_urls = formatRichTextUrls(urlsRef.value.innerHTML, true);
+  }
+
+  if (!form.value.topic.trim()) { alert('請填寫課程主題！'); return; }
+
+  isSaving.value = true;
+  const payload = { ...form.value };
+  if (!payload.id) delete payload.id;
+
+  const { data, error } = await supabase.from('course_notes').upsert([payload], { onConflict: 'id' }).select().single();
+  if (error) alert('儲存失敗：' + error.message);
+  else {
+    form.value.id = data.id; 
+    alert('✅ 本分頁內容已儲存成功！');
+    syncEditorsToForm(); // 存檔後立即更新畫面，顯示最新的編號
+  }
+  isSaving.value = false;
+};
+
+const switchTab = async (tabName) => {
+  if (summaryRef.value) form.value.summary = summaryRef.value.innerHTML;
+  if (transcriptRef.value) form.value.transcript = transcriptRef.value.innerHTML;
+  
+  savePersonalNotesToState();
+  personalNotesList.value = personalNotesList.value.map(note => formatRichTextUrls(note, false));
+  
+  if (urlsRef.value) {
+    form.value.associated_urls = formatRichTextUrls(urlsRef.value.innerHTML, true);
+  }
+
+  activeTab.value = tabName;
+  await nextTick();
+  syncEditorsToForm(); 
+};
 </script>
 
 <template>
-  <div class="reader-container">
-    <div v-if="isLoading" class="loading-overlay">載入中...</div>
-    <template v-else-if="noteData">
-      <div class="reader-header">
-        <div class="nav-bar">
-          <NuxtLink to="/admin/law-exam/civil-procedure-course" class="btn-back">← 回列表</NuxtLink>
-          <NuxtLink :to="`/admin/law-exam/civil-procedure-course/edit?id=${noteData.id}`" class="btn-edit">⚙️ 編輯</NuxtLink>
+  <div class="edit-container">
+    <div class="header">
+      <button @click="router.back()" class="back-btn">← 取消並返回</button>
+      <div class="title-wrap">
+        <h1>筆記編輯器</h1>
+        <span class="subject-tag">{{ form.subject }}學分班</span>
+      </div>
+    </div>
+
+    <div class="tabs-nav">
+      <button :class="{ active: activeTab === 'basic' }" @click="switchTab('basic')">⚙️ 基礎與連結</button>
+      <button :class="{ active: activeTab === 'ai' }" @click="switchTab('ai')">🤖 AI 匯出內容</button>
+      <button :class="{ active: activeTab === 'study' }" @click="switchTab('study')">✍️ 個人筆記區</button>
+    </div>
+
+    <div v-if="isLoading" class="loading-state">載入中，請稍候...</div>
+
+    <div v-else class="form-body">
+      <section v-show="activeTab === 'basic'" class="tab-content">
+        <div class="form-section">
+          <h3>課程基本資訊</h3>
+          <div class="form-group"><label>課程主題 (必填)</label><input v-model="form.topic" type="text" class="input-field" /></div>
+          <div class="form-group"><label>課程簡介</label><textarea v-model="form.introduction" rows="3" class="input-field"></textarea></div>
         </div>
-        <div class="title-section"><span class="subject-label">{{ noteData.subject }}學分班</span><h1>{{ noteData.topic }}</h1></div>
-      </div>
-      <div class="content-layout">
-        <main class="text-area">
-          <section v-if="noteData.introduction" class="intro-card"><p>{{ noteData.introduction }}</p></section>
-          <div class="tabs-nav">
-            <button :class="{ active: activeTab === 'summary' }" @click="activeTab = 'summary'">📝 摘要</button>
-            <button :class="{ active: activeTab === 'transcript' }" @click="activeTab = 'transcript'">📜 逐字稿</button>
-            <button :class="{ active: activeTab === 'personal' }" @click="activeTab = 'personal'">✍️ 筆記</button>
-            <button :class="{ active: activeTab === 'urls' }" @click="activeTab = 'urls'">🔗 網址</button>
+
+        <div class="form-section link-grid-section">
+          <h3>🤖 NotebookLM 資源連結</h3>
+          <div class="link-grid">
+            <div class="form-group"><label>▶️ 影片摘要</label><input v-model="form.class_video_link" class="input-field" /></div>
+            <div class="form-group"><label>🎧 聲音摘要</label><input v-model="form.notebook_audio_link" class="input-field" /></div>
+            <div class="form-group"><label>📄 NotebookLM 簡報</label><input v-model="form.document_link" class="input-field" /></div>
+            <div class="form-group"><label>📊 資訊圖表</label><input v-model="form.notebook_infographic_link" class="input-field" /></div>
+            <div class="form-group"><label>📝 測驗 Quiz</label><input v-model="form.notebook_quiz_link" class="input-field" /></div>
+            <div class="form-group"><label>📇 學習卡</label><input v-model="form.notebook_flashcard_link" class="input-field" /></div>
+            <div class="form-group"><label>📁 整體資源</label><input v-model="form.notebook_overall_link" class="input-field" /></div>
           </div>
-          <div class="reading-window">
-            <div v-show="activeTab === 'summary'" class="formatted-rich-text"><div v-html="noteData.summary || '尚未新增'"></div></div>
-            <div v-show="activeTab === 'transcript'" class="formatted-rich-text"><div v-html="noteData.transcript || '尚未新增'"></div></div>
-            <div v-show="activeTab === 'personal'" class="formatted-rich-text"><div v-html="noteData.personal_notes || '尚未新增'"></div></div>
-            <div v-show="activeTab === 'urls'" class="formatted-rich-text urls-font"><div v-html="noteData.associated_urls || '尚未新增'"></div></div>
-          </div>
-        </main>
-        <aside class="portal-sidebar">
-          <div class="portal-group">
-            <h3>🤖 NotebookLM 資源</h3>
-            <div class="portal-list">
-              <button class="portal-btn" :disabled="!noteData.class_video_link" @click="openPortal(noteData.class_video_link)"><span class="icon">▶️</span><strong>影片摘要</strong></button>
-              <button class="portal-btn" :disabled="!noteData.notebook_audio_link" @click="openPortal(noteData.notebook_audio_link)"><span class="icon">🎧</span><strong>聲音摘要</strong></button>
-              <button class="portal-btn" :disabled="!noteData.document_link" @click="openPortal(noteData.document_link)"><span class="icon">📄</span><strong>簡報</strong></button>
-              <button class="portal-btn" :disabled="!noteData.notebook_infographic_link" @click="openPortal(noteData.notebook_infographic_link)"><span class="icon">📊</span><strong>資訊圖表</strong></button>
-              <button class="portal-btn" :disabled="!noteData.notebook_quiz_link" @click="openPortal(noteData.notebook_quiz_link)"><span class="icon">📝</span><strong>測驗</strong></button>
-              <button class="portal-btn" :disabled="!noteData.notebook_flashcard_link" @click="openPortal(noteData.notebook_flashcard_link)"><span class="icon">📇</span><strong>學習卡</strong></button>
-              <button class="portal-btn" :disabled="!noteData.notebook_overall_link" @click="openPortal(noteData.notebook_overall_link)"><span class="icon">📁</span><strong>整體資源</strong></button>
+        </div>
+        <div class="tab-actions"><button @click="handleSave" class="save-btn" :disabled="isSaving">💾 儲存此頁內容</button></div>
+      </section>
+
+      <section v-show="activeTab === 'ai'" class="tab-content">
+        <div class="form-section">
+          <h3>AI 生成文本</h3>
+          <div class="form-group"><label>📝 重點摘要</label><div ref="summaryRef" contenteditable="true" class="rich-textarea input-field"></div></div>
+          <div class="form-group"><label>📜 完整逐字稿</label><div ref="transcriptRef" contenteditable="true" class="rich-textarea input-field transcript-bg"></div></div>
+        </div>
+        <div class="tab-actions"><button @click="handleSave" class="save-btn" :disabled="isSaving">💾 儲存 AI 內容</button></div>
+      </section>
+
+      <section v-show="activeTab === 'study'" class="tab-content">
+        <div class="form-section">
+          <h3>專屬學習筆記 (支援複數網頁自動轉超連結)</h3>
+          
+          <div v-for="(note, index) in personalNotesList" :key="index" class="personal-note-wrapper">
+            <div class="note-header">
+              <span class="note-badge">筆記 {{ index + 1 }}</span>
+              <button @click.prevent="removePersonalNote(index)" class="btn-remove-note">🗑️ 刪除</button>
             </div>
+            <div :id="'personal-note-' + index" contenteditable="true" class="rich-textarea input-field personal-bg" placeholder="在此整理您的專屬筆記，貼上網址存檔後會自動變成超連結..."></div>
           </div>
-        </aside>
-      </div>
-    </template>
+
+          <button @click.prevent="addPersonalNote" class="btn-add-note">➕ 新增一筆筆記</button>
+          
+          <hr class="divider">
+
+          <div class="form-group">
+            <label>🔗 關聯複數網址 (存檔後自動編號並可點擊)</label>
+            <div ref="urlsRef" contenteditable="true" class="rich-textarea input-field" placeholder="直接貼上一堆網址，系統會幫您自動排版編號..."></div>
+          </div>
+        </div>
+        
+        <div class="tab-actions"><button @click="handleSave" class="save-btn" :disabled="isSaving">💾 儲存學習筆記</button></div>
+      </section>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.reader-container { max-width: 1400px; margin: 0 auto; padding: 20px; font-family: sans-serif; }
-.nav-bar { display: flex; justify-content: space-between; margin-bottom: 20px; }
-.btn-back, .btn-edit { padding: 8px 16px; border-radius: 8px; text-decoration: none; font-weight: bold; }
-.btn-back { background: #f1f5f9; color: #475569; }
-.btn-edit { background: #fffbeb; color: #d97706; border: 1px solid #fcd34d; }
-.subject-label { background: #d97706; color: white; padding: 4px 12px; border-radius: 6px; font-weight: bold; }
-.content-layout { display: grid; grid-template-columns: 1fr 300px; gap: 30px; }
-.intro-card { background: #fffbeb; border-left: 6px solid #f59e0b; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
-.tabs-nav { display: flex; gap: 5px; }
-.tabs-nav button { padding: 12px 20px; border: none; background: #e2e8f0; font-weight: bold; border-radius: 12px 12px 0 0; cursor: pointer; }
-.tabs-nav button.active { background: white; color: #d97706; border-top: 3px solid #d97706; }
-.reading-window { background: white; border: 1px solid #e2e8f0; padding: 40px; min-height: 500px; }
-.formatted-rich-text { line-height: 1.8; font-size: 16px; }
-:deep(.formatted-rich-text table) { width: 100%; border-collapse: collapse; margin: 20px 0; border: 1px solid #cbd5e1; }
-:deep(.formatted-rich-text th), :deep(.formatted-rich-text td) { border: 1px solid #cbd5e1; padding: 12px; }
-.urls-font a { color: #2563eb; word-break: break-all; }
-.portal-sidebar { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px; padding: 20px; position: sticky; top: 20px; }
-.portal-group h3 { border-bottom: 2px solid #d97706; padding-bottom: 8px; margin-bottom: 15px;}
-.portal-list { display: flex; flex-direction: column; gap: 8px; }
-.portal-btn { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid #cbd5e1; background: white; border-radius: 10px; cursor: pointer; }
-.portal-btn:hover:not(:disabled) { border-color: #d97706; }
-.portal-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.edit-container { max-width: 1000px; margin: 0 auto; padding: 20px; font-family: sans-serif; color: #334155; }
+.header { margin-bottom: 20px; }
+.back-btn { padding: 6px 14px; border-radius: 20px; border: 1px solid #ddd; background: white; cursor: pointer; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.05);}
+.title-wrap { display: flex; align-items: center; gap: 15px; margin-top: 10px;}
+.header h1 { margin: 0; font-size: 24px; color: #1e293b; }
+.subject-tag { background: #d97706; color: white; padding: 4px 10px; border-radius: 6px; font-size: 13px; font-weight: bold; }
+
+.tabs-nav { display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; flex-wrap: wrap;}
+.tabs-nav button { padding: 12px 24px; border: none; background: #f1f5f9; color: #64748b; font-weight: bold; cursor: pointer; border-radius: 10px 10px 0 0; transition: 0.2s; }
+.tabs-nav button.active { background: #d97706; color: white; }
+
+.form-section { background: white; padding: 25px; border-radius: 15px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px; }
+.form-section h3 { margin: 0 0 20px 0; font-size: 18px; color: #1e293b; border-left: 5px solid #d97706; padding-left: 12px; }
+.link-grid-section { background: #f8fafc; }
+.link-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+.form-group { margin-bottom: 18px; }
+.form-group label { display: block; font-weight: bold; margin-bottom: 8px; font-size: 14px; color: #475569; }
+.input-field { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 15px; box-sizing: border-box; background: #fff; line-height: 1.6;}
+
+.rich-textarea { min-height: 250px; overflow-y: auto; }
+.rich-textarea:empty:before { content: attr(placeholder); color: #94a3b8; pointer-events: none; }
+.transcript-bg { background: #fafaf9; }
+
+.personal-note-wrapper { margin-bottom: 20px; background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0;}
+.note-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.note-badge { background: #10b981; color: white; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: bold; }
+.btn-remove-note { background: #fee2e2; color: #ef4444; border: 1px solid #fca5a5; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold;}
+.btn-remove-note:hover { background: #fecaca; }
+.personal-bg { background: #f0fdf4; border-color: #86efac; min-height: 200px;}
+.btn-add-note { display: block; width: 100%; padding: 12px; background: #fffbeb; color: #d97706; border: 2px dashed #fcd34d; border-radius: 10px; font-weight: bold; font-size: 15px; cursor: pointer; transition: 0.2s;}
+.btn-add-note:hover { background: #fde68a; }
+
+.divider { border: none; border-top: 1px dashed #cbd5e1; margin: 30px 0; }
+
+:deep(table) { width: 100%; border-collapse: collapse; margin: 10px 0; }
+:deep(td), :deep(th) { border: 1px solid #cbd5e1; padding: 8px; }
+
+.tab-actions { display: flex; justify-content: flex-end; padding-bottom: 40px; }
+.save-btn { background: #10b981; color: white; border: none; padding: 15px 40px; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3); }
+
+.loading-state { text-align: center; padding: 100px; font-weight: bold; color: #94a3b8; font-size: 18px;}
+
+@media (max-width: 768px) { 
+  .link-grid { grid-template-columns: 1fr; } 
+  .tabs-nav button { flex: 1; text-align: center; padding: 10px;}
+  .tab-actions { justify-content: stretch; }
+  .save-btn { width: 100%; }
+}
 </style>
