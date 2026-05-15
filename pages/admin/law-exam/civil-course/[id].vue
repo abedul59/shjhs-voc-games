@@ -17,14 +17,11 @@ onMounted(async () => {
   isLoading.value = false;
 });
 
-// 🌟 解析複數筆記 JSON
 const parsedPersonalNotes = computed(() => {
   if (!noteData.value || !noteData.value.personal_notes) return [];
   try {
     const parsed = JSON.parse(noteData.value.personal_notes);
-    // 過濾掉全空的筆記
-    const validNotes = (Array.isArray(parsed) ? parsed : [noteData.value.personal_notes]).filter(n => n.trim() !== '');
-    return validNotes;
+    return (Array.isArray(parsed) ? parsed : [noteData.value.personal_notes]).filter(n => n.trim() !== '');
   } catch (e) {
     return noteData.value.personal_notes.trim() ? [noteData.value.personal_notes] : [];
   }
@@ -120,14 +117,26 @@ const openPortal = (url) => {
 :deep(.formatted-rich-text th), :deep(.formatted-rich-text td) { border: 1px solid #cbd5e1; padding: 12px; }
 .empty-hint { color: #94a3b8; font-style: italic; text-align: center; }
 
-/* 🌟 複數筆記閱讀區樣式 */
+/* 🌟 複數筆記樣式 */
 .notes-stack { display: flex; flex-direction: column; gap: 25px; }
 .note-display-card { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; padding: 25px; position: relative;}
 .note-badge { position: absolute; top: -12px; left: 20px; background: #10b981; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}
 .note-content { margin-top: 5px; }
 
-/* 確保連結換行 */
-:deep(.urls-font a) { color: #2563eb; word-break: break-all; }
+/* 🌟 網址美化與強制排版 */
+:deep(.formatted-rich-text a) { color: #2563eb; word-break: break-all; }
+:deep(.urls-font a) { 
+  display: block; 
+  background: #f1f5f9; 
+  padding: 10px 15px; 
+  border-radius: 8px; 
+  margin-bottom: 10px; 
+  text-decoration: none; 
+  font-weight: 500;
+  border: 1px solid #cbd5e1;
+  transition: 0.2s;
+}
+:deep(.urls-font a:hover) { background: #e0f2fe; border-color: #bae6fd; }
 
 .portal-sidebar { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px; padding: 20px; position: sticky; top: 20px; }
 .portal-group h3 { margin: 0 0 15px 0; font-size: 18px; border-bottom: 2px solid #3b82f6; padding-bottom: 8px;}
