@@ -61,9 +61,10 @@ const gameDict = {
   'tarotAlch': { name: '🔮 塔羅鍊金術', path: '/game-tarotAlch', class: 'tarot-btn', pvpKey: 'enable_tarot_alch' },
   'tarotUno': { name: '🃏 塔羅 UNO', path: '/game-tarotUno', class: 'tarot-btn', pvpKey: 'enable_tarot_uno' },
   'verbing': { name: '🌀 動詞變化大師', path: '/game-verbing', class: 'exam-btn full-width' },
+  'verbingDual': { name: '⚔️ 動詞變化大師(對戰)', path: '/game-verbingDual', class: 'battle-btn full-width', pvpKey: 'enable_battle' },
 };
 
-const noUnitGames = ['speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examRead1', 'examRead2',, 'verbing'];
+const noUnitGames = ['speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examRead1', 'examRead2', 'verbing','verbingDual'];
 const isNoUnitGame = computed(() => noUnitGames.includes(selectedGameType.value));
 
 // 🌟 預設分類 (當資料庫沒設定時的完美備案)
