@@ -55,6 +55,11 @@ const config = ref({
   tarot_alch1_card_set: '1', tarot_alch1_card_set_kangxuan: '1k', tarot_alch1_time_limit: 600, tarot_alch1_penalty: 3, tarot_alch1_blank_count: 3, 
   examRead2_time_limit: 240,
   verbing_keyboard_speed: 20, verbing_wrong_penalty: 3, verbing_time_limit: 20 , verbing_time_penalty: 0.5,
+  verbingDual_target_score: 50,
+    verbingDual_correct_points: 10,
+    verbingDual_penalty_points: 3,
+    verbingDual_keyboard_speed: 20,
+    verbingDual_max_escapes: 20,
 
   ninja_time_limit: 300, ninja_penalty: 3,
   tenchi_hp: 100, tenchi_sp: 40, tenchi_min_dmg: 5, tenchi_max_dmg: 15, tenchi_escape_rate: 50, tenchi_wins_per_formation: 8, tenchi_blank_count: 3, 
