@@ -59,10 +59,11 @@ const gameDict = {
   'tenchi': { name: '🐎 吞食天地', path: '/game-tenchi', class: 'tenchi-btn', pvpKey: 'enable_tenchi' },
   'tarot21': { name: '🃏 塔羅 21 點', path: '/game-tarot21', class: 'tarot-btn', pvpKey: 'enable_tarot21' },
   'tarotAlch': { name: '🔮 塔羅鍊金術', path: '/game-tarotAlch', class: 'tarot-btn', pvpKey: 'enable_tarot_alch' },
-  'tarotUno': { name: '🃏 塔羅 UNO', path: '/game-tarotUno', class: 'tarot-btn', pvpKey: 'enable_tarot_uno' }
+  'tarotUno': { name: '🃏 塔羅 UNO', path: '/game-tarotUno', class: 'tarot-btn', pvpKey: 'enable_tarot_uno' },
+  'verbing': { name: '🌀 動詞變化大師', path: '/game-verbing', class: 'exam-btn full-width' },
 };
 
-const noUnitGames = ['speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examRead1', 'examRead2'];
+const noUnitGames = ['speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examRead1', 'examRead2',, 'verbing'];
 const isNoUnitGame = computed(() => noUnitGames.includes(selectedGameType.value));
 
 // 🌟 預設分類 (當資料庫沒設定時的完美備案)
