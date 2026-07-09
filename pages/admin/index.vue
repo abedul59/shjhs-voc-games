@@ -54,7 +54,7 @@ const config = ref({
   tarot21solo_card_set: '1', tarot21solo_card_set_kangxuan: '1k', tarot21solo_hp: 30, tarot21solo_time_limit: 600, tarot21solo_penalty: 3, tarot21solo_win_damage: 10, tarot21solo_blank_count: 3,
   tarot_alch1_card_set: '1', tarot_alch1_card_set_kangxuan: '1k', tarot_alch1_time_limit: 600, tarot_alch1_penalty: 3, tarot_alch1_blank_count: 3, 
   examRead2_time_limit: 240,
-  verbing_keyboard_speed, verbing_wrong_penalty, verbing_time_limit, verbing_time_penalty,
+  verbing_keyboard_speed: 20, verbing_wrong_penalty: 3, verbing_time_limit: 20 , verbing_time_penalty: 0.5,
 
   ninja_time_limit: 300, ninja_penalty: 3,
   tenchi_hp: 100, tenchi_sp: 40, tenchi_min_dmg: 5, tenchi_max_dmg: 15, tenchi_escape_rate: 50, tenchi_wins_per_formation: 8, tenchi_blank_count: 3, 
