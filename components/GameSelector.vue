@@ -61,7 +61,7 @@ const gameDict = {
   'tarotAlch': { name: '🔮 塔羅鍊金術', path: '/game-tarotAlch', class: 'tarot-btn', pvpKey: 'enable_tarot_alch' },
   'tarotUno': { name: '🃏 塔羅 UNO', path: '/game-tarotUno', class: 'tarot-btn', pvpKey: 'enable_tarot_uno' },
   'verbing': { name: '🌀 動詞變化大師', path: '/game-verbing', class: 'exam-btn full-width' },
-  'verbingDual': { name: '⚔️ 動詞變化大師(對戰)', path: '/game-verbingDual', class: 'battle-btn full-width', pvpKey: 'enable_battle' },
+  'verbingDual': { name: '⚔️ 動詞變化大師(對戰)', path: '/game-verbingDual', class: 'battle-btn full-width', pvpKey: 'enable_verbingDual' },
 };
 
 const noUnitGames = ['speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examRead1', 'examRead2', 'verbing','verbingDual'];
@@ -120,7 +120,8 @@ onMounted(async () => {
       enable_tenchi: settings.enable_tenchi === true,
       enable_tarot21: settings.enable_tarot21 === true,
       enable_tarot_alch: settings.enable_tarot_alch === true,
-      enable_tarot_uno: settings.enable_tarot_uno === true
+      enable_tarot_uno: settings.enable_tarot_uno === true,
+      enable_verbingDual: settings.enable_verbingDual !== false, // 補上這行
     };
     accessSettings.value = {
       disabled_games: settings.disabled_games || [],
