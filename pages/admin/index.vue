@@ -55,11 +55,12 @@ const config = ref({
   tarot_alch1_card_set: '1', tarot_alch1_card_set_kangxuan: '1k', tarot_alch1_time_limit: 600, tarot_alch1_penalty: 3, tarot_alch1_blank_count: 3, 
   examRead2_time_limit: 240,
   verbing_keyboard_speed: 20, verbing_wrong_penalty: 3, verbing_time_limit: 20 , verbing_time_penalty: 0.5,
-  verbingDual_target_score: 50,
-  verbingDual_correct_points: 10,
-  verbingDual_penalty_points: 3,
-  verbingDual_keyboard_speed: 20,
-  verbingDual_max_escapes: 20,
+  verbingdual_target_score: 50,
+  verbingdual_correct_points: 10,
+  verbingdual_penalty_points: 3,
+  verbingdual_keyboard_speed: 20,
+  verbingdual_max_escapes: 20,
+  
   ninja_time_limit: 300, ninja_penalty: 3,
   tenchi_hp: 100, tenchi_sp: 40, tenchi_min_dmg: 5, tenchi_max_dmg: 15, tenchi_escape_rate: 50, tenchi_wins_per_formation: 8, tenchi_blank_count: 3, 
   tenchi_base_atk: 10, tenchi_base_def: 10, tenchi_base_int: 10, tenchi_base_eva: 10, tenchi_player_atk: 15, tenchi_player_def: 15, tenchi_player_int: 15, tenchi_player_eva: 10, tenchi_max_escapes: 20, 
@@ -70,7 +71,7 @@ const config = ref({
   tarot_uno_card_set: '1', tarot_uno_hp: 50, tarot_uno_time_limit: 15, tarot_uno_penalty: 5, tarot_uno_win_damage: 15, tarot_uno_blank_count: 3, tarot_uno_max_escapes: 20,
   
   // 🌟 這裡補上了 enable_verbingDual 開關！
-  enable_battle: false, enable_tenchi: false, enable_tarot21: false, enable_tarot_alch: false, enable_tarot_uno: false, enable_verbingDual: true
+  enable_battle: false, enable_tenchi: false, enable_tarot21: false, enable_tarot_alch: false, enable_tarot_uno: false, enable_verbingdual: true
 });
 
 onMounted(async () => {
