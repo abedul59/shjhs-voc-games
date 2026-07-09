@@ -84,13 +84,14 @@ onMounted(async () => {
   if (!studentCookie.value) { router.push('/'); return; }
   window.addEventListener('beforeunload', handleBeforeUnload);
 
-  // 抓取設定
+// 抓取設定
   const { data: sysData } = await supabase.from('system_settings').select('*').eq('id', 1).single();
   if (sysData) {
-    if (sysData.pvp_target_score) targetScore.value = sysData.pvp_target_score * 10; // 將原本算單字的改成算分
-    if (sysData.verbing_keyboard_speed) keyboardSpeed.value = sysData.verbing_keyboard_speed;
-    if (sysData.pvp_penalty_points) pvpPenaltyPoints.value = sysData.pvp_penalty_points;
-    if (sysData.pvp_max_escapes) maxEscapes.value = sysData.pvp_max_escapes;
+    targetScore.value = sysData.verbingDual_target_score ?? 50;
+    pvpCorrectPoints.value = sysData.verbingDual_correct_points ?? 10;
+    pvpPenaltyPoints.value = sysData.verbingDual_penalty_points ?? 3;
+    keyboardSpeed.value = sysData.verbingDual_keyboard_speed ?? 20;
+    maxEscapes.value = sysData.verbingDual_max_escapes ?? 20;
   }
 
   // 檢查今日逃跑次數
