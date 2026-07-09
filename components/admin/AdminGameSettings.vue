@@ -10,28 +10,23 @@ const props = defineProps({ config: Object });
 
     <div class="setting-item">
   <h3 style="color: #303f9f;">🌀 動詞變化大師 專屬設定</h3>
-  <div class="form-grid">
-    <div class="form-group">
+
       <label>鍵盤旋轉速度 (秒/圈)</label>
       <input type="number" v-model="settings.verbing_keyboard_speed" class="retro-input" min="1">
       <small>預設 20 秒，越小轉越快！</small>
-    </div>
-    <div class="form-group">
+ 
       <label>送出錯誤扣分</label>
       <input type="number" v-model="settings.verbing_wrong_penalty" class="retro-input" min="0">
       <small>預設扣 3 分</small>
-    </div>
-    <div class="form-group">
+
       <label>每題作答時限 (秒)</label>
       <input type="number" v-model="settings.verbing_time_limit" class="retro-input" min="5">
-      <small>預設 20 秒</small>
-    </div>
-    <div class="form-group">
+ 
+
       <label>超時每秒扣分</label>
       <input type="number" v-model="settings.verbing_time_penalty" step="0.1" class="retro-input" min="0">
       <small>預設 0.5 分</small>
-    </div>
-  </div>
+ 
   </div>
 
     
