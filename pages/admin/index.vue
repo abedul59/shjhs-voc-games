@@ -56,11 +56,10 @@ const config = ref({
   examRead2_time_limit: 240,
   verbing_keyboard_speed: 20, verbing_wrong_penalty: 3, verbing_time_limit: 20 , verbing_time_penalty: 0.5,
   verbingDual_target_score: 50,
-    verbingDual_correct_points: 10,
-    verbingDual_penalty_points: 3,
-    verbingDual_keyboard_speed: 20,
-    verbingDual_max_escapes: 20,
-
+  verbingDual_correct_points: 10,
+  verbingDual_penalty_points: 3,
+  verbingDual_keyboard_speed: 20,
+  verbingDual_max_escapes: 20,
   ninja_time_limit: 300, ninja_penalty: 3,
   tenchi_hp: 100, tenchi_sp: 40, tenchi_min_dmg: 5, tenchi_max_dmg: 15, tenchi_escape_rate: 50, tenchi_wins_per_formation: 8, tenchi_blank_count: 3, 
   tenchi_base_atk: 10, tenchi_base_def: 10, tenchi_base_int: 10, tenchi_base_eva: 10, tenchi_player_atk: 15, tenchi_player_def: 15, tenchi_player_int: 15, tenchi_player_eva: 10, tenchi_max_escapes: 20, 
@@ -69,7 +68,9 @@ const config = ref({
   tarot21_card_set: '1', tarot21_hp: 30, tarot21_time_limit: 15, tarot21_penalty: 5, tarot21_win_damage: 10, tarot21_blank_count: 3, tarot21_max_escapes: 20,
   tarot_alch_card_set: '1', tarot_alch_hp: 50, tarot_alch_time_limit: 20, tarot_alch_penalty: 5, tarot_alch_win_damage: 10, tarot_alch_blank_count: 3, tarot_alch_max_escapes: 20,
   tarot_uno_card_set: '1', tarot_uno_hp: 50, tarot_uno_time_limit: 15, tarot_uno_penalty: 5, tarot_uno_win_damage: 15, tarot_uno_blank_count: 3, tarot_uno_max_escapes: 20,
-  enable_battle: false, enable_tenchi: false, enable_tarot21: false, enable_tarot_alch: false, enable_tarot_uno: false
+  
+  // 🌟 這裡補上了 enable_verbingDual 開關！
+  enable_battle: false, enable_tenchi: false, enable_tarot21: false, enable_tarot_alch: false, enable_tarot_uno: false, enable_verbingDual: true
 });
 
 onMounted(async () => {
@@ -145,7 +146,7 @@ const upgradeStudents = async () => {
 
 // 🌟 一鍵清除幽靈對戰房間
 const clearGhostRooms = async () => {
-  const confirmMsg = `⚠️ 確定要執行「幽靈房間清掃」嗎？\n\n系統將會強制刪除這 5 款對戰遊戲中，建立時間「超過 15 分鐘」的房間。\n\n建議使用時機：\n1. 上課前，為確保學生配對順暢。\n2. 發現有學生卡在配對畫面進不去時。`;
+  const confirmMsg = `⚠️ 確定要執行「幽靈房間清掃」嗎？\n\n系統將會強制刪除這 6 款對戰遊戲中，建立時間「超過 15 分鐘」的房間。\n\n建議使用時機：\n1. 上課前，為確保學生配對順暢。\n2. 發現有學生卡在配對畫面進不去時。`;
   
   if (!confirm(confirmMsg)) return;
 
@@ -155,14 +156,14 @@ const clearGhostRooms = async () => {
     // 計算 15 分鐘前的時間點
     const thresholdTime = new Date(Date.now() - 15 * 60 * 1000).toISOString();
     
-    // 5 款對戰遊戲的房間資料表名稱 
-    // (⚠️ 如果你的資料庫命名有差異，系統會自動跳過錯誤並在終端機提示)
+    // 🌟 將 game_rooms 加入清單，這樣新遊戲的房間也能被清掉
     const pvpTables = [
       'battle_rooms', 
       'tenchi_rooms', 
       'tarot21_rooms', 
       'tarot_alch_rooms', 
-      'tarot_uno_rooms'
+      'tarot_uno_rooms',
+      'game_rooms'
     ];
 
     let totalDeleted = 0;
