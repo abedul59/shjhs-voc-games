@@ -14,6 +14,7 @@ const props = defineProps({ config: Object });
         <label><input type="checkbox" v-model="config.enable_tarot21" style="transform: scale(1.3); margin-right: 5px;" /> 🃏 塔羅21點</label>
         <label><input type="checkbox" v-model="config.enable_tarot_alch" style="transform: scale(1.3); margin-right: 5px;" /> 🔮 塔羅鍊金術</label>
         <label><input type="checkbox" v-model="config.enable_tarot_uno" style="transform: scale(1.3); margin-right: 5px;" /> 🃏 塔羅UNO</label>
+        <label><input type="checkbox" v-model="config.enable_verbingDual" style="transform: scale(1.3); margin-right: 5px;" /> ⚔️ 動詞變化大師（雙人對戰）</label>
       </div>
     </div>
 
@@ -41,6 +42,19 @@ const props = defineProps({ config: Object });
         送出錯誤每次扣 <input type="number" v-model="config.verbing_wrong_penalty" class="retro-input num-input" min="0" /> 分
       </div>
     </div>
+
+<div class="setting-item highlight-item" style="flex-direction: column; align-items: stretch; gap: 10px; background: #e8eaf6; border-color: #5c6bc0;">
+      <label style="color: #283593; font-size: 1.1rem; border-bottom: 1px dashed #5c6bc0; padding-bottom: 5px;">⚔️ 動詞變化大師 (對戰版) 專屬設定</label>
+      <div class="multi-input">
+        🏆 獲勝條件: 先得 <input type="number" min="10" v-model="config.verbingDual_target_score" class="retro-input num-input" style="width: 60px;" /> 分<br>
+        💯 計分規則: 全對得 <input type="number" min="0" v-model="config.verbingDual_correct_points" class="retro-input num-input" style="width: 50px;" /> 分，錯扣 <input type="number" min="0" v-model="config.verbingDual_penalty_points" class="retro-input num-input" style="width: 50px;" /> 分<br>
+        🌪️ 鍵盤旋轉速度: <input type="number" min="1" v-model="config.verbingDual_keyboard_speed" class="retro-input num-input" style="width: 60px;" /> 秒/圈<br>
+        🚫 逃跑禁賽門檻: 單日逃走達 <input type="number" min="1" v-model="config.verbingDual_max_escapes" class="retro-input num-input" style="width: 50px;" /> 次，當日禁玩
+      </div>
+    </div>
+    
+
+    
 
     <div class="setting-item">
       <label>🔠 單字神移動 (每題):</label>
