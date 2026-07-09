@@ -3,14 +3,7 @@ const props = defineProps({ config: Object });
 </script>
 
 <template>
-
-
-  
   <div class="settings-section">
-
-  
-
-    
     
     <div class="setting-item highlight-item" style="flex-direction: column; align-items: stretch; gap: 10px; background: #ffebee; border-color: #f44336; margin-bottom: 25px;">
       <label style="color: #c62828; font-size: 1.2rem; border-bottom: 1px dashed #f44336; padding-bottom: 5px;">🚦 伺服器流量管理：對戰遊戲開放控制</label>
@@ -24,8 +17,6 @@ const props = defineProps({ config: Object });
       </div>
     </div>
 
-
-
     <div class="setting-item highlight-item" style="flex-direction: column; align-items: stretch; gap: 10px; background: #e3f2fd; border-color: #90caf9;">
       <label style="color: #0277bd; font-size: 1.1rem; border-bottom: 1px dashed #90caf9; padding-bottom: 5px;">🟦 方塊消消樂 進階計分機制</label>
       <div class="multi-input" style="margin-bottom:5px;">每配對一組得 <input type="number" v-model="config.match_base_score_per_pair" class="retro-input num-input" /> 分，點錯扣 <input type="number" v-model="config.match_penalty" class="retro-input num-input" /> 分。全局限時 <input type="number" v-model="config.match_game_time_limit" class="retro-input num-input" /> 秒。</div>
@@ -33,6 +24,21 @@ const props = defineProps({ config: Object });
         ≤ <input type="number" v-model="config.match_bonus_tier1_time" class="retro-input num-input" />秒 +<input type="number" v-model="config.match_bonus_tier1_score" class="retro-input num-input" />分 |
         ≤ <input type="number" v-model="config.match_bonus_tier2_time" class="retro-input num-input" />秒 +<input type="number" v-model="config.match_bonus_tier2_score" class="retro-input num-input" />分 |
         ≤ <input type="number" v-model="config.match_bonus_tier3_time" class="retro-input num-input" />秒 +<input type="number" v-model="config.match_bonus_tier3_score" class="retro-input num-input" />分
+      </div>
+    </div>
+
+    <div class="setting-item highlight-item" style="flex-direction: column; align-items: stretch; gap: 10px; background: #e8eaf6; border-color: #3f51b5;">
+      <label style="color: #283593; font-size: 1.1rem; border-bottom: 1px dashed #3f51b5; padding-bottom: 5px;">🌀 動詞變化大師 專屬設定</label>
+      <div class="multi-input">
+        旋轉速度 <input type="number" v-model="config.verbing_keyboard_speed" class="retro-input num-input" min="1" /> 秒/圈
+        <span style="font-size:0.8rem; color:#666; margin-left:5px;">(預設 20，越小轉越快！)</span>
+      </div>
+      <div class="multi-input">
+        每題限時 <input type="number" v-model="config.verbing_time_limit" class="retro-input num-input" min="5" /> 秒，
+        超時每秒扣 <input type="number" step="0.1" v-model="config.verbing_time_penalty" class="retro-input num-input" min="0" /> 分
+      </div>
+      <div class="multi-input">
+        送出錯誤每次扣 <input type="number" v-model="config.verbing_wrong_penalty" class="retro-input num-input" min="0" /> 分
       </div>
     </div>
 
@@ -739,8 +745,6 @@ const props = defineProps({ config: Object });
     </div>
 
   </div>
-
-
 </template>
 
 <style scoped>
