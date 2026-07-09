@@ -214,6 +214,7 @@ const clearGhostRooms = async () => {
           <h3 style="margin-top: 0; color: #0277bd;">🚀 進階管理專區入口</h3>
           
           <div class="nav-buttons">
+            <NuxtLink to="/admin/manage-verbs" class="retro-btn nav-btn" style="background: #00838f; border-color: #00838f;">🌀 不規則動詞管理</NuxtLink>
             <NuxtLink to="/admin/speakno3-manager" class="retro-btn nav-btn" style="background: #e91e63; border-color: #c2185b;">🎤 口說學霸3(歌單管理)</NuxtLink>
             <NuxtLink to="/admin/access" class="retro-btn nav-btn" style="background: #d32f2f; border-color: #e57373;">🛑 遊戲權限與時間管理</NuxtLink>
             <NuxtLink to="/admin/tarot-manager" class="retro-btn nav-btn" style="background: #673ab7; border-color: #9fa8da;">🔮 塔羅牌手動發放</NuxtLink>
