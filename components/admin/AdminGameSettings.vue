@@ -3,7 +3,37 @@ const props = defineProps({ config: Object });
 </script>
 
 <template>
+
+
+  
   <div class="settings-section">
+
+<div class="settings-card retro-element" style="border-color: #3f51b5; margin-top: 20px;">
+  <h3 style="color: #303f9f;">🌀 動詞變化大師 專屬設定</h3>
+  <div class="form-grid">
+    <div class="form-group">
+      <label>鍵盤旋轉速度 (秒/圈)</label>
+      <input type="number" v-model="settings.verbing_keyboard_speed" class="retro-input" min="1">
+      <small>預設 20 秒，越小轉越快！</small>
+    </div>
+    <div class="form-group">
+      <label>送出錯誤扣分</label>
+      <input type="number" v-model="settings.verbing_wrong_penalty" class="retro-input" min="0">
+      <small>預設扣 3 分</small>
+    </div>
+    <div class="form-group">
+      <label>每題作答時限 (秒)</label>
+      <input type="number" v-model="settings.verbing_time_limit" class="retro-input" min="5">
+      <small>預設 20 秒</small>
+    </div>
+    <div class="form-group">
+      <label>超時每秒扣分</label>
+      <input type="number" v-model="settings.verbing_time_penalty" step="0.1" class="retro-input" min="0">
+      <small>預設 0.5 分</small>
+    </div>
+  </div>
+</div>
+    
     
     <div class="setting-item highlight-item" style="flex-direction: column; align-items: stretch; gap: 10px; background: #ffebee; border-color: #f44336; margin-bottom: 25px;">
       <label style="color: #c62828; font-size: 1.2rem; border-bottom: 1px dashed #f44336; padding-bottom: 5px;">🚦 伺服器流量管理：對戰遊戲開放控制</label>
