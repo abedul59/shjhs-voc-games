@@ -15,7 +15,7 @@ const gameState = ref('loading'); // loading, setup, playing, end
 const gameMode = ref('mode1'); // mode1: 鍵盤輸入, mode2: 選擇題
 const currentQuestionCount = ref(10);
 
-// 🌟 遊戲設定 (從資料庫讀取)
+// 🌟 遊戲設定
 const keyboardSpeed = ref(20); 
 const wrongPenalty = ref(3);
 const timeLimit = ref(20);
@@ -64,7 +64,6 @@ const playClickSound = () => {
 onMounted(async () => {
   if (!studentCookie.value) { router.push('/'); return; }
 
-  // 抓取設定
   const { data: sysData } = await supabase.from('system_settings')
     .select('verbing_keyboard_speed, verbing_wrong_penalty, verbing_time_limit, verbing_time_penalty')
     .eq('id', 1).single();
@@ -84,10 +83,9 @@ onMounted(async () => {
   }
 
   allFetchedVerbs.value = verbs;
-  gameState.value = 'setup'; // 進入選擇模式畫面
+  gameState.value = 'setup'; 
 });
 
-// 🌟 啟動選擇的模式
 const startGame = (mode) => {
   gameMode.value = mode;
   if (mode === 'mode1') {
@@ -105,23 +103,20 @@ const startGame = (mode) => {
 
 const currentVerb = computed(() => gameVerbs.value[currentIndex.value] || {});
 
-// 🌟 智能編造相似錯誤拼字 (選擇題干擾選項) - 加上防呆機制避免 Crash
+// 🌟 智能編造相似錯誤拼字
 const generateDistractors = (verbObj) => {
   if (!verbObj) return [];
-  
-  // 防呆：確保字串處理不會遇到 Null 錯誤
-  const base = String(verbObj.base || 'word').toLowerCase().trim();
+  // 修正：相容各種可能的欄位名稱
+  const base = String(verbObj.verb || verbObj.base || verbObj.en_us || 'word').toLowerCase().trim();
   const past = String(verbObj.past_tense || base + 'ed').split('/')[0].trim().toLowerCase();
   const pp = String(verbObj.past_participle || base + 'ed').split('/')[0].trim().toLowerCase();
   
   const correctStr = `${past} / ${pp}`;
   const set = new Set();
   
-  // 1. 錯誤規則化 (-ed)
   let d1 = base.endsWith('e') ? base + 'd' : (base.endsWith('y') ? base.slice(0,-1)+'ied' : base + 'ed');
   set.add(`${d1} / ${d1}`);
   
-  // 2. 母音亂數替換
   const vowels = ['a','e','i','o','u'];
   let vReplaced = past;
   let replaced = false;
@@ -135,18 +130,15 @@ const generateDistractors = (verbObj) => {
   if (!replaced || vReplaced === past) vReplaced += 't';
   set.add(`${vReplaced} / ${pp}`);
   
-  // 3. 過去式與分詞錯置
   if (past !== pp) set.add(`${pp} / ${past}`);
   else set.add(`${past} / ${base}en`);
   
-  // 4. Base 字根硬加後綴
   set.add(`${base}t / ${base}t`);
   set.add(`${base}en / ${base}en`);
 
   let arr = Array.from(set).filter(x => x !== correctStr);
   arr.sort(() => Math.random() - 0.5);
   
-  // 保證一定會產出四個選項，即使有錯誤也不會空白
   let options = [
       { text: correctStr, isCorrect: true, disabled: false },
       { text: arr[0] || `${base}s / ${base}es`, isCorrect: false, disabled: false },
@@ -174,9 +166,12 @@ const startQuestion = () => {
   timer = setInterval(() => { timeSpent.value++; }, 1000);
 };
 
+// 🌟 發音功能防呆升級 (自動過濾斜線並只抓第一個字)
 const playPronunciation = (word) => {
   if (!word) return;
-  const cleanWord = word.split('/')[0].toLowerCase().trim(); 
+  const cleanWord = String(word).split('/')[0].toLowerCase().replace(/[^a-z]/g, '').trim(); 
+  if (!cleanWord) return;
+
   const audio = new Audio(`https://ssl.gstatic.com/dictionary/static/sounds/20200429/${cleanWord}--_us_1.mp3`);
   audio.play().catch(() => {
     if (window.speechSynthesis) {
@@ -205,7 +200,7 @@ const switchField = (field) => {
   activeField.value = field;
 };
 
-// 🌟 Mode 1 結算邏輯
+// 🌟 Mode 1 結算
 const finalizeQuestion = () => {
   clearInterval(timer);
   isChecking.value = true;
@@ -260,7 +255,7 @@ const submitAnswer = () => {
   }
 };
 
-// 🌟 Mode 2 選擇邏輯
+// 🌟 Mode 2 選擇
 const selectOption = (opt) => {
     if (isChecking.value || opt.disabled) return;
     playClickSound();
@@ -386,19 +381,32 @@ onUnmounted(() => { clearInterval(timer); });
 
         <div class="question-box retro-element">
           <div class="base-verb">
-            {{ currentVerb.base }}
-            <button class="sound-btn" @click="playPronunciation(currentVerb.base)">🔊</button>
+            {{ currentVerb.verb || currentVerb.base || currentVerb.en_us }}
+            <button class="sound-btn" @click="playPronunciation(currentVerb.verb || currentVerb.base || currentVerb.en_us)">🔊</button>
           </div>
           <div class="chinese-meaning">{{ currentVerb.zh_tw }}</div>
         </div>
 
         <div v-if="gameMode === 'mode1'" class="inputs-container">
           <div class="input-group" :class="{ active: activeField === 'past' && !isPastLocked, locked: isPastLocked }" @click="switchField('past')">
-            <label>過去式 (Past) <span v-if="isPastLocked" class="lock-icon">🔒 已鎖定</span></label>
+            <label>
+              <span style="display:flex; align-items:center; gap:8px;">
+                過去式 (Past) 
+                <button class="sound-btn-small" @click.stop="playPronunciation(currentVerb.past_tense)">🔊</button>
+              </span>
+              <span v-if="isPastLocked" class="lock-icon">🔒 已鎖定</span>
+            </label>
             <div class="typed-text"><span v-if="activeField === 'past' && !isPastLocked" class="cursor">|</span> {{ pastInput }}</div>
           </div>
+          
           <div class="input-group" :class="{ active: activeField === 'pp' && !isPpLocked, locked: isPpLocked }" @click="switchField('pp')">
-            <label>過去分詞 (P.P.) <span v-if="isPpLocked" class="lock-icon">🔒 已鎖定</span></label>
+            <label>
+              <span style="display:flex; align-items:center; gap:8px;">
+                過去分詞 (P.P.) 
+                <button class="sound-btn-small" @click.stop="playPronunciation(currentVerb.past_participle)">🔊</button>
+              </span>
+              <span v-if="isPpLocked" class="lock-icon">🔒 已鎖定</span>
+            </label>
             <div class="typed-text"><span v-if="activeField === 'pp' && !isPpLocked" class="cursor">|</span> {{ ppInput }}</div>
           </div>
         </div>
@@ -432,7 +440,7 @@ onUnmounted(() => { clearInterval(timer); });
                     @click="selectOption(opt)"
                     :disabled="opt.disabled || isChecking">
               <span class="upright-text mode2-text">
-                 <span class="opt-label">{{ ['A','B','C','D'][idx] }}</span>
+                 <span class="opt-label">({{ ['A','B','C','D'][idx] }})</span>
                  <span class="opt-value">{{ opt.text }}</span>
               </span>
             </button>
@@ -480,7 +488,11 @@ onUnmounted(() => { clearInterval(timer); });
 .question-box { background: #e3f2fd; border-color: #1976d2; text-align: center; padding: 20px; border-radius: 16px; margin-bottom: 15px;}
 .base-verb { font-size: 3rem; font-weight: 900; color: #0d47a1; display: flex; align-items: center; justify-content: center; gap: 15px;}
 .chinese-meaning { font-size: 1.3rem; color: #555; margin-top: 5px; font-weight: bold;}
-.sound-btn { background: #fff; border: 2px solid #1976d2; border-radius: 50%; width: 45px; height: 45px; font-size: 1.3rem; cursor: pointer;}
+
+/* 🌟 音效按鈕設計 */
+.sound-btn { background: #fff; border: 2px solid #1976d2; border-radius: 50%; width: 45px; height: 45px; font-size: 1.3rem; cursor: pointer; display: flex; justify-content: center; align-items: center;}
+.sound-btn-small { background: #fff; border: 1px solid #1976d2; border-radius: 50%; width: 28px; height: 28px; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.1s;}
+.sound-btn-small:active { transform: scale(0.9); }
 
 .inputs-container { display: flex; gap: 10px; margin-bottom: 20px;}
 .input-group { flex: 1; background: #f5f5f5; padding: 12px; border-radius: 12px; cursor: pointer; border: 3px solid #ccc; transition: 0.2s;}
@@ -505,15 +517,15 @@ onUnmounted(() => { clearInterval(timer); });
 .del-btn { background: #e74c3c; color: white; border-color: #c0392b;}
 .submit-btn { background: #27ae60; color: white; border-color: #2ecc71;}
 
-/* 🌟 Mode 2 專屬樣式，確保文字居中且不會被裁剪 */
-.mode2-options { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 15px; padding: 20px; aspect-ratio: 1 / 1; }
-.mode2-options .option-btn { height: auto; min-height: 80px; display: flex; align-items: center; justify-content: center; }
+/* 🌟 Mode 2 專屬樣式 (改為清晰的垂直排列) */
+.mode2-options { display: flex; flex-direction: column; gap: 12px; padding: 25px; aspect-ratio: 1 / 1; justify-content: center; }
+.mode2-options .option-btn { height: auto; min-height: 60px; width: 100%; display: flex; align-items: center; justify-content: center; }
 .mode2-options .option-btn.wrong-opt { opacity: 0.3; filter: grayscale(100%); transform: scale(0.9); }
 .mode2-options .option-btn.correct-opt { background: #4caf50 !important; color: white; border-color: #2e7d32 !important; transform: scale(1.05); }
 
-.mode2-text { display: flex; flex-direction: column; gap: 5px; align-items: center; justify-content: center; }
-.opt-label { color:#e67e22; font-size:1.4rem; font-weight:900; line-height: 1; }
-.opt-value { font-size:1.05rem; white-space:nowrap; font-weight:bold; line-height: 1; }
+.mode2-text { display: flex; flex-direction: row; gap: 12px; align-items: center; justify-content: center; width: 100%; }
+.opt-label { color:#e67e22; font-size:1.4rem; font-weight:900; }
+.opt-value { font-size:1.2rem; font-weight:bold; }
 
 .skip-btn-outer { background: #f39c12; color: white; border-color: #e67e22; padding: 12px 25px; border-radius: 12px; font-weight: bold; font-size: 1rem; border-width: 3px; cursor: pointer; box-shadow: 0 4px 0 #d68910;}
 .skip-btn-outer:active:not(:disabled) { transform: translateY(4px); box-shadow: none; }
