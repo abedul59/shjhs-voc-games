@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed, onUnmounted } from 'vue';
+import { ref, onMounted, computed, onUnmounted, watch } from 'vue';
 
 const props = defineProps({ autoLogoutMinutes: { type: Number, default: 10 } });
 const supabase = useSupabaseClient();
@@ -13,6 +13,11 @@ const selectedUnit = ref('');
 const errorMsg = ref('');
 const isLoading = ref(false);
 let idleTimer = null;
+
+// 🌟 監聽範圍選擇變更，並即時記憶到瀏覽器的 LocalStorage 中
+watch(selectedVersion, (val) => { if (typeof window !== 'undefined') localStorage.setItem('shjhs_selectedVersion', val || ''); });
+watch(selectedVolume, (val) => { if (typeof window !== 'undefined') localStorage.setItem('shjhs_selectedVolume', val || ''); });
+watch(selectedUnit, (val) => { if (typeof window !== 'undefined') localStorage.setItem('shjhs_selectedUnit', val || ''); });
 
 const gameDict = {
   'match': { name: '🟦 方塊消消樂', path: '/game', class: '' },
@@ -91,6 +96,23 @@ onMounted(async () => {
     const uniqueMenu = [];
     vData.forEach(item => { if (!uniqueMenu.find(u => u.version === item.version && u.volume === item.volume && u.unit === item.unit)) uniqueMenu.push(item); });
     vocabMenu.value = uniqueMenu;
+
+    // 🌟 讀取上次記憶的範圍 (並確保選單真的存在該單元，防呆設計)
+    if (typeof window !== 'undefined') {
+      const savedVersion = localStorage.getItem('shjhs_selectedVersion');
+      const savedVolume = localStorage.getItem('shjhs_selectedVolume');
+      const savedUnit = localStorage.getItem('shjhs_selectedUnit');
+
+      if (savedVersion && uniqueMenu.some(item => item.version === savedVersion)) {
+        selectedVersion.value = savedVersion;
+      }
+      if (savedVolume && uniqueMenu.some(item => item.version === savedVersion && item.volume === savedVolume)) {
+        selectedVolume.value = savedVolume;
+      }
+      if (savedUnit && uniqueMenu.some(item => item.version === savedVersion && item.volume === savedVolume && item.unit === savedUnit)) {
+        selectedUnit.value = savedUnit;
+      }
+    }
   }
   
   const { data: settings } = await supabase.from('system_settings').select('*').eq('id', 1).single();
@@ -121,7 +143,7 @@ onMounted(async () => {
       enable_tarot21: settings.enable_tarot21 === true,
       enable_tarot_alch: settings.enable_tarot_alch === true,
       enable_tarot_uno: settings.enable_tarot_uno === true,
-      enable_verbingDual: settings.enable_verbingDual !== false, // 補上這行
+      enable_verbingDual: settings.enable_verbingDual !== false, 
     };
     accessSettings.value = {
       disabled_games: settings.disabled_games || [],
@@ -133,7 +155,7 @@ onMounted(async () => {
     };
   }
 
-  // 🌟 修正點：以 student_id (學號) 讀取白名單
+  // 🌟 以 student_id (學號) 讀取白名單
   if (studentCookie.value && !studentCookie.value.isAnon) {
     const { data: stuData } = await supabase.from('students')
       .select('allowed_games')
@@ -158,17 +180,8 @@ onMounted(async () => {
        }
     }
   }, 200);
-  
 
   setupIdleTracking(); resetIdleTimer();
-
-// 在 onMounted 的最後加入這段：
-vocabMenu.value.push({ 
-  version: '進階特訓', volume: '不規則動詞', unit: '動詞變化總表' 
-});
-
-
-  
 });
 
 const availableVersions = computed(() => [...new Set(vocabMenu.value.map(item => item.version))].filter(Boolean));
