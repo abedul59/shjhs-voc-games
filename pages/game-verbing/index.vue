@@ -15,13 +15,11 @@ const gameState = ref('loading'); // loading, setup, playing, end
 const gameMode = ref('mode1'); // mode1: 鍵盤輸入, mode2: 選擇題
 const currentQuestionCount = ref(10);
 
-// 🌟 遊戲設定
 const keyboardSpeed = ref(20); 
 const wrongPenalty = ref(3);
 const timeLimit = ref(20);
 const timePenalty = ref(0.5);
 
-// 單題狀態
 const pastInput = ref('');
 const ppInput = ref('');
 const activeField = ref('past'); 
@@ -41,7 +39,6 @@ const keys = [
   ['Z', 'X', 'C', 'V', 'B', 'N', 'M']
 ];
 
-// 🌟 內建 Web Audio API 音效
 let audioCtx = null;
 const playClickSound = () => {
   try {
@@ -77,24 +74,19 @@ onMounted(async () => {
 
   const { data: verbs } = await supabase.from('irregular_verbs').select('*');
   if (!verbs || verbs.length < 10) {
-    alert('題庫不規則動詞不足 10 個，請先至後台匯入資料！');
+    alert('題庫不規則動詞不足 10 個！');
     router.push('/');
     return;
   }
 
   allFetchedVerbs.value = verbs;
-  gameState.value = 'setup'; 
+  gameState.value = 'setup';
 });
 
 const startGame = (mode) => {
   gameMode.value = mode;
-  if (mode === 'mode1') {
-    currentQuestionCount.value = 10;
-    gameVerbs.value = [...allFetchedVerbs.value].sort(() => Math.random() - 0.5).slice(0, 10);
-  } else {
-    currentQuestionCount.value = 8;
-    gameVerbs.value = [...allFetchedVerbs.value].sort(() => Math.random() - 0.5).slice(0, 8);
-  }
+  gameVerbs.value = [...allFetchedVerbs.value].sort(() => Math.random() - 0.5).slice(0, mode === 'mode1' ? 10 : 8);
+  currentQuestionCount.value = mode === 'mode1' ? 10 : 8;
   currentIndex.value = 0;
   score.value = 0;
   gameState.value = 'playing';
@@ -103,10 +95,9 @@ const startGame = (mode) => {
 
 const currentVerb = computed(() => gameVerbs.value[currentIndex.value] || {});
 
-// 🌟 智能編造相似錯誤拼字
 const generateDistractors = (verbObj) => {
   if (!verbObj) return [];
-  // 修正：相容各種可能的欄位名稱
+  // 🌟 使用多重屬性防護抓取資料
   const base = String(verbObj.verb || verbObj.base || verbObj.en_us || 'word').toLowerCase().trim();
   const past = String(verbObj.past_tense || base + 'ed').split('/')[0].trim().toLowerCase();
   const pp = String(verbObj.past_participle || base + 'ed').split('/')[0].trim().toLowerCase();
@@ -119,23 +110,18 @@ const generateDistractors = (verbObj) => {
   
   const vowels = ['a','e','i','o','u'];
   let vReplaced = past;
-  let replaced = false;
   for (let i = 0; i < past.length; i++) {
       if (vowels.includes(past[i])) {
           vReplaced = past.substring(0, i) + vowels[(vowels.indexOf(past[i]) + 1) % 5] + past.substring(i+1);
-          replaced = true;
           break;
       }
   }
-  if (!replaced || vReplaced === past) vReplaced += 't';
+  if (vReplaced === past) vReplaced += 't';
   set.add(`${vReplaced} / ${pp}`);
   
   if (past !== pp) set.add(`${pp} / ${past}`);
   else set.add(`${past} / ${base}en`);
   
-  set.add(`${base}t / ${base}t`);
-  set.add(`${base}en / ${base}en`);
-
   let arr = Array.from(set).filter(x => x !== correctStr);
   arr.sort(() => Math.random() - 0.5);
   
@@ -149,29 +135,17 @@ const generateDistractors = (verbObj) => {
 };
 
 const startQuestion = () => {
-  pastInput.value = '';
-  ppInput.value = '';
-  isPastLocked.value = false;
-  isPpLocked.value = false;
-  activeField.value = 'past';
-  isChecking.value = false;
-  currentWrongCount.value = 0;
-  timeSpent.value = 0;
-  
-  if (gameMode.value === 'mode2') {
-      currentOptions.value = generateDistractors(currentVerb.value);
-  }
-
+  pastInput.value = ''; ppInput.value = ''; isPastLocked.value = false; isPpLocked.value = false;
+  activeField.value = 'past'; isChecking.value = false; currentWrongCount.value = 0; timeSpent.value = 0;
+  if (gameMode.value === 'mode2') currentOptions.value = generateDistractors(currentVerb.value);
   clearInterval(timer);
   timer = setInterval(() => { timeSpent.value++; }, 1000);
 };
 
-// 🌟 發音功能防呆升級 (自動過濾斜線並只抓第一個字)
 const playPronunciation = (word) => {
   if (!word) return;
   const cleanWord = String(word).split('/')[0].toLowerCase().replace(/[^a-z]/g, '').trim(); 
   if (!cleanWord) return;
-
   const audio = new Audio(`https://ssl.gstatic.com/dictionary/static/sounds/20200429/${cleanWord}--_us_1.mp3`);
   audio.play().catch(() => {
     if (window.speechSynthesis) {
@@ -181,288 +155,105 @@ const playPronunciation = (word) => {
   });
 };
 
-const typeLetter = (char) => {
-  if (isChecking.value) return;
-  playClickSound();
-  if (activeField.value === 'past' && !isPastLocked.value) pastInput.value += char.toLowerCase();
-  else if (activeField.value === 'pp' && !isPpLocked.value) ppInput.value += char.toLowerCase();
-};
-
-const deleteLetter = () => {
-  if (isChecking.value) return;
-  playClickSound();
-  if (activeField.value === 'past' && !isPastLocked.value) pastInput.value = pastInput.value.slice(0, -1);
-  else if (activeField.value === 'pp' && !isPpLocked.value) ppInput.value = ppInput.value.slice(0, -1);
-};
-
-const switchField = (field) => {
-  if ((field === 'past' && isPastLocked.value) || (field === 'pp' && isPpLocked.value)) return;
-  activeField.value = field;
-};
-
-// 🌟 Mode 1 結算
 const finalizeQuestion = () => {
-  clearInterval(timer);
-  isChecking.value = true;
-  
+  clearInterval(timer); isChecking.value = true;
   let basePoints = (isPastLocked.value ? 5 : 0) + (isPpLocked.value ? 5 : 0);
-  let overtime = Math.max(0, timeSpent.value - timeLimit.value);
-  let penaltyScore = (currentWrongCount.value * wrongPenalty.value) + (overtime * timePenalty.value);
-  let earned = Math.max(0, basePoints - penaltyScore);
-  
+  let earned = Math.max(0, basePoints - ((currentWrongCount.value * wrongPenalty.value) + (Math.max(0, timeSpent.value - timeLimit.value) * timePenalty.value)));
   score.value += earned;
-
   setTimeout(() => {
-    if (currentIndex.value < currentQuestionCount.value - 1) {
-      currentIndex.value++;
-      startQuestion();
-    } else {
-      endGame();
-    }
+    if (currentIndex.value < currentQuestionCount.value - 1) { currentIndex.value++; startQuestion(); }
+    else { endGame(); }
   }, 1500);
 };
 
 const submitAnswer = () => {
-  if (isChecking.value) return;
-  playClickSound();
-  
+  if (isChecking.value) return; playClickSound();
   const validPast = String(currentVerb.value.past_tense || '').toLowerCase().split('/').map(s => s.trim());
   const validPp = String(currentVerb.value.past_participle || '').toLowerCase().split('/').map(s => s.trim());
-
   let currentSubmitCorrect = true;
-
-  if (!isPastLocked.value) {
-    if (validPast.includes(pastInput.value.trim())) isPastLocked.value = true;
-    else { currentSubmitCorrect = false; pastInput.value = ''; }
-  }
-
-  if (!isPpLocked.value) {
-    if (validPp.includes(ppInput.value.trim())) isPpLocked.value = true;
-    else { currentSubmitCorrect = false; ppInput.value = ''; }
-  }
-
-  if (!currentSubmitCorrect) {
-    currentWrongCount.value++;
-    new Audio('/sounds/wrong.mp3').play();
-    if (!isPastLocked.value) activeField.value = 'past';
-    else if (!isPpLocked.value) activeField.value = 'pp';
-    return; 
-  }
-
-  if (isPastLocked.value && isPpLocked.value) {
-    new Audio('/sounds/correct.mp3').play();
-    finalizeQuestion();
-  }
+  if (!isPastLocked.value) { if (validPast.includes(pastInput.value.trim())) isPastLocked.value = true; else { currentSubmitCorrect = false; pastInput.value = ''; } }
+  if (!isPpLocked.value) { if (validPp.includes(ppInput.value.trim())) isPpLocked.value = true; else { currentSubmitCorrect = false; ppInput.value = ''; } }
+  if (!currentSubmitCorrect) { currentWrongCount.value++; new Audio('/sounds/wrong.mp3').play(); return; }
+  if (isPastLocked.value && isPpLocked.value) { new Audio('/sounds/correct.mp3').play(); finalizeQuestion(); }
 };
 
-// 🌟 Mode 2 選擇
 const selectOption = (opt) => {
-    if (isChecking.value || opt.disabled) return;
-    playClickSound();
-
+    if (isChecking.value || opt.disabled) return; playClickSound();
     if (opt.isCorrect) {
-        new Audio('/sounds/correct.mp3').play();
-        isChecking.value = true;
-        
-        let basePoints = 10;
-        let overtime = Math.max(0, timeSpent.value - timeLimit.value);
-        let penaltyScore = (currentWrongCount.value * wrongPenalty.value) + (overtime * timePenalty.value);
-        let earned = Math.max(0, basePoints - penaltyScore);
-        
-        score.value += earned;
-
+        new Audio('/sounds/correct.mp3').play(); isChecking.value = true;
+        score.value += Math.max(0, 10 - ((currentWrongCount.value * wrongPenalty.value) + (Math.max(0, timeSpent.value - timeLimit.value) * timePenalty.value)));
         setTimeout(() => {
-            if (currentIndex.value < currentQuestionCount.value - 1) {
-                currentIndex.value++;
-                startQuestion();
-            } else {
-                endGame();
-            }
+            if (currentIndex.value < currentQuestionCount.value - 1) { currentIndex.value++; startQuestion(); }
+            else { endGame(); }
         }, 1500);
-    } else {
-        new Audio('/sounds/wrong.mp3').play();
-        currentWrongCount.value++;
-        opt.disabled = true;
-    }
+    } else { new Audio('/sounds/wrong.mp3').play(); currentWrongCount.value++; opt.disabled = true; }
 };
 
 const skipQuestion = () => {
-  if (isChecking.value) return;
-  playClickSound();
-  
-  if (gameMode.value === 'mode1') {
-      pastInput.value = String(currentVerb.value.past_tense || '').split('/')[0];
-      ppInput.value = String(currentVerb.value.past_participle || '').split('/')[0];
-      finalizeQuestion();
-  } else {
-      const correctOpt = currentOptions.value.find(o => o.isCorrect);
-      if (correctOpt) {
-          currentOptions.value.forEach(o => {
-              if(!o.isCorrect) o.disabled = true;
-          });
-      }
-      isChecking.value = true;
-      setTimeout(() => {
-          if (currentIndex.value < currentQuestionCount.value - 1) {
-              currentIndex.value++;
-              startQuestion();
-          } else {
-              endGame();
-          }
-      }, 1500);
-  }
+  if (isChecking.value) return; playClickSound();
+  if (gameMode.value === 'mode1') { pastInput.value = String(currentVerb.value.past_tense || '').split('/')[0]; ppInput.value = String(currentVerb.value.past_participle || '').split('/')[0]; finalizeQuestion(); }
+  else { currentOptions.value.forEach(o => { if(!o.isCorrect) o.disabled = true; }); isChecking.value = true; setTimeout(() => { currentIndex.value++; startQuestion(); }, 1500); }
   new Audio('/sounds/wrong.mp3').play();
 };
 
 const endGame = async () => {
-  gameState.value = 'end';
-  clearInterval(timer);
-  confetti({ particleCount: 150, spread: 80 });
-
-  const { error } = await supabase.from('game_records').insert([{
-    student_id: studentCookie.value.id,
-    unit_played: '動詞變化總表',
-    game_type: '動詞變化大師',
-    score: Math.floor(score.value),
-    time_taken_seconds: timeSpent.value || 0
+  gameState.value = 'end'; clearInterval(timer); confetti({ particleCount: 150, spread: 80 });
+  await supabase.from('game_records').insert([{
+    student_id: studentCookie.value.id, unit_played: '動詞變化總表', game_type: '動詞變化大師', score: Math.floor(score.value), time_taken_seconds: timeSpent.value || 0
   }]);
-  
-  if (error) console.error("寫入成績失敗", error);
-
-  if (!studentCookie.value.isAnon) {
-    const { data } = await supabase.from('students').select('points').eq('id', studentCookie.value.id).single();
-    if (data) await supabase.from('students').update({ points: data.points + Math.floor(score.value) }).eq('id', studentCookie.value.id);
-  }
 };
 
 const playAgain = () => { window.location.reload(); };
-
 onUnmounted(() => { clearInterval(timer); });
 </script>
 
 <template>
   <div class="game-container">
-    
-    <div v-if="gameState === 'loading'" class="loading-screen retro-element">
-       <h2>載入中...</h2>
-    </div>
-
-    <div v-else-if="gameState === 'setup'" class="setup-screen retro-element">
-      <h1 style="color: #0d47a1; margin-top: 0; font-size: 2.2rem;">🌀 動詞變化大師</h1>
-      <p style="font-size: 1.1rem; font-weight: bold; margin-bottom: 20px; color: #555;">請選擇您的挑戰模式：</p>
-      
+    <div v-if="gameState === 'setup'" class="setup-screen retro-element">
+      <h1 style="color: #0d47a1;">🌀 動詞變化大師</h1>
       <div class="mode-cards">
-        <button class="retro-btn mode-btn mode1-btn" @click="startGame('mode1')">
-          <h3>⌨️ 鍵盤拼字挑戰</h3>
-          <p>滿分 100 分 (10 題)<br>依序填入正確的字母！</p>
-        </button>
-        <button class="retro-btn mode-btn mode2-btn" @click="startGame('mode2')">
-          <h3>🎯 旋轉選擇挑戰</h3>
-          <p>滿分 80 分 (8 題)<br>從旋轉選項中找出正確組合！</p>
-        </button>
-      </div>
-
-      <div style="margin-top: 30px;">
-        <NuxtLink to="/" class="retro-btn home-btn" style="display:inline-block; padding: 12px 30px;">🏠 回到首頁</NuxtLink>
+        <button class="retro-btn mode-btn" @click="startGame('mode1')"><h3>⌨️ 鍵盤拼字</h3></button>
+        <button class="retro-btn mode-btn" @click="startGame('mode2')"><h3>🎯 旋轉選擇</h3></button>
       </div>
     </div>
 
-    <div v-else-if="gameState === 'playing' || gameState === 'end'">
-      <div class="header" v-if="gameState !== 'setup'">
-        <div class="stats-board">💯 總分: {{ score }} / {{ gameMode === 'mode1' ? 100 : 80 }}</div>
-        <div v-if="gameState === 'playing'" class="progress">第 {{ currentIndex + 1 }} / {{ currentQuestionCount }} 題</div>
+    <div v-else-if="gameState === 'playing' || gameState === 'end'" class="play-area">
+      <div class="header">
+        <div class="stats-board">💯 分數: {{ score }}</div>
+        <div class="progress">第 {{ currentIndex + 1 }} / {{ currentQuestionCount }} 題</div>
       </div>
 
-      <div v-if="gameState === 'playing'" class="play-area">
-        <div class="timer-box retro-element" :class="{'over-time': timeSpent > timeLimit}">
-          ⏱️ 耗時：{{ timeSpent }} 秒 
-          <span v-if="timeSpent > timeLimit" class="penalty-text">(超時扣分中)</span>
+      <div class="question-box retro-element">
+        <div class="base-verb">
+           {{ currentVerb.verb || currentVerb.base || currentVerb.en_us || 'Loading...' }}
+           <button class="sound-btn" @click="playPronunciation(currentVerb.verb || currentVerb.base || currentVerb.en_us)">🔊</button>
         </div>
+        <div class="chinese-meaning">{{ currentVerb.zh_tw || '...' }}</div>
+      </div>
 
-        <div class="question-box retro-element">
-          <div class="base-verb">
-            {{ currentVerb.verb || currentVerb.base || currentVerb.en_us }}
-            <button class="sound-btn" @click="playPronunciation(currentVerb.verb || currentVerb.base || currentVerb.en_us)">🔊</button>
-          </div>
-          <div class="chinese-meaning">{{ currentVerb.zh_tw }}</div>
+      <div v-if="gameMode === 'mode1'" class="inputs-container">
+        <div class="input-group" :class="{ active: activeField === 'past', locked: isPastLocked }" @click="switchField('past')">
+          <label>過去式 (Past) <button class="sound-btn-small" @click.stop="playPronunciation(currentVerb.past_tense)">🔊</button></label>
+          <div class="typed-text">{{ pastInput }}</div>
         </div>
-
-        <div v-if="gameMode === 'mode1'" class="inputs-container">
-          <div class="input-group" :class="{ active: activeField === 'past' && !isPastLocked, locked: isPastLocked }" @click="switchField('past')">
-            <label>
-              <span style="display:flex; align-items:center; gap:8px;">
-                過去式 (Past) 
-                <button class="sound-btn-small" @click.stop="playPronunciation(currentVerb.past_tense)">🔊</button>
-              </span>
-              <span v-if="isPastLocked" class="lock-icon">🔒 已鎖定</span>
-            </label>
-            <div class="typed-text"><span v-if="activeField === 'past' && !isPastLocked" class="cursor">|</span> {{ pastInput }}</div>
-          </div>
-          
-          <div class="input-group" :class="{ active: activeField === 'pp' && !isPpLocked, locked: isPpLocked }" @click="switchField('pp')">
-            <label>
-              <span style="display:flex; align-items:center; gap:8px;">
-                過去分詞 (P.P.) 
-                <button class="sound-btn-small" @click.stop="playPronunciation(currentVerb.past_participle)">🔊</button>
-              </span>
-              <span v-if="isPpLocked" class="lock-icon">🔒 已鎖定</span>
-            </label>
-            <div class="typed-text"><span v-if="activeField === 'pp' && !isPpLocked" class="cursor">|</span> {{ ppInput }}</div>
-          </div>
+        <div class="input-group" :class="{ active: activeField === 'pp', locked: isPpLocked }" @click="switchField('pp')">
+          <label>過去分詞 (P.P.) <button class="sound-btn-small" @click.stop="playPronunciation(currentVerb.past_participle)">🔊</button></label>
+          <div class="typed-text">{{ ppInput }}</div>
         </div>
+      </div>
 
-        <div v-if="gameMode === 'mode1'" class="keyboard-wrapper">
-          <div class="spinning-keyboard" :style="{'--spin-speed': keyboardSpeed + 's'}">
-            <div class="key-row" v-for="(row, rIdx) in keys" :key="rIdx">
-              <button v-for="key in row" :key="key" class="key-btn" @click="typeLetter(key)" :disabled="isChecking">
-                <span class="upright-text">{{ key }}</span>
-              </button>
-            </div>
-            <div class="key-row" style="margin-top: 10px;">
-              <button class="key-btn action-btn skip-btn" @click="skipQuestion" :disabled="isChecking">
-                <span class="upright-text">⏭️ 放棄</span>
-              </button>
-              <button class="key-btn action-btn del-btn" @click="deleteLetter" :disabled="isChecking">
-                <span class="upright-text">⌫ 刪除</span>
-              </button>
-              <button class="key-btn action-btn submit-btn" @click="submitAnswer" :disabled="isChecking">
-                <span class="upright-text">✅ 送出</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="gameMode === 'mode2'" class="keyboard-wrapper mode2-wrapper">
-          <div class="spinning-keyboard mode2-options" :style="{'--spin-speed': keyboardSpeed + 's'}">
-            <button v-for="(opt, idx) in currentOptions" :key="idx"
-                    class="key-btn option-btn"
-                    :class="{'wrong-opt': opt.disabled, 'correct-opt': opt.isCorrect && isChecking}"
-                    @click="selectOption(opt)"
-                    :disabled="opt.disabled || isChecking">
-              <span class="upright-text mode2-text">
-                 <span class="opt-label">({{ ['A','B','C','D'][idx] }})</span>
-                 <span class="opt-value">{{ opt.text }}</span>
-              </span>
-            </button>
-          </div>
-        </div>
-
-        <div v-if="gameMode === 'mode2'" style="text-align: center; margin-top: 20px;">
-          <button class="retro-btn skip-btn-outer" @click="skipQuestion" :disabled="isChecking">
-            ⏭️ 不會拼，放棄本題 (看答案)
+      <div v-if="gameMode === 'mode2'" class="mode2-options">
+          <button v-for="(opt, idx) in currentOptions" :key="idx" class="opt-btn" 
+                  :class="{'wrong-opt': opt.disabled, 'correct-opt': opt.isCorrect && isChecking}" 
+                  @click="selectOption(opt)" :disabled="isChecking">
+             <span class="mode2-text">
+                <span class="opt-label">({{ ['A','B','C','D'][idx] }})</span>
+                <span class="opt-value">{{ opt.text }}</span>
+             </span>
           </button>
-        </div>
       </div>
 
-      <div v-else-if="gameState === 'end'" class="end-screen retro-element">
-        <h1>🌀 測驗結束！</h1>
-        <div class="final-score">{{ Math.floor(score) }} <span>分</span></div>
-        <div class="actions">
-          <button class="retro-btn play-again" @click="playAgain">🔄 再玩一次</button>
-          <NuxtLink to="/" class="retro-btn home-btn">🏠 回到首頁</NuxtLink>
-        </div>
       </div>
-    </div>
   </div>
 </template>
 
