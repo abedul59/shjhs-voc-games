@@ -158,8 +158,17 @@ onMounted(async () => {
        }
     }
   }, 200);
+  
 
   setupIdleTracking(); resetIdleTimer();
+
+// 在 onMounted 的最後加入這段：
+vocabMenu.value.push({ 
+  version: '進階特訓', volume: '不規則動詞', unit: '動詞變化總表' 
+});
+
+
+  
 });
 
 const availableVersions = computed(() => [...new Set(vocabMenu.value.map(item => item.version))].filter(Boolean));
