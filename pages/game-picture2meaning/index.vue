@@ -223,6 +223,10 @@ const endGame = async () => {
     }
 };
 
+const restartGame = () => {
+  window.location.reload();
+};
+
 onUnmounted(() => { 
     clearInterval(timer); 
     window.speechSynthesis.cancel();
@@ -305,7 +309,11 @@ onUnmounted(() => {
               正確數：{{ 10 - mistakesCount }} / 10 <br>
               答錯/扣分次數：{{ mistakesCount }}
           </div>
-          <NuxtLink to="/" class="retro-btn btn-primary" style="margin-top:15px; display:inline-block; width:100%;">返回首頁</NuxtLink>
+          
+          <div class="end-actions" style="margin-top: 25px; display: flex; flex-direction: column; gap: 15px;">
+            <button @click="restartGame" class="retro-btn restart-btn">🔄 同單元再玩一次</button>
+            <NuxtLink to="/" class="retro-btn home-btn">🏠 回到首頁</NuxtLink>
+          </div>
        </div>
     </div>
   </div>
@@ -356,6 +364,25 @@ onUnmounted(() => {
 /* ⏭️ 跳過按鈕 */
 .skip-zone { text-align: center; margin-top: auto; }
 .skip-btn { background: #555; border-color: #777; color: #ccc; box-shadow: 0 3px 0 #333; font-size: 0.95rem; padding: 10px; width: 100%; max-width: 300px;}
+
+.restart-btn { 
+  font-size: 1.2rem;
+  padding: 15px 30px;
+  background-color: #4caf50 !important; 
+  color: white !important; 
+  border-color: #2e7d32 !important; 
+  box-shadow: 0 4px 0 #2e7d32 !important; 
+}
+.home-btn { 
+  font-size: 1.2rem;
+  padding: 15px 30px;
+  background-color: #2196f3 !important; 
+  color: white !important; 
+  border-color: #1565c0 !important; 
+  box-shadow: 0 4px 0 #1565c0 !important; 
+  text-decoration: none;
+  display: block;
+}
 
 @media (min-width: 768px) {
     .tarot-card { max-width: 300px; }
