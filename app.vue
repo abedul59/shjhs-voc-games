@@ -308,4 +308,52 @@ const toggleMusic = () => {
 .close-info-btn:active { transform: var(--transform-active); box-shadow: var(--shadow-btn-active); }
 
 .app-wrapper { min-height: 100vh; background-color: var(--bg-color); color: var(--text-main); transition: background-color 0.5s, color 0.5s; }
+
+/* =========================================
+   💡 風格說明彈出視窗 (Modal) 樣式
+========================================= */
+.theme-info-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.6); /* 半透明黑色背景 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999; /* 確保覆蓋在最上層 */
+  backdrop-filter: blur(3px); /* 讓背景有一點模糊的質感 */
+}
+
+.theme-info-box {
+  background-color: var(--box-bg);
+  padding: 30px;
+  max-width: 450px;
+  width: 90%;
+  text-align: center;
+  animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.theme-info-box .theme-title {
+  margin-top: 0;
+  font-size: 1.8rem;
+  font-weight: 900;
+  color: var(--text-main);
+  border-bottom: 2px dashed var(--border-color);
+  padding-bottom: 10px;
+}
+
+.theme-info-box .theme-desc {
+  font-size: 1.1rem;
+  line-height: 1.6;
+  margin: 20px 0;
+  color: var(--text-muted);
+  font-weight: bold;
+}
+
+@keyframes popIn {
+  from { transform: scale(0.8); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
 </style>
