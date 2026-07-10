@@ -5,6 +5,7 @@ const props = defineProps({ config: Object });
 <template>
   <div class="settings-section">
     
+    <!-- 🚦 伺服器流量管理：對戰遊戲開放控制 -->
     <div class="setting-item highlight-item" style="flex-direction: column; align-items: stretch; gap: 10px; background: #ffebee; border-color: #f44336; margin-bottom: 25px;">
       <label style="color: #c62828; font-size: 1.2rem; border-bottom: 1px dashed #f44336; padding-bottom: 5px;">🚦 伺服器流量管理：對戰遊戲開放控制</label>
       <p style="color: #d32f2f; font-weight: bold; margin: 0; font-size: 0.95rem;">(當本月 Supabase 免費額度即將耗盡時，可在此關閉對戰遊戲功能，首頁將對學生顯示 🔒維護中)</p>
@@ -14,7 +15,8 @@ const props = defineProps({ config: Object });
         <label><input type="checkbox" v-model="config.enable_tarot21" style="transform: scale(1.3); margin-right: 5px;" /> 🃏 塔羅21點</label>
         <label><input type="checkbox" v-model="config.enable_tarot_alch" style="transform: scale(1.3); margin-right: 5px;" /> 🔮 塔羅鍊金術</label>
         <label><input type="checkbox" v-model="config.enable_tarot_uno" style="transform: scale(1.3); margin-right: 5px;" /> 🃏 塔羅UNO</label>
-        <label><input type="checkbox" v-model="config.enable_verbingDual" style="transform: scale(1.3); margin-right: 5px;" /> ⚔️ 動詞變化大師（雙人對戰）</label>
+        <!-- 🌟 這裡已經修正為全小寫的 enable_verbingdual -->
+        <label><input type="checkbox" v-model="config.enable_verbingdual" style="transform: scale(1.3); margin-right: 5px;" /> ⚔️ 動詞對戰</label>
       </div>
     </div>
 
@@ -28,6 +30,7 @@ const props = defineProps({ config: Object });
       </div>
     </div>
 
+    <!-- 🌟 動詞變化大師 專屬設定 (單人版) -->
     <div class="setting-item highlight-item" style="flex-direction: column; align-items: stretch; gap: 10px; background: #e8eaf6; border-color: #3f51b5;">
       <label style="color: #283593; font-size: 1.1rem; border-bottom: 1px dashed #3f51b5; padding-bottom: 5px;">🌀 動詞變化大師 專屬設定</label>
       <div class="multi-input">
@@ -43,18 +46,16 @@ const props = defineProps({ config: Object });
       </div>
     </div>
 
-<div class="setting-item highlight-item" style="flex-direction: column; align-items: stretch; gap: 10px; background: #e8eaf6; border-color: #5c6bc0;">
+    <!-- 🌟 動詞變化大師 (對戰版) 專屬設定 (已修正為全小寫 verbingdual) -->
+    <div class="setting-item highlight-item" style="flex-direction: column; align-items: stretch; gap: 10px; background: #e8eaf6; border-color: #5c6bc0;">
       <label style="color: #283593; font-size: 1.1rem; border-bottom: 1px dashed #5c6bc0; padding-bottom: 5px;">⚔️ 動詞變化大師 (對戰版) 專屬設定</label>
       <div class="multi-input">
-        🏆 獲勝條件: 先得 <input type="number" min="10" v-model="config.verbingDual_target_score" class="retro-input num-input" style="width: 60px;" /> 分<br>
-        💯 計分規則: 全對得 <input type="number" min="0" v-model="config.verbingDual_correct_points" class="retro-input num-input" style="width: 50px;" /> 分，錯扣 <input type="number" min="0" v-model="config.verbingDual_penalty_points" class="retro-input num-input" style="width: 50px;" /> 分<br>
-        🌪️ 鍵盤旋轉速度: <input type="number" min="1" v-model="config.verbingDual_keyboard_speed" class="retro-input num-input" style="width: 60px;" /> 秒/圈<br>
-        🚫 逃跑禁賽門檻: 單日逃走達 <input type="number" min="1" v-model="config.verbingDual_max_escapes" class="retro-input num-input" style="width: 50px;" /> 次，當日禁玩
+        🏆 獲勝條件: 先得 <input type="number" min="10" v-model="config.verbingdual_target_score" class="retro-input num-input" style="width: 60px;" /> 分<br>
+        💯 計分規則: 全對得 <input type="number" min="0" v-model="config.verbingdual_correct_points" class="retro-input num-input" style="width: 50px;" /> 分，錯扣 <input type="number" min="0" v-model="config.verbingdual_penalty_points" class="retro-input num-input" style="width: 50px;" /> 分<br>
+        🌪️ 鍵盤旋轉速度: <input type="number" min="1" v-model="config.verbingdual_keyboard_speed" class="retro-input num-input" style="width: 60px;" /> 秒/圈<br>
+        🚫 逃跑禁賽門檻: 單日逃走達 <input type="number" min="1" v-model="config.verbingdual_max_escapes" class="retro-input num-input" style="width: 50px;" /> 次，當日禁玩
       </div>
     </div>
-    
-
-    
 
     <div class="setting-item">
       <label>🔠 單字神移動 (每題):</label>
@@ -85,7 +86,7 @@ const props = defineProps({ config: Object });
       </div>
     </div>
 
-<div class="setting-item" style="background: #e0f2f1; border-color: #2e7d32; flex-direction: column; align-items: stretch;">
+    <div class="setting-item" style="background: #e0f2f1; border-color: #2e7d32; flex-direction: column; align-items: stretch;">
       <label style="color:#1b5e20; margin-bottom: 10px;">🧩 單字拼起來 (單人):</label>
       
       <div class="field-row" style="margin-bottom: 10px; background: rgba(255,255,255,0.5); padding: 10px; border-radius: 8px;">
@@ -189,7 +190,7 @@ const props = defineProps({ config: Object });
         </div>
     </div>
 
-<div class="setting-item" style="background: #e8f5e9; border-color: #4caf50;">
+    <div class="setting-item" style="background: #e8f5e9; border-color: #4caf50;">
       <label style="color:#2e7d32;">🃏 單字撲克牌接龍 (單人):</label>
       <div class="multi-input">
         全局限時<input type="number" v-model="config.solitaire_time_limit" class="retro-input num-input" />秒, 
@@ -198,7 +199,7 @@ const props = defineProps({ config: Object });
       </div>
     </div>
 
-<div class="setting-item highlight-item" style="background: #fff8e1; border-color: #ffb300;">
+    <div class="setting-item highlight-item" style="background: #fff8e1; border-color: #ffb300;">
       <label style="color: #f57f17;">👻 單字小精靈 (單人):</label>
       <div class="multi-input">
         全局限時<input type="number" v-model="config.pacman_time_limit" class="retro-input num-input" />秒, 
@@ -207,7 +208,6 @@ const props = defineProps({ config: Object });
         🌟 解鎖後自由活動 <input type="number" min="0" max="60" v-model="config.pacman_free_time" class="retro-input num-input" style="width: 50px;" /> 秒
       </div>
     </div>
-
 
     <div class="setting-item" style="background: #e0f7fa; border-color: #00838f;">
       <label style="color:#006064;">💣 單字踩地雷 (單人):</label>
@@ -218,7 +218,6 @@ const props = defineProps({ config: Object });
       </div>
     </div>
 
-
     <div class="setting-item" style="background: #f3e5f5; border-color: #8e24aa;">
       <label style="color:#4a148c;">🔢 單字 9x9 數獨 (單人):</label>
       <div class="multi-input">
@@ -228,7 +227,7 @@ const props = defineProps({ config: Object });
       </div>
     </div>
 
-<div class="setting-item highlight-item" style="background: #e8f5e9; border-color: #2e7d32; flex-direction: column; align-items: stretch;">
+    <div class="setting-item highlight-item" style="background: #e8f5e9; border-color: #2e7d32; flex-direction: column; align-items: stretch;">
       <label style="color:#1b5e20; margin-bottom: 10px;">🎴 塔羅 UNO (單人挑戰):</label>
 
       <div class="field-row" style="margin-bottom: 10px; background: rgba(255,255,255,0.5); padding: 10px; border-radius: 8px;">
@@ -261,8 +260,7 @@ const props = defineProps({ config: Object });
       </div>
     </div>
 
-
-<div class="setting-item highlight-item" style="background: #e8eaf6; border-color: #3f51b5; flex-direction: column; align-items: stretch;">
+    <div class="setting-item highlight-item" style="background: #e8eaf6; border-color: #3f51b5; flex-direction: column; align-items: stretch;">
       <label style="color:#283593; margin-bottom: 10px;">🃏 塔羅21點 (單機挑戰):</label>
 
       <div class="field-row" style="margin-bottom: 10px; background: rgba(255,255,255,0.5); padding: 10px; border-radius: 8px;">
@@ -297,7 +295,7 @@ const props = defineProps({ config: Object });
       </div>
     </div>
 
-<div class="setting-item highlight-item" style="background: #f3e5f5; border-color: #8e24aa; flex-direction: column; align-items: stretch;">
+    <div class="setting-item highlight-item" style="background: #f3e5f5; border-color: #8e24aa; flex-direction: column; align-items: stretch;">
       <label style="color:#4a148c; margin-bottom: 10px;">⚗️ 塔羅鍊金術 (單人無盡模式):</label>
 
       <div class="field-row" style="margin-bottom: 10px; background: rgba(255,255,255,0.5); padding: 10px; border-radius: 8px;">
