@@ -105,11 +105,14 @@ const startGame = (mode) => {
 
 const currentVerb = computed(() => gameVerbs.value[currentIndex.value] || {});
 
-// 🌟 智能編造相似錯誤拼字 (選擇題干擾選項)
+// 🌟 智能編造相似錯誤拼字 (選擇題干擾選項) - 加上防呆機制避免 Crash
 const generateDistractors = (verbObj) => {
-  const base = verbObj.base.toLowerCase();
-  const past = verbObj.past_tense.split('/')[0].trim().toLowerCase();
-  const pp = verbObj.past_participle.split('/')[0].trim().toLowerCase();
+  if (!verbObj) return [];
+  
+  // 防呆：確保字串處理不會遇到 Null 錯誤
+  const base = String(verbObj.base || 'word').toLowerCase().trim();
+  const past = String(verbObj.past_tense || base + 'ed').split('/')[0].trim().toLowerCase();
+  const pp = String(verbObj.past_participle || base + 'ed').split('/')[0].trim().toLowerCase();
   
   const correctStr = `${past} / ${pp}`;
   const set = new Set();
@@ -121,13 +124,15 @@ const generateDistractors = (verbObj) => {
   // 2. 母音亂數替換
   const vowels = ['a','e','i','o','u'];
   let vReplaced = past;
+  let replaced = false;
   for (let i = 0; i < past.length; i++) {
       if (vowels.includes(past[i])) {
           vReplaced = past.substring(0, i) + vowels[(vowels.indexOf(past[i]) + 1) % 5] + past.substring(i+1);
+          replaced = true;
           break;
       }
   }
-  if (vReplaced === past) vReplaced += 't';
+  if (!replaced || vReplaced === past) vReplaced += 't';
   set.add(`${vReplaced} / ${pp}`);
   
   // 3. 過去式與分詞錯置
@@ -141,11 +146,12 @@ const generateDistractors = (verbObj) => {
   let arr = Array.from(set).filter(x => x !== correctStr);
   arr.sort(() => Math.random() - 0.5);
   
+  // 保證一定會產出四個選項，即使有錯誤也不會空白
   let options = [
       { text: correctStr, isCorrect: true, disabled: false },
-      { text: arr[0], isCorrect: false, disabled: false },
-      { text: arr[1], isCorrect: false, disabled: false },
-      { text: arr[2] || `${base}s / ${base}ing`, isCorrect: false, disabled: false }
+      { text: arr[0] || `${base}s / ${base}es`, isCorrect: false, disabled: false },
+      { text: arr[1] || `${base}ing / ${base}ing`, isCorrect: false, disabled: false },
+      { text: arr[2] || `${base}ed / ${base}en`, isCorrect: false, disabled: false }
   ];
   return options.sort(() => Math.random() - 0.5);
 };
@@ -225,8 +231,8 @@ const submitAnswer = () => {
   if (isChecking.value) return;
   playClickSound();
   
-  const validPast = currentVerb.value.past_tense.toLowerCase().split('/').map(s => s.trim());
-  const validPp = currentVerb.value.past_participle.toLowerCase().split('/').map(s => s.trim());
+  const validPast = String(currentVerb.value.past_tense || '').toLowerCase().split('/').map(s => s.trim());
+  const validPp = String(currentVerb.value.past_participle || '').toLowerCase().split('/').map(s => s.trim());
 
   let currentSubmitCorrect = true;
 
@@ -290,8 +296,8 @@ const skipQuestion = () => {
   playClickSound();
   
   if (gameMode.value === 'mode1') {
-      pastInput.value = currentVerb.value.past_tense.split('/')[0];
-      ppInput.value = currentVerb.value.past_participle.split('/')[0];
+      pastInput.value = String(currentVerb.value.past_tense || '').split('/')[0];
+      ppInput.value = String(currentVerb.value.past_participle || '').split('/')[0];
       finalizeQuestion();
   } else {
       const correctOpt = currentOptions.value.find(o => o.isCorrect);
@@ -346,7 +352,6 @@ onUnmounted(() => { clearInterval(timer); });
        <h2>載入中...</h2>
     </div>
 
-    <!-- 🌟 模式選擇畫面 -->
     <div v-else-if="gameState === 'setup'" class="setup-screen retro-element">
       <h1 style="color: #0d47a1; margin-top: 0; font-size: 2.2rem;">🌀 動詞變化大師</h1>
       <p style="font-size: 1.1rem; font-weight: bold; margin-bottom: 20px; color: #555;">請選擇您的挑戰模式：</p>
@@ -374,13 +379,11 @@ onUnmounted(() => { clearInterval(timer); });
       </div>
 
       <div v-if="gameState === 'playing'" class="play-area">
-        <!-- 🌟 計時器 -->
         <div class="timer-box retro-element" :class="{'over-time': timeSpent > timeLimit}">
           ⏱️ 耗時：{{ timeSpent }} 秒 
           <span v-if="timeSpent > timeLimit" class="penalty-text">(超時扣分中)</span>
         </div>
 
-        <!-- 🌟 單字區 -->
         <div class="question-box retro-element">
           <div class="base-verb">
             {{ currentVerb.base }}
@@ -389,7 +392,6 @@ onUnmounted(() => { clearInterval(timer); });
           <div class="chinese-meaning">{{ currentVerb.zh_tw }}</div>
         </div>
 
-        <!-- Mode 1: 兩個輸入框 -->
         <div v-if="gameMode === 'mode1'" class="inputs-container">
           <div class="input-group" :class="{ active: activeField === 'past' && !isPastLocked, locked: isPastLocked }" @click="switchField('past')">
             <label>過去式 (Past) <span v-if="isPastLocked" class="lock-icon">🔒 已鎖定</span></label>
@@ -401,7 +403,6 @@ onUnmounted(() => { clearInterval(timer); });
           </div>
         </div>
 
-        <!-- Mode 1: 旋轉鍵盤 -->
         <div v-if="gameMode === 'mode1'" class="keyboard-wrapper">
           <div class="spinning-keyboard" :style="{'--spin-speed': keyboardSpeed + 's'}">
             <div class="key-row" v-for="(row, rIdx) in keys" :key="rIdx">
@@ -423,7 +424,6 @@ onUnmounted(() => { clearInterval(timer); });
           </div>
         </div>
 
-        <!-- Mode 2: 旋轉選擇題 -->
         <div v-if="gameMode === 'mode2'" class="keyboard-wrapper mode2-wrapper">
           <div class="spinning-keyboard mode2-options" :style="{'--spin-speed': keyboardSpeed + 's'}">
             <button v-for="(opt, idx) in currentOptions" :key="idx"
@@ -431,9 +431,9 @@ onUnmounted(() => { clearInterval(timer); });
                     :class="{'wrong-opt': opt.disabled, 'correct-opt': opt.isCorrect && isChecking}"
                     @click="selectOption(opt)"
                     :disabled="opt.disabled || isChecking">
-              <span class="upright-text" style="display:flex; flex-direction: column; gap: 5px;">
-                 <span style="color:#e67e22; font-size:1.4rem; font-weight:900;">{{ ['A','B','C','D'][idx] }}</span>
-                 <span style="font-size:1.1rem; white-space:nowrap; font-weight:bold;">{{ opt.text }}</span>
+              <span class="upright-text mode2-text">
+                 <span class="opt-label">{{ ['A','B','C','D'][idx] }}</span>
+                 <span class="opt-value">{{ opt.text }}</span>
               </span>
             </button>
           </div>
@@ -446,7 +446,6 @@ onUnmounted(() => { clearInterval(timer); });
         </div>
       </div>
 
-      <!-- 結束畫面 -->
       <div v-else-if="gameState === 'end'" class="end-screen retro-element">
         <h1>🌀 測驗結束！</h1>
         <div class="final-score">{{ Math.floor(score) }} <span>分</span></div>
@@ -506,11 +505,15 @@ onUnmounted(() => { clearInterval(timer); });
 .del-btn { background: #e74c3c; color: white; border-color: #c0392b;}
 .submit-btn { background: #27ae60; color: white; border-color: #2ecc71;}
 
-/* Mode 2 專屬樣式 */
+/* 🌟 Mode 2 專屬樣式，確保文字居中且不會被裁剪 */
 .mode2-options { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 15px; padding: 20px; aspect-ratio: 1 / 1; }
-.mode2-options .option-btn { height: auto; min-height: 80px; flex-direction: column; }
+.mode2-options .option-btn { height: auto; min-height: 80px; display: flex; align-items: center; justify-content: center; }
 .mode2-options .option-btn.wrong-opt { opacity: 0.3; filter: grayscale(100%); transform: scale(0.9); }
 .mode2-options .option-btn.correct-opt { background: #4caf50 !important; color: white; border-color: #2e7d32 !important; transform: scale(1.05); }
+
+.mode2-text { display: flex; flex-direction: column; gap: 5px; align-items: center; justify-content: center; }
+.opt-label { color:#e67e22; font-size:1.4rem; font-weight:900; line-height: 1; }
+.opt-value { font-size:1.05rem; white-space:nowrap; font-weight:bold; line-height: 1; }
 
 .skip-btn-outer { background: #f39c12; color: white; border-color: #e67e22; padding: 12px 25px; border-radius: 12px; font-weight: bold; font-size: 1rem; border-width: 3px; cursor: pointer; box-shadow: 0 4px 0 #d68910;}
 .skip-btn-outer:active:not(:disabled) { transform: translateY(4px); box-shadow: none; }
