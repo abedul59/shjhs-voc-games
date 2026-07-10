@@ -278,15 +278,15 @@ const triggerGameOver = async (wId) => {
     const finalScore = Math.max(0, myScore.value - (mistakesCount.value * pvpPenaltyPoints.value));
 
     // 🌟 修正：移除不存在的欄位，改為標準存檔格式
-    const { error } = await supabase.from('game_records').insert([{
-      student_id: studentCookie.value.id,
-      game_type: '動詞對戰大師',
-      score: finalScore, 
-      mistakes: mistakesCount.value, 
-      time_taken_seconds: timeSpent,
-      unit_played: '對戰不規則動詞',
-      correct_words: isWinner ? `【勝】對手: ${opponentData.value.name}` : `【敗】對手: ${opponentData.value.name}`
-    }]);
+// 確保欄位名稱完全符合資料庫 (請檢查您的 table schema 是否為這些名稱)
+const { error } = await supabase.from('game_records').insert([{
+    student_id: studentCookie.value.id,
+    game_type: '動詞對戰大師',
+    score: Math.floor(finalScore), // 確保是數字
+    unit_played: '動詞變化總表',    // 這裡對應選單的 unit
+    time_taken_seconds: timeSpent,
+    correct_words: isWinner ? `勝:${opponentData.value.name}` : `敗:${opponentData.value.name}`
+}]);
 
     if (error) console.error("寫入紀錄失敗:", error);
 
