@@ -186,6 +186,8 @@ const fetchStats = async () => {
         <button class="type-btn" :class="{ active: selectedGameType === 'AR實境單字狙擊手' }" @click="selectedGameType = 'AR實境單字狙擊手'; fetchStats()">🔫 狙擊手</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字地圖 GO' }" @click="selectedGameType = '單字地圖 GO'; fetchStats()">🌍 地圖GO</button>
 <button class="type-btn" :class="{ active: selectedGameType === '英語口說學霸2' }" @click="selectedGameType = '英語口說學霸2'; fetchStats()">📖 口說學霸2</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '動詞變化大師' }" @click="selectedGameType = '動詞變化大師'; fetchStats()">動詞變化大師</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '動詞對戰大師' }" @click="selectedGameType = '動詞對戰大師'; fetchStats()">動詞對戰大師</button>
       </div>
 
       <div class="form-group" style="margin-top: 15px;">
