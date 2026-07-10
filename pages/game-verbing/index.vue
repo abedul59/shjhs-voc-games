@@ -201,20 +201,21 @@ const endGame = async () => {
   clearInterval(timer);
   confetti({ particleCount: 150, spread: 80 });
 
-  await supabase.from('game_records').insert([{
+  // 🌟 修正：移除不存在的欄位，改為標準存檔格式
+  const { error } = await supabase.from('game_records').insert([{
     student_id: studentCookie.value.id,
-    real_name: studentCookie.value.real_name || studentCookie.value.name,
-    class_name: studentCookie.value.class,
-    unit_played: '不規則動詞全區',
     game_type: '動詞變化大師',
-    score: score.value,
-    time_taken_seconds: 0,
-    is_anon: studentCookie.value.isAnon || false
+    score: Math.floor(score.value),
+    time_taken_seconds: timeSpent.value || 0,
+    unit_played: '不規則動詞全區'
   }]);
   
+  if (error) console.error("寫入紀錄失敗:", error);
+  
+  // 更新學生總積分 (僅限正式帳號)
   if (!studentCookie.value.isAnon) {
     const { data } = await supabase.from('students').select('points').eq('id', studentCookie.value.id).single();
-    if (data) await supabase.from('students').update({ points: data.points + score.value }).eq('id', studentCookie.value.id);
+    if (data) await supabase.from('students').update({ points: data.points + Math.floor(score.value) }).eq('id', studentCookie.value.id);
   }
 };
 
