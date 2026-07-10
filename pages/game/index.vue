@@ -251,6 +251,10 @@ const finishGame = async () => {
   }
 };
 
+const restartGame = () => {
+  window.location.reload();
+};
+
 onUnmounted(() => { clearInterval(timer); });
 </script>
 
@@ -285,7 +289,11 @@ onUnmounted(() => { clearInterval(timer); });
       <h2>🎉 挑戰完成！</h2>
       <p class="final-score">最終得分: <strong>{{ score }}</strong></p>
       <p class="final-time">總耗時: <strong>{{ timeSpent }}</strong> 秒</p>
-      <NuxtLink to="/" class="retro-btn return-btn">🔙 返回首頁</NuxtLink>
+      
+      <div class="end-actions" style="margin-top: 30px; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap;">
+        <button @click="restartGame" class="retro-btn restart-btn">🔄 同單元再玩一次</button>
+        <NuxtLink to="/" class="retro-btn home-btn">🏠 回到首頁</NuxtLink>
+      </div>
     </div>
   </div>
 </template>
@@ -396,9 +404,27 @@ onUnmounted(() => { clearInterval(timer); });
 
 .error-msg { background: var(--danger-bg); border: 2px dashed var(--danger-color); color: var(--danger-color); padding: 15px; text-align: center; font-weight: 900; border-radius: var(--radius-element); margin-bottom: 20px;}
 
+.restart-btn { 
+  font-size: 1.2rem;
+  padding: 15px 30px;
+  background-color: #4caf50; 
+  color: white; 
+  border-color: #2e7d32; 
+  box-shadow: 0 4px 0 #2e7d32; 
+}
+.home-btn { 
+  font-size: 1.2rem;
+  padding: 15px 30px;
+  background-color: #2196f3; 
+  color: white; 
+  border-color: #1565c0; 
+  box-shadow: 0 4px 0 #1565c0; 
+}
+
 @media (max-width: 600px) {
   .header-bar { flex-direction: column; align-items: stretch; }
   .stats { justify-content: space-between; font-size: 1rem; }
   .card-grid { gap: 8px; }
+  .restart-btn, .home-btn { width: 100%; box-sizing: border-box; text-align: center; }
 }
 </style>
