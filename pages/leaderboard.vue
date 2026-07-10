@@ -209,6 +209,8 @@ const getPlayerName = (id) => {
         <button class="type-btn" :class="{ active: selectedGameType === '霍格華茲單字杖' }" @click="selectedGameType = '霍格華茲單字杖'; fetchLeaderboard()"">🪄 單字杖</button>
         <button class="type-btn" :class="{ active: selectedGameType === 'AR實境單字狙擊手' }" @click="selectedGameType = 'AR實境單字狙擊手'; fetchLeaderboard()"">🔫 狙擊手</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字地圖 GO' }" @click="selectedGameType = '單字地圖 GO'; fetchLeaderboard()"">🌍 地圖GO</button>
+  <button class="type-btn" :class="{ active: selectedGameType === '動詞變化大師' }" @click="selectedGameType = '動詞變化大師'; fetchLeaderboard()"">動詞變化大師</button>
+  <button class="type-btn" :class="{ active: selectedGameType === '動詞對戰大師' }" @click="selectedGameType = '動詞對戰大師'; fetchLeaderboard()"">動詞對戰大師</button>
        
       </div>
 
