@@ -26,8 +26,8 @@ const rankedList = ref([]);
 const pvpSortMode = ref('wins'); 
 const tetrisSortMode = ref('word'); 
 
-// 🌟 定義所有 PvP 對戰類型的遊戲，方便後續擴充
-const pvpGames = ['單字方塊陣', '單字吞食天地', '單字塔羅21點', '單字塔羅鍊金術', '單字塔羅UNO對決'];
+// 🌟 加入動詞對戰大師
+const pvpGames = ['單字方塊陣', '單字吞食天地', '單字塔羅21點', '單字塔羅鍊金術', '單字塔羅UNO對決', '動詞對戰大師'];
 
 onMounted(async () => {
   const { data: sData } = await supabase.from('students').select('student_id, class_name, hidden_name, real_name').limit(10000);
@@ -56,20 +56,27 @@ const onVersionChange = () => { selectedVolume.value = ''; selectedUnit.value = 
 const onVolumeChange = () => { selectedUnit.value = ''; rankedList.value = []; };
 
 const fetchLeaderboard = async () => {
-  if (!selectedUnit.value) return;
+  // 🌟 判斷是否為動詞系列，若為動詞系列則不需要強制選擇單元
+  const isVerbingGame = selectedGameType.value === '動詞變化大師' || selectedGameType.value === '動詞對戰大師';
+  if (!isVerbingGame && !selectedUnit.value) return;
   isLoading.value = true;
 
-  // 🌟 分開處理 query，避免帶有括號 () 的遊戲名稱破壞 Supabase 的 or 語法
-  let query = supabase.from('game_records').select('*')
-    .eq('version', selectedVersion.value)
-    .eq('volume', selectedVolume.value)
-    .eq('unit_played', selectedUnit.value)
-    .limit(10000); 
+  let query = supabase.from('game_records').select('*').limit(10000); 
 
-  if (selectedGameType.value === '單字方塊消消樂') {
-    query = query.or('game_type.eq.單字方塊消消樂,game_type.is.null');
-  } else {
+  // 🌟 動詞系列只過濾遊戲類型；其他遊戲過濾版本、冊數、單元
+  if (isVerbingGame) {
     query = query.eq('game_type', selectedGameType.value);
+  } else {
+    query = query
+      .eq('version', selectedVersion.value)
+      .eq('volume', selectedVolume.value)
+      .eq('unit_played', selectedUnit.value);
+
+    if (selectedGameType.value === '單字方塊消消樂') {
+      query = query.or('game_type.eq.單字方塊消消樂,game_type.is.null');
+    } else {
+      query = query.eq('game_type', selectedGameType.value);
+    }
   }
 
   const { data } = await query;
@@ -249,9 +256,12 @@ const getPlayerName = (id) => {
             <option value="ALL">🌟 全校排名</option>
             <option v-for="c in classesList" :key="c" :value="c">班級：{{ c }}</option>
         </select>
-        <select v-model="selectedVersion" @change="onVersionChange" class="retro-input"><option value="" disabled>版本...</option><option v-for="v in availableVersions" :key="v" :value="v">{{ v }}</option></select>
-        <select v-model="selectedVolume" @change="onVolumeChange" class="retro-input" :disabled="!selectedVersion"><option value="" disabled>冊數...</option><option v-for="vol in availableVolumes" :key="vol" :value="vol">{{ vol }}</option></select>
-        <select v-model="selectedUnit" @change="fetchLeaderboard" class="retro-input" :disabled="!selectedVolume"><option value="" disabled>單元...</option><option v-for="u in availableUnits" :key="u" :value="u">{{ u }}</option></select>
+        <template v-if="!['動詞變化大師', '動詞對戰大師'].includes(selectedGameType)">
+          <select v-model="selectedVersion" @change="onVersionChange" class="retro-input"><option value="" disabled>版本...</option><option v-for="v in availableVersions" :key="v" :value="v">{{ v }}</option></select>
+          <select v-model="selectedVolume" @change="onVolumeChange" class="retro-input" :disabled="!selectedVersion"><option value="" disabled>冊數...</option><option v-for="vol in availableVolumes" :key="vol" :value="vol">{{ vol }}</option></select>
+          <select v-model="selectedUnit" @change="fetchLeaderboard" class="retro-input" :disabled="!selectedVolume"><option value="" disabled>單元...</option><option v-for="u in availableUnits" :key="u" :value="u">{{ u }}</option></select>
+        </template>
+        <div v-else class="empty-msg retro-element" style="flex: 1; padding: 10px; margin: 0;">✨ 總表模式：無需選擇單元，直接顯示排行。</div>
       </div>
     </div>
 
