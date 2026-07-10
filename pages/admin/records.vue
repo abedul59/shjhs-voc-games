@@ -185,8 +185,8 @@ const exportToCSV = () => {
         <button class="type-btn" :class="{ active: selectedGameType === 'AR實境單字狙擊手' }" @click="selectedGameType = 'AR實境單字狙擊手'">🔫 狙擊手</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字地圖 GO' }" @click="selectedGameType = '單字地圖 GO'">🌍 地圖GO</button>
 <button class="type-btn" :class="{ active: selectedGameType === '英語口說學霸2' }" @click="selectedGameType = '英語口說學霸2'">📖 口說學霸-朗讀與說故事</button>
-  <button class="type-btn" :class="{ active: selectedGameType === '動詞變化大師' }" @click="selectedGameType = '動詞變化大師'">'動詞變化大師'</button>
-  <button class="type-btn" :class="{ active: selectedGameType === '動詞對戰大師' }" @click="selectedGameType = '動詞對戰大師'">'動詞對戰大師'</button>
+  <button class="type-btn" :class="{ active: selectedGameType === '動詞變化大師' }" @click="selectedGameType = '動詞變化大師'">動詞變化大師</button>
+  <button class="type-btn" :class="{ active: selectedGameType === '動詞對戰大師' }" @click="selectedGameType = '動詞對戰大師'">動詞對戰大師</button>
 
       </div>
       <div class="identity-tabs" style="margin-top:10px;">
