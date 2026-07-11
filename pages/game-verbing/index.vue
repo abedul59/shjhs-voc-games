@@ -12,7 +12,7 @@ const gameVerbs = ref([]);
 const currentIndex = ref(0);
 const score = ref(0);
 const gameState = ref('loading'); // loading, setup, playing, end
-const gameMode = ref('mode1'); // mode1: 鍵盤輸入, mode2: 選擇題
+const gameMode = ref('mode1'); // mode1: 鍵盤輸入, mode2: 選擇題, mode3: 打地鼠
 const currentQuestionCount = ref(10);
 
 // 🌟 遊戲設定
@@ -34,6 +34,11 @@ const timeSpent = ref(0);
 let timer = null;
 
 const currentOptions = ref([]);
+
+// 打地鼠狀態
+const moles = ref(Array.from({ length: 9 }, () => ({ active: false, wordObj: null, id: 0 })));
+let moleTimer = null;
+const mode3Pool = ref([]);
 
 const keys = [
   ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
@@ -88,7 +93,7 @@ onMounted(async () => {
 
 const startGame = (mode) => {
   gameMode.value = mode;
-  if (mode === 'mode1') {
+  if (mode === 'mode1' || mode === 'mode3') {
     currentQuestionCount.value = 10;
     gameVerbs.value = [...allFetchedVerbs.value].sort(() => Math.random() - 0.5).slice(0, 10);
   } else {
@@ -103,11 +108,9 @@ const startGame = (mode) => {
 
 const currentVerb = computed(() => gameVerbs.value[currentIndex.value] || {});
 
-// 🌟 智能編造相似錯誤拼字
+// 🌟 智能編造相似錯誤拼字 (給 Mode 2 使用)
 const generateDistractors = (verbObj) => {
   if (!verbObj) return [];
-  
-  // 🌟 修正：完全對齊資料庫欄位名稱 (base_form, past_tense, past_participle)
   const base = String(verbObj.base_form || 'word').toLowerCase().trim();
   const past = String(verbObj.past_tense || base + 'ed').split('/')[0].trim().toLowerCase();
   const pp = String(verbObj.past_participle || base + 'ed').split('/')[0].trim().toLowerCase();
@@ -149,30 +152,106 @@ const generateDistractors = (verbObj) => {
   return options.sort(() => Math.random() - 0.5);
 };
 
+// 🌟 生成打地鼠單字池 (給 Mode 3 使用)
+const generateMode3Pool = (verbObj) => {
+    if (!verbObj) return [];
+    const base = String(verbObj.base_form || 'word').toLowerCase().trim();
+    const past = String(verbObj.past_tense || base + 'ed').split('/')[0].trim().toLowerCase();
+    const pp = String(verbObj.past_participle || base + 'ed').split('/')[0].trim().toLowerCase();
+
+    const set = new Set([base, `${base}s`, `${base}es`, `${base}ing`, `${base}d`, `${base}en`, `${base}t`]);
+    set.delete(past); set.delete(pp);
+
+    const wrongs = Array.from(set).sort(() => Math.random() - 0.5).slice(0, 4);
+    
+    let pool = [ { text: past, type: 'past' }, { text: pp, type: 'pp' } ];
+    wrongs.forEach(w => pool.push({ text: w, type: 'wrong' }));
+    return pool;
+};
+
+// 🌟 地鼠彈出邏輯
+const spawnMole = () => {
+    if (isChecking.value) return;
+    const emptyHoles = moles.value.map((m, i) => m.active ? -1 : i).filter(i => i !== -1);
+    if (emptyHoles.length === 0) return;
+
+    const holeIdx = emptyHoles[Math.floor(Math.random() * emptyHoles.length)];
+
+    let candidates = [...mode3Pool.value]; 
+    // 增加尚未打到的正確選項出現機率
+    if (!isPastLocked.value) { const pObj = mode3Pool.value.find(w => w.type === 'past'); if (pObj) { candidates.push(pObj); candidates.push(pObj); } }
+    if (!isPpLocked.value) { const ppObj = mode3Pool.value.find(w => w.type === 'pp'); if (ppObj) { candidates.push(ppObj); candidates.push(ppObj); } }
+
+    const pickedWord = candidates[Math.floor(Math.random() * candidates.length)];
+    const uid = Date.now() + Math.random();
+    moles.value[holeIdx] = { active: true, wordObj: pickedWord, id: uid };
+
+    // 自動縮回
+    setTimeout(() => {
+        if (moles.value[holeIdx].id === uid) moles.value[holeIdx].active = false;
+    }, 1200 + Math.random() * 800);
+};
+
+// 🌟 敲擊地鼠判定
+const hitMole = (index) => {
+    const mole = moles.value[index];
+    if (!mole.active || isChecking.value) return;
+
+    playClickSound();
+    mole.active = false; 
+
+    let hitCorrect = false;
+    let hitSomething = false;
+
+    const past = String(currentVerb.value.past_tense || '').split('/')[0].trim().toLowerCase();
+    const pp = String(currentVerb.value.past_participle || '').split('/')[0].trim().toLowerCase();
+    const moleText = mole.wordObj.text;
+
+    if (moleText === past && !isPastLocked.value) {
+        isPastLocked.value = true;
+        hitCorrect = true;
+        hitSomething = true;
+    }
+    // 防止 past 和 pp 是一樣的字時，打一下兩格都完成
+    if (moleText === pp && !isPpLocked.value) {
+        if (!hitSomething) {
+            isPpLocked.value = true;
+            hitCorrect = true;
+        }
+    }
+
+    if (hitCorrect) {
+        new Audio('/sounds/correct.mp3').play();
+    } else {
+        currentWrongCount.value++;
+        new Audio('/sounds/wrong.mp3').play();
+    }
+
+    if (isPastLocked.value && isPpLocked.value) finalizeQuestion();
+};
+
+
 const startQuestion = () => {
-  pastInput.value = '';
-  ppInput.value = '';
-  isPastLocked.value = false;
-  isPpLocked.value = false;
-  activeField.value = 'past';
-  isChecking.value = false;
-  currentWrongCount.value = 0;
-  timeSpent.value = 0;
+  pastInput.value = ''; ppInput.value = ''; isPastLocked.value = false; isPpLocked.value = false;
+  activeField.value = 'past'; isChecking.value = false; currentWrongCount.value = 0; timeSpent.value = 0;
   
   if (gameMode.value === 'mode2') {
       currentOptions.value = generateDistractors(currentVerb.value);
+  } else if (gameMode.value === 'mode3') {
+      moles.value.forEach(m => m.active = false);
+      mode3Pool.value = generateMode3Pool(currentVerb.value);
+      clearInterval(moleTimer);
+      moleTimer = setInterval(spawnMole, 700); // 每 0.7 秒嘗試生出一隻地鼠
   }
 
   clearInterval(timer);
   timer = setInterval(() => { timeSpent.value++; }, 1000);
 };
 
-// 🌟 發音功能 (自動過濾斜線並只抓第一個字)
 const playPronunciation = (word) => {
   if (!word) return;
   const cleanWord = String(word).split('/')[0].toLowerCase().replace(/[^a-z]/g, '').trim(); 
   if (!cleanWord) return;
-
   const audio = new Audio(`https://ssl.gstatic.com/dictionary/static/sounds/20200429/${cleanWord}--_us_1.mp3`);
   audio.play().catch(() => {
     if (window.speechSynthesis) {
@@ -183,15 +262,13 @@ const playPronunciation = (word) => {
 };
 
 const typeLetter = (char) => {
-  if (isChecking.value) return;
-  playClickSound();
+  if (isChecking.value) return; playClickSound();
   if (activeField.value === 'past' && !isPastLocked.value) pastInput.value += char.toLowerCase();
   else if (activeField.value === 'pp' && !isPpLocked.value) ppInput.value += char.toLowerCase();
 };
 
 const deleteLetter = () => {
-  if (isChecking.value) return;
-  playClickSound();
+  if (isChecking.value) return; playClickSound();
   if (activeField.value === 'past' && !isPastLocked.value) pastInput.value = pastInput.value.slice(0, -1);
   else if (activeField.value === 'pp' && !isPpLocked.value) ppInput.value = ppInput.value.slice(0, -1);
 };
@@ -203,6 +280,7 @@ const switchField = (field) => {
 
 const finalizeQuestion = () => {
   clearInterval(timer);
+  clearInterval(moleTimer);
   isChecking.value = true;
   
   let basePoints = (isPastLocked.value ? 5 : 0) + (isPpLocked.value ? 5 : 0);
@@ -223,10 +301,8 @@ const finalizeQuestion = () => {
 };
 
 const submitAnswer = () => {
-  if (isChecking.value) return;
-  playClickSound();
+  if (isChecking.value) return; playClickSound();
   
-  // 🌟 對齊資料庫的正確欄位名稱
   const validPast = String(currentVerb.value.past_tense || '').toLowerCase().split('/').map(s => s.trim());
   const validPp = String(currentVerb.value.past_participle || '').toLowerCase().split('/').map(s => s.trim());
 
@@ -243,8 +319,7 @@ const submitAnswer = () => {
   }
 
   if (!currentSubmitCorrect) {
-    currentWrongCount.value++;
-    new Audio('/sounds/wrong.mp3').play();
+    currentWrongCount.value++; new Audio('/sounds/wrong.mp3').play();
     if (!isPastLocked.value) activeField.value = 'past';
     else if (!isPpLocked.value) activeField.value = 'pp';
     return; 
@@ -257,58 +332,38 @@ const submitAnswer = () => {
 };
 
 const selectOption = (opt) => {
-    if (isChecking.value || opt.disabled) return;
-    playClickSound();
-
+    if (isChecking.value || opt.disabled) return; playClickSound();
     if (opt.isCorrect) {
-        new Audio('/sounds/correct.mp3').play();
-        isChecking.value = true;
-        
+        new Audio('/sounds/correct.mp3').play(); isChecking.value = true;
         let basePoints = 10;
         let overtime = Math.max(0, timeSpent.value - timeLimit.value);
         let penaltyScore = (currentWrongCount.value * wrongPenalty.value) + (overtime * timePenalty.value);
-        let earned = Math.max(0, basePoints - penaltyScore);
-        
-        score.value += earned;
+        score.value += Math.max(0, basePoints - penaltyScore);
 
         setTimeout(() => {
-            if (currentIndex.value < currentQuestionCount.value - 1) {
-                currentIndex.value++;
-                startQuestion();
-            } else {
-                endGame();
-            }
+            if (currentIndex.value < currentQuestionCount.value - 1) { currentIndex.value++; startQuestion(); }
+            else { endGame(); }
         }, 1500);
     } else {
-        new Audio('/sounds/wrong.mp3').play();
-        currentWrongCount.value++;
-        opt.disabled = true;
+        new Audio('/sounds/wrong.mp3').play(); currentWrongCount.value++; opt.disabled = true;
     }
 };
 
 const skipQuestion = () => {
-  if (isChecking.value) return;
-  playClickSound();
+  if (isChecking.value) return; playClickSound();
   
-  if (gameMode.value === 'mode1') {
+  if (gameMode.value === 'mode1' || gameMode.value === 'mode3') {
       pastInput.value = String(currentVerb.value.past_tense || '').split('/')[0];
       ppInput.value = String(currentVerb.value.past_participle || '').split('/')[0];
+      isPastLocked.value = true; isPpLocked.value = true;
       finalizeQuestion();
   } else {
       const correctOpt = currentOptions.value.find(o => o.isCorrect);
-      if (correctOpt) {
-          currentOptions.value.forEach(o => {
-              if(!o.isCorrect) o.disabled = true;
-          });
-      }
+      if (correctOpt) { currentOptions.value.forEach(o => { if(!o.isCorrect) o.disabled = true; }); }
       isChecking.value = true;
       setTimeout(() => {
-          if (currentIndex.value < currentQuestionCount.value - 1) {
-              currentIndex.value++;
-              startQuestion();
-          } else {
-              endGame();
-          }
+          if (currentIndex.value < currentQuestionCount.value - 1) { currentIndex.value++; startQuestion(); }
+          else { endGame(); }
       }, 1500);
   }
   new Audio('/sounds/wrong.mp3').play();
@@ -316,19 +371,12 @@ const skipQuestion = () => {
 
 const endGame = async () => {
   gameState.value = 'end';
-  clearInterval(timer);
+  clearInterval(timer); clearInterval(moleTimer);
   confetti({ particleCount: 150, spread: 80 });
 
   const { error } = await supabase.from('game_records').insert([{
-    student_id: studentCookie.value.id,
-    unit_played: '動詞變化總表',
-    game_type: '動詞變化大師',
-    score: Math.floor(score.value),
-    time_taken_seconds: timeSpent.value || 0
+    student_id: studentCookie.value.id, unit_played: '動詞變化總表', game_type: '動詞變化大師', score: Math.floor(score.value), time_taken_seconds: timeSpent.value || 0
   }]);
-  
-  if (error) console.error("寫入成績失敗", error);
-
   if (!studentCookie.value.isAnon) {
     const { data } = await supabase.from('students').select('points').eq('id', studentCookie.value.id).single();
     if (data) await supabase.from('students').update({ points: data.points + Math.floor(score.value) }).eq('id', studentCookie.value.id);
@@ -337,7 +385,7 @@ const endGame = async () => {
 
 const playAgain = () => { window.location.reload(); };
 
-onUnmounted(() => { clearInterval(timer); });
+onUnmounted(() => { clearInterval(timer); clearInterval(moleTimer); });
 </script>
 
 <template>
@@ -353,12 +401,16 @@ onUnmounted(() => { clearInterval(timer); });
       
       <div class="mode-cards">
         <button class="retro-btn mode-btn mode1-btn" @click="startGame('mode1')">
-          <h3>⌨️ 鍵盤拼字挑戰</h3>
-          <p>滿分 100 分 (10 題)<br>依序填入正確的字母！</p>
+          <h3>⌨️ 鍵盤拼字</h3>
+          <p>滿分 100 分 (10 題)<br>依序填入正確字母</p>
         </button>
         <button class="retro-btn mode-btn mode2-btn" @click="startGame('mode2')">
-          <h3>🎯 旋轉選擇挑戰</h3>
-          <p>滿分 80 分 (8 題)<br>從旋轉選項中找出正確組合！</p>
+          <h3>🎯 旋轉選擇</h3>
+          <p>滿分 80 分 (8 題)<br>從選項中找正確組合</p>
+        </button>
+        <button class="retro-btn mode-btn mode3-btn" @click="startGame('mode3')">
+          <h3>🔨 打地鼠挑戰</h3>
+          <p>滿分 100 分 (10 題)<br>敲擊正確的時態地鼠</p>
         </button>
       </div>
 
@@ -369,7 +421,7 @@ onUnmounted(() => { clearInterval(timer); });
 
     <div v-else-if="gameState === 'playing' || gameState === 'end'">
       <div class="header" v-if="gameState !== 'setup'">
-        <div class="stats-board">💯 總分: {{ score }} / {{ gameMode === 'mode1' ? 100 : 80 }}</div>
+        <div class="stats-board">💯 總分: {{ score }} / {{ gameMode === 'mode2' ? 80 : 100 }}</div>
         <div v-if="gameState === 'playing'" class="progress">第 {{ currentIndex + 1 }} / {{ currentQuestionCount }} 題</div>
       </div>
 
@@ -391,23 +443,41 @@ onUnmounted(() => { clearInterval(timer); });
           <div class="input-group" :class="{ active: activeField === 'past' && !isPastLocked, locked: isPastLocked }" @click="switchField('past')">
             <label>
               <span style="display:flex; align-items:center; gap:8px;">
-                過去式 (Past) 
-                <button class="sound-btn-small" @click.stop="playPronunciation(currentVerb.past_tense)">🔊</button>
+                過去式 (Past) <button class="sound-btn-small" @click.stop="playPronunciation(currentVerb.past_tense)">🔊</button>
               </span>
               <span v-if="isPastLocked" class="lock-icon">🔒 已鎖定</span>
             </label>
             <div class="typed-text"><span v-if="activeField === 'past' && !isPastLocked" class="cursor">|</span> {{ pastInput }}</div>
           </div>
-          
           <div class="input-group" :class="{ active: activeField === 'pp' && !isPpLocked, locked: isPpLocked }" @click="switchField('pp')">
             <label>
               <span style="display:flex; align-items:center; gap:8px;">
-                過去分詞 (P.P.) 
-                <button class="sound-btn-small" @click.stop="playPronunciation(currentVerb.past_participle)">🔊</button>
+                過去分詞 (P.P.) <button class="sound-btn-small" @click.stop="playPronunciation(currentVerb.past_participle)">🔊</button>
               </span>
               <span v-if="isPpLocked" class="lock-icon">🔒 已鎖定</span>
             </label>
             <div class="typed-text"><span v-if="activeField === 'pp' && !isPpLocked" class="cursor">|</span> {{ ppInput }}</div>
+          </div>
+        </div>
+
+        <div v-if="gameMode === 'mode3'" class="inputs-container">
+          <div class="input-group" :class="{ locked: isPastLocked }">
+            <label>
+              <span style="display:flex; align-items:center; gap:8px;">
+                過去式 (Past) <button class="sound-btn-small" @click.stop="playPronunciation(currentVerb.past_tense)">🔊</button>
+              </span>
+            </label>
+            <div class="typed-text" style="color: #27ae60" v-if="isPastLocked">✅ 已擊中 ({{ String(currentVerb.past_tense).split('/')[0] }})</div>
+            <div class="typed-text" style="color: #e67e22" v-else>👀 尋找地鼠中...</div>
+          </div>
+          <div class="input-group" :class="{ locked: isPpLocked }">
+            <label>
+              <span style="display:flex; align-items:center; gap:8px;">
+                過去分詞 (P.P.) <button class="sound-btn-small" @click.stop="playPronunciation(currentVerb.past_participle)">🔊</button>
+              </span>
+            </label>
+            <div class="typed-text" style="color: #27ae60" v-if="isPpLocked">✅ 已擊中 ({{ String(currentVerb.past_participle).split('/')[0] }})</div>
+            <div class="typed-text" style="color: #e67e22" v-else>👀 尋找地鼠中...</div>
           </div>
         </div>
 
@@ -419,15 +489,9 @@ onUnmounted(() => { clearInterval(timer); });
               </button>
             </div>
             <div class="key-row" style="margin-top: 10px;">
-              <button class="key-btn action-btn skip-btn" @click="skipQuestion" :disabled="isChecking">
-                <span class="upright-text">⏭️ 放棄</span>
-              </button>
-              <button class="key-btn action-btn del-btn" @click="deleteLetter" :disabled="isChecking">
-                <span class="upright-text">⌫ 刪除</span>
-              </button>
-              <button class="key-btn action-btn submit-btn" @click="submitAnswer" :disabled="isChecking">
-                <span class="upright-text">✅ 送出</span>
-              </button>
+              <button class="key-btn action-btn skip-btn" @click="skipQuestion" :disabled="isChecking"><span class="upright-text">⏭️ 放棄</span></button>
+              <button class="key-btn action-btn del-btn" @click="deleteLetter" :disabled="isChecking"><span class="upright-text">⌫ 刪除</span></button>
+              <button class="key-btn action-btn submit-btn" @click="submitAnswer" :disabled="isChecking"><span class="upright-text">✅ 送出</span></button>
             </div>
           </div>
         </div>
@@ -437,8 +501,7 @@ onUnmounted(() => { clearInterval(timer); });
             <button v-for="(opt, idx) in currentOptions" :key="idx"
                     class="key-btn option-btn"
                     :class="{'wrong-opt': opt.disabled, 'correct-opt': opt.isCorrect && isChecking}"
-                    @click="selectOption(opt)"
-                    :disabled="opt.disabled || isChecking">
+                    @click="selectOption(opt)" :disabled="opt.disabled || isChecking">
               <span class="upright-text mode2-text">
                  <span class="opt-label">({{ ['A','B','C','D'][idx] }})</span>
                  <span class="opt-value">{{ opt.text }}</span>
@@ -447,9 +510,18 @@ onUnmounted(() => { clearInterval(timer); });
           </div>
         </div>
 
-        <div v-if="gameMode === 'mode2'" style="text-align: center; margin-top: 20px;">
+        <div v-if="gameMode === 'mode3'" class="mole-grid">
+          <div v-for="(mole, idx) in moles" :key="idx" class="mole-hole">
+            <div class="mole" :class="{ 'up': mole.active }" @click="hitMole(idx)">
+               <span v-if="mole.active && mole.wordObj" class="mole-text">{{ mole.wordObj.text }}</span>
+            </div>
+            <div class="dirt-front"></div>
+          </div>
+        </div>
+
+        <div v-if="gameMode === 'mode2' || gameMode === 'mode3'" style="text-align: center; margin-top: 20px;">
           <button class="retro-btn skip-btn-outer" @click="skipQuestion" :disabled="isChecking">
-            ⏭️ 不會拼，放棄本題 (看答案)
+            ⏭️ {{ gameMode === 'mode3' ? '打不到？放棄本題' : '不會拼，放棄本題 (看答案)' }}
           </button>
         </div>
       </div>
@@ -473,13 +545,15 @@ onUnmounted(() => { clearInterval(timer); });
 .progress { font-size: 1.1rem; font-weight: bold; color: #333;}
 
 .setup-screen { text-align: center; padding: 40px 20px; background: #fff; border-radius: 20px; border: 3px solid #0d47a1; }
-.mode-cards { display: flex; gap: 20px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }
-.mode-btn { flex: 1; min-width: 200px; padding: 25px 15px; text-align: center; border-radius: 16px; transition: 0.2s; background: #fff; border: 3px solid #ccc; cursor: pointer; display: flex; flex-direction: column; justify-content: center; align-items: center;}
-.mode-btn h3 { margin: 0 0 10px 0; font-size: 1.4rem; color: #0d47a1; }
-.mode-btn p { margin: 0; line-height: 1.5; color: #555; font-size: 0.95rem; font-weight: bold; }
+.mode-cards { display: flex; gap: 15px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }
+.mode-btn { flex: 1; min-width: 150px; padding: 20px 10px; text-align: center; border-radius: 16px; transition: 0.2s; background: #fff; border: 3px solid #ccc; cursor: pointer; display: flex; flex-direction: column; justify-content: center; align-items: center;}
+.mode-btn h3 { margin: 0 0 10px 0; font-size: 1.2rem; color: #0d47a1; }
+.mode-btn p { margin: 0; line-height: 1.4; color: #555; font-size: 0.85rem; font-weight: bold; }
 .mode1-btn:hover { background: #e3f2fd; border-color: #1976d2; transform: translateY(-5px); box-shadow: 0 5px 15px rgba(25,118,210,0.2); }
 .mode2-btn:hover { background: #fce4ec; border-color: #c2185b; transform: translateY(-5px); box-shadow: 0 5px 15px rgba(194,24,91,0.2); }
+.mode3-btn:hover { background: #fff8e1; border-color: #f57f17; transform: translateY(-5px); box-shadow: 0 5px 15px rgba(245,127,23,0.2); }
 .mode2-btn h3 { color: #880e4f; }
+.mode3-btn h3 { color: #e65100; }
 
 .timer-box { background: #fff; border: 2px solid #ccc; padding: 10px; border-radius: 12px; text-align: center; font-size: 1.2rem; font-weight: bold; margin-bottom: 15px; color: #2c3e50; transition: 0.3s;}
 .timer-box.over-time { border-color: #e74c3c; background: #fadbd8; color: #c0392b; animation: pulse 1s infinite;}
@@ -489,7 +563,6 @@ onUnmounted(() => { clearInterval(timer); });
 .base-verb { font-size: 3rem; font-weight: 900; color: #0d47a1; display: flex; align-items: center; justify-content: center; gap: 15px;}
 .chinese-meaning { font-size: 1.3rem; color: #555; margin-top: 5px; font-weight: bold;}
 
-/* 🌟 音效按鈕設計 */
 .sound-btn { background: #fff; border: 2px solid #1976d2; border-radius: 50%; width: 45px; height: 45px; font-size: 1.3rem; cursor: pointer; display: flex; justify-content: center; align-items: center;}
 .sound-btn-small { background: #fff; border: 1px solid #1976d2; border-radius: 50%; width: 28px; height: 28px; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.1s;}
 .sound-btn-small:active { transform: scale(0.9); }
@@ -511,21 +584,27 @@ onUnmounted(() => { clearInterval(timer); });
 .key-row { display: flex; justify-content: center; gap: 4px; margin-bottom: 6px;}
 .key-btn { flex: 1; height: 45px; font-size: 1.2rem; font-weight: bold; background: #ecf0f1; border: 2px solid #bdc3c7; border-radius: 8px; color: #2c3e50; cursor: pointer; display: flex; justify-content: center; align-items: center; padding: 0;}
 .key-btn:active:not(:disabled) { background: #bdc3c7; transform: scale(0.95);}
-
 .action-btn { flex: unset; padding: 0 10px; font-size: 0.9rem;}
 .skip-btn { background: #f39c12; color: white; border-color: #e67e22;}
 .del-btn { background: #e74c3c; color: white; border-color: #c0392b;}
 .submit-btn { background: #27ae60; color: white; border-color: #2ecc71;}
 
-/* 🌟 Mode 2 專屬樣式 (改為清晰的垂直排列) */
+/* Mode 2 專屬樣式 */
 .mode2-options { display: flex; flex-direction: column; gap: 12px; padding: 25px; aspect-ratio: 1 / 1; justify-content: center; }
 .mode2-options .option-btn { height: auto; min-height: 60px; width: 100%; display: flex; align-items: center; justify-content: center; }
 .mode2-options .option-btn.wrong-opt { opacity: 0.3; filter: grayscale(100%); transform: scale(0.9); }
 .mode2-options .option-btn.correct-opt { background: #4caf50 !important; color: white; border-color: #2e7d32 !important; transform: scale(1.05); }
-
 .mode2-text { display: flex; flex-direction: row; gap: 12px; align-items: center; justify-content: center; width: 100%; }
 .opt-label { color:#e67e22; font-size:1.4rem; font-weight:900; }
 .opt-value { font-size:1.2rem; font-weight:bold; }
+
+/* 🌟 Mode 3 打地鼠專屬 CSS */
+.mole-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; background: #795548; padding: 20px; border-radius: 16px; border: 5px solid #4e342e; margin: 0 auto; max-width: 450px; aspect-ratio: 1 / 1; }
+.mole-hole { position: relative; background: #3e2723; border-radius: 50%; width: 100%; height: 100%; overflow: hidden; box-shadow: inset 0 10px 15px rgba(0,0,0,0.6); }
+.mole { position: absolute; bottom: -100%; left: 10%; width: 80%; height: 90%; background: #ffb74d; border-radius: 40% 40% 0 0; transition: bottom 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275); display: flex; justify-content: center; align-items: center; cursor: pointer; border: 4px solid #e65100; border-bottom: none; box-sizing: border-box; z-index: 1; }
+.mole.up { bottom: 10%; }
+.mole-text { font-size: 1.1rem; font-weight: 900; color: #3e2723; text-align: center; word-break: break-word; line-height: 1.1; padding: 0 4px; }
+.dirt-front { position: absolute; bottom: -10px; left: -5%; width: 110%; height: 40%; background: #4e342e; border-radius: 50%; z-index: 2; box-shadow: 0 -5px 10px rgba(0,0,0,0.3); }
 
 .skip-btn-outer { background: #f39c12; color: white; border-color: #e67e22; padding: 12px 25px; border-radius: 12px; font-weight: bold; font-size: 1rem; border-width: 3px; cursor: pointer; box-shadow: 0 4px 0 #d68910;}
 .skip-btn-outer:active:not(:disabled) { transform: translateY(4px); box-shadow: none; }
