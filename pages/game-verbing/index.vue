@@ -106,8 +106,9 @@ const currentVerb = computed(() => gameVerbs.value[currentIndex.value] || {});
 // 🌟 智能編造相似錯誤拼字
 const generateDistractors = (verbObj) => {
   if (!verbObj) return [];
-  // 修正：相容各種可能的欄位名稱
-  const base = String(verbObj.verb || verbObj.base || verbObj.en_us || 'word').toLowerCase().trim();
+  
+  // 🌟 修正：完全對齊資料庫欄位名稱 (base_form, past_tense, past_participle)
+  const base = String(verbObj.base_form || 'word').toLowerCase().trim();
   const past = String(verbObj.past_tense || base + 'ed').split('/')[0].trim().toLowerCase();
   const pp = String(verbObj.past_participle || base + 'ed').split('/')[0].trim().toLowerCase();
   
@@ -166,7 +167,7 @@ const startQuestion = () => {
   timer = setInterval(() => { timeSpent.value++; }, 1000);
 };
 
-// 🌟 發音功能防呆升級 (自動過濾斜線並只抓第一個字)
+// 🌟 發音功能 (自動過濾斜線並只抓第一個字)
 const playPronunciation = (word) => {
   if (!word) return;
   const cleanWord = String(word).split('/')[0].toLowerCase().replace(/[^a-z]/g, '').trim(); 
@@ -200,7 +201,6 @@ const switchField = (field) => {
   activeField.value = field;
 };
 
-// 🌟 Mode 1 結算
 const finalizeQuestion = () => {
   clearInterval(timer);
   isChecking.value = true;
@@ -226,6 +226,7 @@ const submitAnswer = () => {
   if (isChecking.value) return;
   playClickSound();
   
+  // 🌟 對齊資料庫的正確欄位名稱
   const validPast = String(currentVerb.value.past_tense || '').toLowerCase().split('/').map(s => s.trim());
   const validPp = String(currentVerb.value.past_participle || '').toLowerCase().split('/').map(s => s.trim());
 
@@ -255,7 +256,6 @@ const submitAnswer = () => {
   }
 };
 
-// 🌟 Mode 2 選擇
 const selectOption = (opt) => {
     if (isChecking.value || opt.disabled) return;
     playClickSound();
@@ -381,10 +381,10 @@ onUnmounted(() => { clearInterval(timer); });
 
         <div class="question-box retro-element">
           <div class="base-verb">
-            {{ currentVerb.verb || currentVerb.base || currentVerb.en_us }}
-            <button class="sound-btn" @click="playPronunciation(currentVerb.verb || currentVerb.base || currentVerb.en_us)">🔊</button>
+            {{ currentVerb.base_form || 'N/A' }}
+            <button class="sound-btn" @click="playPronunciation(currentVerb.base_form)">🔊</button>
           </div>
-          <div class="chinese-meaning">{{ currentVerb.zh_tw }}</div>
+          <div class="chinese-meaning">{{ currentVerb.chinese || '無翻譯' }}</div>
         </div>
 
         <div v-if="gameMode === 'mode1'" class="inputs-container">
