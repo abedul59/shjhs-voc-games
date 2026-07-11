@@ -46,8 +46,10 @@ const keys = [
   ['Z', 'X', 'C', 'V', 'B', 'N', 'M']
 ];
 
-// 🌟 內建 Web Audio API 音效
+// 🌟 音效系統：加入 Async 序列控制，確保聲音不會打架
 let audioCtx = null;
+let currentSequenceId = 0; // 用於控制中斷輪播
+
 const playClickSound = () => {
   try {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -64,6 +66,41 @@ const playClickSound = () => {
     osc.start();
     osc.stop(audioCtx.currentTime + 0.03);
   } catch(e) {}
+};
+
+// 非同步播放單一發音
+const playPronunciationAsync = (word, seqId = null) => {
+  return new Promise((resolve) => {
+    if (seqId && currentSequenceId !== seqId) return resolve();
+    if (!word) return resolve();
+    const cleanWord = String(word).split('/')[0].toLowerCase().replace(/[^a-z]/g, '').trim(); 
+    if (!cleanWord) return resolve();
+
+    const audio = new Audio(`https://ssl.gstatic.com/dictionary/static/sounds/20200429/${cleanWord}--_us_1.mp3`);
+    
+    const fallback = () => {
+      if (seqId && currentSequenceId !== seqId) return resolve();
+      if (window.speechSynthesis) {
+        const utterance = new SpeechSynthesisUtterance(cleanWord);
+        utterance.lang = 'en-US';
+        utterance.onend = resolve;
+        utterance.onerror = resolve;
+        window.speechSynthesis.speak(utterance);
+      } else {
+        resolve();
+      }
+    };
+
+    audio.onended = resolve;
+    audio.onerror = fallback;
+    audio.play().catch(fallback);
+  });
+};
+
+// 點擊按鈕直接發音 (並中斷題目的自動輪播)
+const playPronunciation = (word) => {
+  currentSequenceId = Date.now(); 
+  playPronunciationAsync(word);
 };
 
 onMounted(async () => {
@@ -93,13 +130,15 @@ onMounted(async () => {
 
 const startGame = (mode) => {
   gameMode.value = mode;
-  if (mode === 'mode1' || mode === 'mode3') {
+  if (mode === 'mode1') {
     currentQuestionCount.value = 10;
-    gameVerbs.value = [...allFetchedVerbs.value].sort(() => Math.random() - 0.5).slice(0, 10);
-  } else {
+  } else if (mode === 'mode2') {
     currentQuestionCount.value = 8;
-    gameVerbs.value = [...allFetchedVerbs.value].sort(() => Math.random() - 0.5).slice(0, 8);
+  } else if (mode === 'mode3') {
+    currentQuestionCount.value = 9; // 打地鼠改為 9 題
   }
+  
+  gameVerbs.value = [...allFetchedVerbs.value].sort(() => Math.random() - 0.5).slice(0, currentQuestionCount.value);
   currentIndex.value = 0;
   score.value = 0;
   gameState.value = 'playing';
@@ -108,7 +147,7 @@ const startGame = (mode) => {
 
 const currentVerb = computed(() => gameVerbs.value[currentIndex.value] || {});
 
-// 🌟 智能編造相似錯誤拼字 (給 Mode 2 使用)
+// 🌟 智能編造相似錯誤拼字
 const generateDistractors = (verbObj) => {
   if (!verbObj) return [];
   const base = String(verbObj.base_form || 'word').toLowerCase().trim();
@@ -152,7 +191,7 @@ const generateDistractors = (verbObj) => {
   return options.sort(() => Math.random() - 0.5);
 };
 
-// 🌟 生成打地鼠單字池 (給 Mode 3 使用)
+// 🌟 生成打地鼠單字池
 const generateMode3Pool = (verbObj) => {
     if (!verbObj) return [];
     const base = String(verbObj.base_form || 'word').toLowerCase().trim();
@@ -169,16 +208,14 @@ const generateMode3Pool = (verbObj) => {
     return pool;
 };
 
-// 🌟 地鼠彈出邏輯
+// 地鼠彈出邏輯
 const spawnMole = () => {
     if (isChecking.value) return;
     const emptyHoles = moles.value.map((m, i) => m.active ? -1 : i).filter(i => i !== -1);
     if (emptyHoles.length === 0) return;
 
     const holeIdx = emptyHoles[Math.floor(Math.random() * emptyHoles.length)];
-
     let candidates = [...mode3Pool.value]; 
-    // 增加尚未打到的正確選項出現機率
     if (!isPastLocked.value) { const pObj = mode3Pool.value.find(w => w.type === 'past'); if (pObj) { candidates.push(pObj); candidates.push(pObj); } }
     if (!isPpLocked.value) { const ppObj = mode3Pool.value.find(w => w.type === 'pp'); if (ppObj) { candidates.push(ppObj); candidates.push(ppObj); } }
 
@@ -186,13 +223,12 @@ const spawnMole = () => {
     const uid = Date.now() + Math.random();
     moles.value[holeIdx] = { active: true, wordObj: pickedWord, id: uid };
 
-    // 自動縮回
     setTimeout(() => {
         if (moles.value[holeIdx].id === uid) moles.value[holeIdx].active = false;
     }, 1200 + Math.random() * 800);
 };
 
-// 🌟 敲擊地鼠判定
+// 敲擊地鼠判定
 const hitMole = (index) => {
     const mole = moles.value[index];
     if (!mole.active || isChecking.value) return;
@@ -212,7 +248,6 @@ const hitMole = (index) => {
         hitCorrect = true;
         hitSomething = true;
     }
-    // 防止 past 和 pp 是一樣的字時，打一下兩格都完成
     if (moleText === pp && !isPpLocked.value) {
         if (!hitSomething) {
             isPpLocked.value = true;
@@ -221,7 +256,9 @@ const hitMole = (index) => {
     }
 
     if (hitCorrect) {
+        currentSequenceId = Date.now(); // 中斷輪播
         new Audio('/sounds/correct.mp3').play();
+        setTimeout(() => playPronunciationAsync(moleText), 300); // 唸出打中的單字
     } else {
         currentWrongCount.value++;
         new Audio('/sounds/wrong.mp3').play();
@@ -241,24 +278,34 @@ const startQuestion = () => {
       moles.value.forEach(m => m.active = false);
       mode3Pool.value = generateMode3Pool(currentVerb.value);
       clearInterval(moleTimer);
-      moleTimer = setInterval(spawnMole, 700); // 每 0.7 秒嘗試生出一隻地鼠
+      moleTimer = setInterval(spawnMole, 700); 
   }
+
+  // 🌟 自動循環發音兩次 (原型 -> 過去式 -> 過去分詞)
+  currentSequenceId = Date.now();
+  const seqId = currentSequenceId;
+  const playTwice = async () => {
+      for (let i = 0; i < 2; i++) {
+          if (currentSequenceId !== seqId) break;
+          await playPronunciationAsync(currentVerb.value.base_form, seqId);
+          if (currentSequenceId !== seqId) break;
+          await new Promise(r => setTimeout(r, 400));
+          
+          if (currentSequenceId !== seqId) break;
+          await playPronunciationAsync(currentVerb.value.past_tense, seqId);
+          if (currentSequenceId !== seqId) break;
+          await new Promise(r => setTimeout(r, 400));
+          
+          if (currentSequenceId !== seqId) break;
+          await playPronunciationAsync(currentVerb.value.past_participle, seqId);
+          if (currentSequenceId !== seqId) break;
+          await new Promise(r => setTimeout(r, 1000)); // 兩輪之間的間隔
+      }
+  };
+  playTwice();
 
   clearInterval(timer);
   timer = setInterval(() => { timeSpent.value++; }, 1000);
-};
-
-const playPronunciation = (word) => {
-  if (!word) return;
-  const cleanWord = String(word).split('/')[0].toLowerCase().replace(/[^a-z]/g, '').trim(); 
-  if (!cleanWord) return;
-  const audio = new Audio(`https://ssl.gstatic.com/dictionary/static/sounds/20200429/${cleanWord}--_us_1.mp3`);
-  audio.play().catch(() => {
-    if (window.speechSynthesis) {
-      const utterance = new SpeechSynthesisUtterance(cleanWord);
-      utterance.lang = 'en-US'; window.speechSynthesis.speak(utterance);
-    }
-  });
 };
 
 const typeLetter = (char) => {
@@ -282,6 +329,7 @@ const finalizeQuestion = () => {
   clearInterval(timer);
   clearInterval(moleTimer);
   isChecking.value = true;
+  currentSequenceId = Date.now(); // 停止發音輪播
   
   let basePoints = (isPastLocked.value ? 5 : 0) + (isPpLocked.value ? 5 : 0);
   let overtime = Math.max(0, timeSpent.value - timeLimit.value);
@@ -290,6 +338,7 @@ const finalizeQuestion = () => {
   
   score.value += earned;
 
+  // 延長至 2 秒，給予發音充足時間
   setTimeout(() => {
     if (currentIndex.value < currentQuestionCount.value - 1) {
       currentIndex.value++;
@@ -297,7 +346,7 @@ const finalizeQuestion = () => {
     } else {
       endGame();
     }
-  }, 1500);
+  }, 2000);
 };
 
 const submitAnswer = () => {
@@ -306,15 +355,17 @@ const submitAnswer = () => {
   const validPast = String(currentVerb.value.past_tense || '').toLowerCase().split('/').map(s => s.trim());
   const validPp = String(currentVerb.value.past_participle || '').toLowerCase().split('/').map(s => s.trim());
 
+  let hitPast = false;
+  let hitPp = false;
   let currentSubmitCorrect = true;
 
   if (!isPastLocked.value) {
-    if (validPast.includes(pastInput.value.trim())) isPastLocked.value = true;
+    if (validPast.includes(pastInput.value.trim())) { isPastLocked.value = true; hitPast = true; }
     else { currentSubmitCorrect = false; pastInput.value = ''; }
   }
 
   if (!isPpLocked.value) {
-    if (validPp.includes(ppInput.value.trim())) isPpLocked.value = true;
+    if (validPp.includes(ppInput.value.trim())) { isPpLocked.value = true; hitPp = true; }
     else { currentSubmitCorrect = false; ppInput.value = ''; }
   }
 
@@ -325,16 +376,39 @@ const submitAnswer = () => {
     return; 
   }
 
-  if (isPastLocked.value && isPpLocked.value) {
-    new Audio('/sounds/correct.mp3').play();
-    finalizeQuestion();
+  // 🌟 答對時發出正確的單字音
+  currentSequenceId = Date.now(); 
+  if (hitPast && hitPp) {
+      new Audio('/sounds/correct.mp3').play();
+      setTimeout(async () => {
+          await playPronunciationAsync(currentVerb.value.past_tense);
+          await playPronunciationAsync(currentVerb.value.past_participle);
+      }, 300);
+  } else if (hitPast) {
+      new Audio('/sounds/correct.mp3').play();
+      setTimeout(() => playPronunciationAsync(currentVerb.value.past_tense), 300);
+  } else if (hitPp) {
+      new Audio('/sounds/correct.mp3').play();
+      setTimeout(() => playPronunciationAsync(currentVerb.value.past_participle), 300);
   }
+
+  if (isPastLocked.value && isPpLocked.value) finalizeQuestion();
 };
 
 const selectOption = (opt) => {
     if (isChecking.value || opt.disabled) return; playClickSound();
+    
     if (opt.isCorrect) {
-        new Audio('/sounds/correct.mp3').play(); isChecking.value = true;
+        currentSequenceId = Date.now(); // 中斷輪播
+        new Audio('/sounds/correct.mp3').play(); 
+        isChecking.value = true;
+        
+        // 🌟 答對時發出選項裡的過去式與過去分詞
+        setTimeout(async () => {
+            await playPronunciationAsync(currentVerb.value.past_tense);
+            await playPronunciationAsync(currentVerb.value.past_participle);
+        }, 300);
+
         let basePoints = 10;
         let overtime = Math.max(0, timeSpent.value - timeLimit.value);
         let penaltyScore = (currentWrongCount.value * wrongPenalty.value) + (overtime * timePenalty.value);
@@ -343,7 +417,7 @@ const selectOption = (opt) => {
         setTimeout(() => {
             if (currentIndex.value < currentQuestionCount.value - 1) { currentIndex.value++; startQuestion(); }
             else { endGame(); }
-        }, 1500);
+        }, 2200); // 選擇題雙發音時間較長
     } else {
         new Audio('/sounds/wrong.mp3').play(); currentWrongCount.value++; opt.disabled = true;
     }
@@ -351,6 +425,7 @@ const selectOption = (opt) => {
 
 const skipQuestion = () => {
   if (isChecking.value) return; playClickSound();
+  currentSequenceId = Date.now(); // 中斷輪播
   
   if (gameMode.value === 'mode1' || gameMode.value === 'mode3') {
       pastInput.value = String(currentVerb.value.past_tense || '').split('/')[0];
@@ -372,6 +447,7 @@ const skipQuestion = () => {
 const endGame = async () => {
   gameState.value = 'end';
   clearInterval(timer); clearInterval(moleTimer);
+  currentSequenceId = Date.now();
   confetti({ particleCount: 150, spread: 80 });
 
   const { error } = await supabase.from('game_records').insert([{
@@ -385,7 +461,7 @@ const endGame = async () => {
 
 const playAgain = () => { window.location.reload(); };
 
-onUnmounted(() => { clearInterval(timer); clearInterval(moleTimer); });
+onUnmounted(() => { clearInterval(timer); clearInterval(moleTimer); currentSequenceId = Date.now(); });
 </script>
 
 <template>
@@ -395,6 +471,7 @@ onUnmounted(() => { clearInterval(timer); clearInterval(moleTimer); });
        <h2>載入中...</h2>
     </div>
 
+    <!-- 🌟 模式選擇畫面 -->
     <div v-else-if="gameState === 'setup'" class="setup-screen retro-element">
       <h1 style="color: #0d47a1; margin-top: 0; font-size: 2.2rem;">🌀 動詞變化大師</h1>
       <p style="font-size: 1.1rem; font-weight: bold; margin-bottom: 20px; color: #555;">請選擇您的挑戰模式：</p>
@@ -410,7 +487,7 @@ onUnmounted(() => { clearInterval(timer); clearInterval(moleTimer); });
         </button>
         <button class="retro-btn mode-btn mode3-btn" @click="startGame('mode3')">
           <h3>🔨 打地鼠挑戰</h3>
-          <p>滿分 100 分 (10 題)<br>敲擊正確的時態地鼠</p>
+          <p>滿分 90 分 (9 題)<br>敲擊正確的時態地鼠</p>
         </button>
       </div>
 
@@ -421,7 +498,7 @@ onUnmounted(() => { clearInterval(timer); clearInterval(moleTimer); });
 
     <div v-else-if="gameState === 'playing' || gameState === 'end'">
       <div class="header" v-if="gameState !== 'setup'">
-        <div class="stats-board">💯 總分: {{ score }} / {{ gameMode === 'mode2' ? 80 : 100 }}</div>
+        <div class="stats-board">💯 總分: {{ score }} / {{ gameMode === 'mode1' ? 100 : (gameMode === 'mode2' ? 80 : 90) }}</div>
         <div v-if="gameState === 'playing'" class="progress">第 {{ currentIndex + 1 }} / {{ currentQuestionCount }} 題</div>
       </div>
 
@@ -439,6 +516,7 @@ onUnmounted(() => { clearInterval(timer); clearInterval(moleTimer); });
           <div class="chinese-meaning">{{ currentVerb.chinese || '無翻譯' }}</div>
         </div>
 
+        <!-- Mode 1: 兩個輸入框 -->
         <div v-if="gameMode === 'mode1'" class="inputs-container">
           <div class="input-group" :class="{ active: activeField === 'past' && !isPastLocked, locked: isPastLocked }" @click="switchField('past')">
             <label>
@@ -460,6 +538,7 @@ onUnmounted(() => { clearInterval(timer); clearInterval(moleTimer); });
           </div>
         </div>
 
+        <!-- Mode 3: 狀態框 (顯示是否已經擊中) -->
         <div v-if="gameMode === 'mode3'" class="inputs-container">
           <div class="input-group" :class="{ locked: isPastLocked }">
             <label>
@@ -481,6 +560,7 @@ onUnmounted(() => { clearInterval(timer); clearInterval(moleTimer); });
           </div>
         </div>
 
+        <!-- Mode 1: 旋轉鍵盤 -->
         <div v-if="gameMode === 'mode1'" class="keyboard-wrapper">
           <div class="spinning-keyboard" :style="{'--spin-speed': keyboardSpeed + 's'}">
             <div class="key-row" v-for="(row, rIdx) in keys" :key="rIdx">
@@ -496,6 +576,7 @@ onUnmounted(() => { clearInterval(timer); clearInterval(moleTimer); });
           </div>
         </div>
 
+        <!-- Mode 2: 旋轉選擇題 -->
         <div v-if="gameMode === 'mode2'" class="keyboard-wrapper mode2-wrapper">
           <div class="spinning-keyboard mode2-options" :style="{'--spin-speed': keyboardSpeed + 's'}">
             <button v-for="(opt, idx) in currentOptions" :key="idx"
@@ -510,6 +591,7 @@ onUnmounted(() => { clearInterval(timer); clearInterval(moleTimer); });
           </div>
         </div>
 
+        <!-- Mode 3: 打地鼠畫布 -->
         <div v-if="gameMode === 'mode3'" class="mole-grid">
           <div v-for="(mole, idx) in moles" :key="idx" class="mole-hole">
             <div class="mole" :class="{ 'up': mole.active }" @click="hitMole(idx)">
@@ -519,6 +601,7 @@ onUnmounted(() => { clearInterval(timer); clearInterval(moleTimer); });
           </div>
         </div>
 
+        <!-- 放棄按鈕 (Mode 2 & 3) -->
         <div v-if="gameMode === 'mode2' || gameMode === 'mode3'" style="text-align: center; margin-top: 20px;">
           <button class="retro-btn skip-btn-outer" @click="skipQuestion" :disabled="isChecking">
             ⏭️ {{ gameMode === 'mode3' ? '打不到？放棄本題' : '不會拼，放棄本題 (看答案)' }}
@@ -526,6 +609,7 @@ onUnmounted(() => { clearInterval(timer); clearInterval(moleTimer); });
         </div>
       </div>
 
+      <!-- 結束畫面 -->
       <div v-else-if="gameState === 'end'" class="end-screen retro-element">
         <h1>🌀 測驗結束！</h1>
         <div class="final-score">{{ Math.floor(score) }} <span>分</span></div>
