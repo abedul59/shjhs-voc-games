@@ -453,9 +453,21 @@ const endGame = async () => {
   currentSequenceId = Date.now();
   confetti({ particleCount: 150, spread: 80 });
 
+  // 🌟 判斷當前遊玩的模式名稱
+  let modeName = '鍵盤拼字';
+  if (gameMode.value === 'mode2') modeName = '旋轉選擇';
+  if (gameMode.value === 'mode3') modeName = '打地鼠';
+
   const { error } = await supabase.from('game_records').insert([{
-    student_id: studentCookie.value.id, unit_played: '動詞變化總表', game_type: '動詞變化大師', score: Math.floor(score.value), time_taken_seconds: timeSpent.value || 0
+    student_id: studentCookie.value.id, 
+    unit_played: modeName, // 🌟 將模式名稱存入 unit_played 欄位
+    game_type: '動詞變化大師', 
+    score: Math.floor(score.value), 
+    time_taken_seconds: timeSpent.value || 0
   }]);
+  
+  if (error) console.error("寫入成績失敗", error);
+
   if (!studentCookie.value.isAnon) {
     const { data } = await supabase.from('students').select('points').eq('id', studentCookie.value.id).single();
     if (data) await supabase.from('students').update({ points: data.points + Math.floor(score.value) }).eq('id', studentCookie.value.id);
