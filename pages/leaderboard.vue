@@ -17,7 +17,6 @@ const rankedList = ref([]);
 const pvpSortMode = ref('wins'); 
 const tetrisSortMode = ref('word'); 
 
-// 🌟 加入動詞對戰大師
 const pvpGames = ['單字方塊陣', '單字吞食天地', '單字塔羅21點', '單字塔羅鍊金術', '單字塔羅UNO對決', '動詞對戰大師'];
 
 onMounted(async () => {
@@ -40,14 +39,12 @@ const onVersionChange = () => { selectedVolume.value = ''; selectedUnit.value = 
 const onVolumeChange = () => { selectedUnit.value = ''; rankedList.value = []; };
 
 const fetchLeaderboard = async () => {
-  // 🌟 判斷是否為動詞系列，若為動詞系列則不需要強制選擇單元
   const isVerbingGame = selectedGameType.value === '動詞變化大師' || selectedGameType.value === '動詞對戰大師';
   if (!isVerbingGame && !selectedUnit.value) return;
   isLoading.value = true;
 
   let query = supabase.from('game_records').select('*').limit(10000); 
 
-  // 🌟 動詞系列只過濾遊戲類型；其他遊戲過濾版本、冊數、單元
   if (isVerbingGame) {
     query = query.eq('game_type', selectedGameType.value);
   } else {
@@ -174,7 +171,7 @@ const getPlayerName = (id) => {
     </div>
 
     <div class="filter-box retro-element">
-<div class="game-type-tabs">
+      <div class="game-type-tabs">
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊消消樂' }" @click="selectedGameType = '單字方塊消消樂'; fetchLeaderboard()">🟦 方塊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字神移動' }" @click="selectedGameType = '單字神移動'; fetchLeaderboard()">🔠 移動</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字選選樂' }" @click="selectedGameType = '單字選選樂'; fetchLeaderboard()">✅ 選擇</button>
@@ -204,19 +201,18 @@ const getPlayerName = (id) => {
         <button class="type-btn" :class="{ active: selectedGameType === '單字皮卡丘排球' }" @click="selectedGameType = '單字皮卡丘排球'; fetchLeaderboard()">🏐 皮卡排球</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字彈珠台' }" @click="selectedGameType = '單字彈珠台'; fetchLeaderboard()">🎰 彈珠台</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字憤怒鳥' }" @click="selectedGameType = '單字憤怒鳥'; fetchLeaderboard()">🐦 憤怒鳥</button>
- <button class="type-btn" :class="{ active: selectedGameType === '單字看圖辨義' }" @click="selectedGameType = '單字看圖辨義'; fetchLeaderboard()">🖼️ 看圖辨義</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字看圖辨義' }" @click="selectedGameType = '單字看圖辨義'; fetchLeaderboard()">🖼️ 看圖辨義</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字音節忍者' }" @click="selectedGameType = '單字音節忍者'; fetchLeaderboard()">🥷 音節忍者</button>
         <button class="type-btn" :class="{ active: selectedGameType === '英語口說學霸' }" @click="selectedGameType = '英語口說學霸'; fetchLeaderboard()">🗣️ 口說學霸</button>
         <button class="type-btn" :class="{ active: selectedGameType === '仿會考辨識句意' }" @click="selectedGameType = '仿會考辨識句意'; fetchLeaderboard()">💯 會考聽力</button>     
-        
-         <button class="type-btn" :class="{ active: selectedGameType === '單字搖搖杯' }" @click="selectedGameType = '單字搖搖杯'; fetchLeaderboard()">🧋 搖搖杯</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字搖搖杯' }" @click="selectedGameType = '單字搖搖杯'; fetchLeaderboard()">🧋 搖搖杯</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字天平' }" @click="selectedGameType = '單字天平'; fetchLeaderboard()">⚖️ 天平</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字迷宮滾滾球' }" @click="selectedGameType = '單字迷宮滾滾球'; fetchLeaderboard()">🔮 迷宮</button>
         <button class="type-btn" :class="{ active: selectedGameType === '霍格華茲單字杖' }" @click="selectedGameType = '霍格華茲單字杖'; fetchLeaderboard()">🪄 單字杖</button>
         <button class="type-btn" :class="{ active: selectedGameType === 'AR實境單字狙擊手' }" @click="selectedGameType = 'AR實境單字狙擊手'; fetchLeaderboard()">🔫 狙擊手</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字地圖 GO' }" @click="selectedGameType = '單字地圖 GO'; fetchLeaderboard()">🌍 地圖GO</button>
-        <button class="type-btn" :class="{ active: selectedGameType === '動詞變化大師' }" @click="selectedGameType = '動詞變化大師'; fetchLeaderboard()">動詞變化大師</button>
-        <button class="type-btn" :class="{ active: selectedGameType === '動詞對戰大師' }" @click="selectedGameType = '動詞對戰大師'; fetchLeaderboard()">動詞對戰大師</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '動詞變化大師' }" @click="selectedGameType = '動詞變化大師'; fetchLeaderboard()">🌀 動詞變化大師</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '動詞對戰大師' }" @click="selectedGameType = '動詞對戰大師'; fetchLeaderboard()">⚔️ 動詞對戰大師</button>
       </div>
 
       <div v-if="pvpGames.includes(selectedGameType)" class="sub-tabs">
@@ -251,9 +247,14 @@ const getPlayerName = (id) => {
     <div class="rank-list" v-if="rankedList.length > 0">
       <div class="rank-card retro-element" v-for="(record, index) in rankedList" :key="record.id" :class="{'top-1': index===0, 'top-2': index===1, 'top-3': index===2}">
         <div class="rank-number">#{{ index + 1 }}</div>
+        
+        <!-- 🌟 名次區塊增加遊玩模式標示 -->
         <div class="rank-info">
           <div class="player-name">{{ getPlayerName(record.student_id) }}</div>
-          <div class="attempt-badge" v-if="!pvpGames.includes(selectedGameType) && selectedGameType !== '單字俄羅斯方塊'">第 {{ record.attempt_number || 1 }} 次</div>
+          <div style="margin-top: 5px;">
+            <span class="attempt-badge" v-if="!pvpGames.includes(selectedGameType) && selectedGameType !== '單字俄羅斯方塊'">第 {{ record.attempt_number || 1 }} 次</span>
+            <span class="mode-badge" v-if="selectedGameType === '動詞變化大師'">🎯 {{ record.unit_played === '動詞變化總表' ? '經典模式' : record.unit_played }}</span>
+          </div>
         </div>
         
         <div class="rank-score" v-if="pvpGames.includes(selectedGameType)">
@@ -335,7 +336,11 @@ const getPlayerName = (id) => {
 .rank-number { font-size: 1.8rem; font-weight: 900; color: var(--text-main); width: 50px; text-align: center; }
 .rank-info { flex: 1; padding: 0 10px; }
 .player-name { font-size: 1.1rem; font-weight: 900; color: var(--text-main); }
-.attempt-badge { background: var(--text-main); color: var(--box-bg); display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; margin: 5px 0 0 0; }
+.attempt-badge { background: var(--text-main); color: var(--box-bg); display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; margin: 0; }
+
+/* 🌟 動詞大師專屬模式標籤 */
+.mode-badge { background: #e3f2fd; color: #0d47a1; display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; margin-left: 5px; border: 1px solid #1976d2; }
+
 .rank-score { text-align: right; min-width: 80px; }
 .rank-score strong { font-size: 1.5rem; }
 .rank-score small { font-weight: bold; display: block; margin-top: 5px;}
