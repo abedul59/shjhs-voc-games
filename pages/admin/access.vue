@@ -31,6 +31,7 @@ const gamesList = [
   { id: 'gravitymaze', name: '🔮 單字迷宮滾滾球' }, { id: 'swing2cast', name: '🪄 霍格華茲單字魔法杖' }, { id: 'ARsniper', name: '🔫 AR實境單字狙擊手' }, { id: 'GPSmap', name: '🌍 單字地圖 GO' }, 
   { id: 'speakno2', name: '📖 英語口說學霸-朗讀與說故事' }, { id: 'KKphonetics', name: '🔤 KK音標初學/複習' }, { id: 'Phonics', name: '🔤 自然發音初學/複習' }, { id: 'speakno3', name: '🎤 英語口說學霸-英語歌唱' }, 
   { id: 'examRead2', name: '📜 會考閱讀考古學(題組)' }, { id: 'gramAmuPark', name: '🎡 文法遊樂園' }, { id: 'noropejump', name: '🏃‍♂️ 單字無繩式跳繩' }, { id: 'vocshooting', name: '🥊 單字飛鼠射擊' },
+   { id: 'verbAmuPark', name: '🎢 動詞變化遊樂園' }, 
 ];
 
 const daysList = [{ val: 1, label: '一' }, { val: 2, label: '二' }, { val: 3, label: '三' }, { val: 4, label: '四' }, { val: 5, label: '五' }, { val: 6, label: '六' }, { val: 0, label: '日' }];
