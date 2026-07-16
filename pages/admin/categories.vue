@@ -47,6 +47,7 @@ const allGames = [
   { id: 'gramAmuPark', name: '🎡 文法遊樂園' },
   { id: 'noropejump', name: '🏃‍♂️ 單字無繩式跳繩' },
   { id: 'verbing', name: '🌀 動詞變化大師' }, // 🌟 加在這裡！
+  { id: 'verbAmuPark', name: '🎢 動詞變化遊樂園' }, // 🌟 加在這裡！
   { id: 'verbingDual', name: '⚔️ 動詞變化大師(對戰)' },
   { id: 'battle', name: '⚔️ 單字方塊陣' },
   { id: 'tenchi', name: '🐎 吞食天地' },
