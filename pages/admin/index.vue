@@ -205,6 +205,9 @@ const clearGhostRooms = async () => {
     </div>
     
     <div class="actions">
+      <NuxtLink to="/admin/verb-mastery" class="retro-btn action-btn" style="background-color: #fff3e0; border-color: #e65100; color: #d35400;">
+  📊 動詞變化精熟度分析
+      </NuxtLink>
       <NuxtLink to="/admin/records" class="retro-btn record-btn">🏆 紀錄報表</NuxtLink>
       <NuxtLink to="/admin/stats" class="retro-btn stats-btn">📈 對錯分析</NuxtLink>
       <NuxtLink to="/admin/leaderboard" class="retro-btn test-btn">🏅 英雄榜</NuxtLink>
