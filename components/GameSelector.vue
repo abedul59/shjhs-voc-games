@@ -67,18 +67,21 @@ const gameDict = {
   'tarotUno': { name: '🃏 塔羅 UNO', path: '/game-tarotUno', class: 'tarot-btn', pvpKey: 'enable_tarot_uno' },
   'verbing': { name: '🌀 動詞變化大師', path: '/game-verbing', class: 'exam-btn full-width' },
   'verbingDual': { name: '⚔️ 動詞變化大師(對戰)', path: '/game-verbingDual', class: 'battle-btn full-width', pvpKey: 'enable_verbingDual' },
+  // 🌟 加入全新的動詞變化遊樂園
+  'verbAmuPark': { name: '🎢 動詞變化遊樂園', path: '/game-verbAmuPark', class: 'exam-btn full-width' },
 };
 
-const noUnitGames = ['speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examRead1', 'examRead2', 'verbing','verbingDual'];
+// 🌟 將 verbAmuPark 加入不需選單元的名單
+const noUnitGames = ['speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examRead1', 'examRead2', 'verbing', 'verbingDual', 'verbAmuPark'];
 const isNoUnitGame = computed(() => noUnitGames.includes(selectedGameType.value));
 
-// 🌟 預設分類 (當資料庫沒設定時的完美備案)
+// 🌟 預設分類 (加入動詞變化遊樂園)
 const defaultCategories = [
   { id: 'c1', name: '🕹️ 經典單字遊戲', games: ['match', 'move', 'choice', 'fill', 'sentence', 'listen', 'puzzle', 'cross', 'review', 'picture2meaning', 'ninja'] },
   { id: 'c2', name: '🏆 體感與趣味挑戰', games: ['shake2shuffle', 'tilt2sort', 'gravitymaze', 'swing2cast', 'ARsniper', 'GPSmap', 'vocshooting', 'noropejump'] },
   { id: 'c3', name: '👾 懷舊街機遊樂場', games: ['tetris', 'pinball', 'angrybirds', 'solitaire', 'pikavolley', 'pacman', 'minesweeper', 'sudoku'] },
   { id: 'c4', name: '⚔️ 雙人對戰與領域牌組', games: ['battle', 'tenchi', 'tarot21', 'tarotAlch', 'tarotUno', 'tarotUno1', 'tarot21solo', 'tarotAlch1'] },
-  { id: 'c5', name: '🎓 考試與口說訓練', games: ['speak', 'speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examListen1', 'examRead1', 'examRead2', 'gramAmuPark'] }
+  { id: 'c5', name: '🎓 考試與口說訓練', games: ['speak', 'speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examListen1', 'examRead1', 'examRead2', 'gramAmuPark', 'verbing', 'verbAmuPark'] }
 ];
 
 const dynamicCategories = ref([...defaultCategories]);
@@ -87,7 +90,6 @@ const accessSettings = ref({
   disabled_games: [], locked_units: [], restrict_play_time: false, allow_play_days: [1,2,3,4,5,6,0], allow_play_start: '00:00', allow_play_end: '23:59'
 });
 
-// 🌟 儲存學生專屬白名單 (預設全開)
 const studentAllowedGames = ref(['ALL']);
 
 onMounted(async () => {
@@ -97,7 +99,7 @@ onMounted(async () => {
     vData.forEach(item => { if (!uniqueMenu.find(u => u.version === item.version && u.volume === item.volume && u.unit === item.unit)) uniqueMenu.push(item); });
     vocabMenu.value = uniqueMenu;
 
-    // 🌟 讀取上次記憶的範圍 (並確保選單真的存在該單元，防呆設計)
+    // 讀取上次記憶的範圍
     if (typeof window !== 'undefined') {
       const savedVersion = localStorage.getItem('shjhs_selectedVersion');
       const savedVolume = localStorage.getItem('shjhs_selectedVolume');
@@ -117,14 +119,12 @@ onMounted(async () => {
   
   const { data: settings } = await supabase.from('system_settings').select('*').eq('id', 1).single();
   if (settings) {
-    // 🚨 核心防護：如果後台設定禁止匿名，且學生目前的 Cookie 是匿名身分，強制登出！
     if (settings.disable_anon_login === true && studentCookie.value && studentCookie.value.isAnon) {
       alert('⚠️ 老師已關閉匿名登入功能！系統將強制為您登出，請使用正確的班級座號登入。');
       handleLogout();
       return; 
     }
 
-    // 相容並載入資料庫的分類
     if (settings.game_categories && settings.game_categories.length > 0) {
       dynamicCategories.value = settings.game_categories.map((c, i) => ({
         id: c.id || `cat_${i}`,
@@ -134,6 +134,13 @@ onMounted(async () => {
       const hasShooting = dynamicCategories.value.some(cat => cat.games.includes('vocshooting'));
       if (!hasShooting && dynamicCategories.value.length > 0) {
         dynamicCategories.value[0].games.push('vocshooting');
+      }
+      // 防呆：如果資料庫的分類裡沒有這兩個遊戲，自動塞進最後一個分類
+      const hasVerbing = dynamicCategories.value.some(cat => cat.games.includes('verbing'));
+      const hasVerbAmuPark = dynamicCategories.value.some(cat => cat.games.includes('verbAmuPark'));
+      if (dynamicCategories.value.length > 0) {
+        if (!hasVerbing) dynamicCategories.value[dynamicCategories.value.length - 1].games.push('verbing');
+        if (!hasVerbAmuPark) dynamicCategories.value[dynamicCategories.value.length - 1].games.push('verbAmuPark');
       }
     }
     
@@ -155,7 +162,6 @@ onMounted(async () => {
     };
   }
 
-  // 🌟 以 student_id (學號) 讀取白名單
   if (studentCookie.value && !studentCookie.value.isAnon) {
     const { data: stuData } = await supabase.from('students')
       .select('allowed_games')
@@ -167,7 +173,6 @@ onMounted(async () => {
     }
   }
 
-  // 防呆：自動選取第一個可玩的遊戲
   setTimeout(() => {
     if (checkGameDisabled(selectedGameType.value)) {
        for (const cat of dynamicCategories.value) {
@@ -215,7 +220,6 @@ const isUnitLocked = computed(() => {
   return accessSettings.value.locked_units.includes(`${selectedVersion.value}|${selectedVolume.value}|${selectedUnit.value}`);
 });
 
-// 🌟 動態判定遊戲是否被鎖住 (整合全校設定與學生白名單)
 const checkGameDisabled = (gameId) => {
     if (accessSettings.value.disabled_games?.includes(gameId)) return true;
     const gData = gameDict[gameId];
@@ -270,14 +274,13 @@ onUnmounted(() => removeIdleTracking());
         <span v-else>👤 {{ studentCookie.class }} - {{ studentCookie.name }}</span>
       </p>
       
-      <div class="user-actions" style="display: flex; justify-content: center; gap: 15px; margin-top: 15px;">
+      <div class="user-actions" style="display: flex; justify-content: center; gap: 15px; margin-top: 15px; flex-wrap: wrap;">
         <NuxtLink v-if="!studentCookie.isAnon" to="/student-grammar-stats" class="retro-btn stats-btn" style="background: #3f51b5; color: white; border-color: #1a237e; text-decoration: none;">
           📊 我的文法診斷簿
         </NuxtLink>
-
-        <NuxtLink to="/student-verb-stats" class="retro-btn" style="background-color: #e3f2fd; border-color: #1976d2; color: #0d47a1;">
-  📊 我的動詞變化診斷簿
-</NuxtLink>
+        <NuxtLink v-if="!studentCookie.isAnon" to="/student-verb-stats" class="retro-btn stats-btn" style="background: #e3f2fd; color: #0d47a1; border-color: #1976d2; text-decoration: none;">
+          📊 動詞變化診斷簿
+        </NuxtLink>
         <button class="retro-btn logout-btn" @click="handleLogout">🚪 登出帳號</button>
       </div>
     </div>
@@ -324,7 +327,6 @@ onUnmounted(() => removeIdleTracking());
 </template>
 
 <style scoped>
-/* 完美保留您原本的樣式與外觀設定 */
 .cat-title { width: 100%; margin: 10px 0; color: #ff9800; text-align: left; font-size: 1.1rem; border-bottom: 1px dashed #555; padding-bottom: 5px;}
 .lock-banner { background: #ffebee; border: 2px dashed #f44336; color: #c62828; padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; margin-bottom: 15px; font-size: 1.1rem; }
 .lock-banner.mini { padding: 8px; font-size: 0.95rem; margin-top: -5px; }
@@ -352,8 +354,6 @@ onUnmounted(() => removeIdleTracking());
 .game-type-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
 .type-btn { flex: 1; min-width: 45%; padding: 10px 5px; font-size: 0.95rem; font-weight: 900; background: var(--tab-bg); color: var(--text-main); border: var(--border-width) solid var(--border-color); border-radius: var(--radius-element); cursor: pointer; box-shadow: var(--shadow-btn); transition: all 0.2s; }
 .type-btn.active { background: var(--tab-active-bg); color: var(--tab-active-text); transform: var(--transform-active); box-shadow: var(--shadow-btn-active); }
-
-/* 🌟 控制按鈕鎖定的原生樣式效果 */
 .type-btn:disabled { opacity: 0.5; filter: grayscale(100%); cursor: not-allowed; box-shadow: none; transform: none; border-color: #aaa !important; color: #777 !important; } 
 
 .full-width { min-width: 100%; margin-top: 5px; }
@@ -367,7 +367,6 @@ onUnmounted(() => removeIdleTracking());
 .start-btn { background: var(--btn-primary-bg); color: var(--btn-primary-text); }
 .retro-btn:active:not(:disabled) { transform: var(--transform-active); box-shadow: var(--shadow-btn-active); }
 .error-msg { background: var(--danger-bg); border: 2px dashed var(--danger-color); color: var(--danger-color); margin-top: 15px; font-weight: 900; padding: 10px; text-align: center; border-radius: var(--radius-element); }
-@media (max-width: 600px) { .game-type-tabs { flex-direction: column; } .type-btn { min-width: 100%; } }
 
 .shake-btn { background: #fffde7; color: #e65100; border-color: #ffb300; }
 .shake-btn.active { background: #e65100; color: #fff; box-shadow: 0 4px 0 #bf360c; border-color: #bf360c; }
@@ -383,4 +382,6 @@ onUnmounted(() => removeIdleTracking());
 .gps-btn.active { background: #2e7d32; color: #fff; box-shadow: 0 4px 0 #1b5e20; border-color: #1b5e20; }
 .shooting-btn { background: #e3f2fd; color: #1565c0; border-color: #1e88e5; }
 .shooting-btn.active { background: #1565c0; color: #fff; box-shadow: 0 4px 0 #0d47a1; border-color: #0d47a1; }
+
+@media (max-width: 600px) { .game-type-tabs { flex-direction: column; } .type-btn { min-width: 100%; } }
 </style>
