@@ -274,6 +274,10 @@ onUnmounted(() => removeIdleTracking());
         <NuxtLink v-if="!studentCookie.isAnon" to="/student-grammar-stats" class="retro-btn stats-btn" style="background: #3f51b5; color: white; border-color: #1a237e; text-decoration: none;">
           📊 我的文法診斷簿
         </NuxtLink>
+
+        <NuxtLink to="/student-verb-stats" class="retro-btn" style="background-color: #e3f2fd; border-color: #1976d2; color: #0d47a1;">
+  📊 我的動詞變化診斷簿
+</NuxtLink>
         <button class="retro-btn logout-btn" @click="handleLogout">🚪 登出帳號</button>
       </div>
     </div>
