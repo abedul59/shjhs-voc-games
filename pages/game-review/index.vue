@@ -234,26 +234,44 @@ const endGame = async () => {
   clearInterval(timer);
   gameState.value = 'gameover';
   
-  // 🌟 修正點：使用正確的 time_taken_seconds 與補上 class_name, real_name 等必須欄位
   if (studentCookie.value) {
-    await supabase.from('game_records').insert([{
+    const totalTimeTaken = config.value.time_limit - timeRemaining.value;
+    let userIp = 'Unknown'; 
+    try { userIp = (await (await fetch('https://api.ipify.org?format=json')).json()).ip; } catch (e) {}
+
+    // 計算這是該單元的第幾次挑戰
+    const { count } = await supabase.from('game_records')
+      .select('*', { count: 'exact', head: true })
+      .eq('student_id', studentCookie.value.id)
+      .eq('unit_played', route.query.unit)
+      .eq('game_type', '單字複習趣');
+
+    // 🌟 修正點：移除不屬於 game_records 的欄位，對齊標準格式
+    const { error } = await supabase.from('game_records').insert([{
       student_id: studentCookie.value.id,
-      real_name: studentCookie.value.real_name || studentCookie.value.name,
-      class_name: studentCookie.value.class || '未分班',
       game_type: '單字複習趣',
       score: Math.round(score.value),
-      time_taken_seconds: config.value.time_limit - timeRemaining.value,
+      time_taken_seconds: totalTimeTaken,
       version: route.query.version,
-      volume: route.query.volume,
+      volume: route.query.volume || '',
       unit_played: route.query.unit,
-      is_anon: studentCookie.value.isAnon || false,
-      browser_id: studentCookie.value.browserId
+      attempt_number: (count || 0) + 1,
+      ip_address: userIp,
+      device_info: navigator.userAgent
     }]);
+
+    if (error) {
+      alert(`🚨 資料庫寫入失敗！請截圖給老師：\n${error.message}`);
+      console.error("寫入錯誤:", error);
+      return;
+    }
 
     // 幫一般登入學生加總分
     if (!studentCookie.value.isAnon) {
       const { data } = await supabase.from('students').select('points').eq('id', studentCookie.value.id).single();
-      if (data) await supabase.from('students').update({ points: data.points + Math.round(score.value) }).eq('id', studentCookie.value.id);
+      if (data) {
+        await supabase.from('students').update({ points: data.points + Math.round(score.value) }).eq('id', studentCookie.value.id);
+      }
     }
   }
 };
