@@ -262,23 +262,45 @@ const uploadRecord = async (gameName) => {
   if (!student.id) return;
   
   try {
-    await supabase.from('game_records').insert([{ 
+    let userIp = 'Unknown'; 
+    try { 
+      const response = await fetch('https://api.ipify.org?format=json');
+      const data = await response.json();
+      userIp = data.ip; 
+    } catch (e) {
+      console.log('無法取得 IP');
+    }
+
+    // 計算這是該單元的第幾次挑戰
+    const { count } = await supabase.from('game_records')
+      .select('*', { count: 'exact', head: true })
+      .eq('student_id', student.id)
+      .eq('unit_played', qUnit)
+      .eq('game_type', gameName);
+      
+    // 🌟 修正點：移除不屬於 game_records 的欄位，對齊標準存檔格式
+    const { error } = await supabase.from('game_records').insert([{ 
       student_id: student.id, 
-      real_name: student.real_name || student.name,
-      class_name: student.class || '未分班', 
-      version: qVersion, // 🌟 使用暫存的變數
-      volume: qVolume, 
-      unit_played: qUnit,
       game_type: gameName, 
       score: Math.round(score.value),
       time_taken_seconds: Math.round((Date.now() - gameStartTime) / 1000),
+      version: qVersion,
+      volume: qVolume || '', 
+      unit_played: qUnit,
+      attempt_number: (count || 0) + 1,
       correct_words: correctWordsList.value.join(', '),
       wrong_words: Array.from(wrongWordsSet.value).join(', '),
       device_info: navigator.userAgent,
-      is_anon: student.isAnon || false, 
-      browser_id: student.browserId || 'unknown'
+      ip_address: userIp
     }]);
 
+    if (error) {
+      alert(`🚨 資料庫寫入失敗！請截圖給老師：\n${error.message}`);
+      console.error("寫入錯誤:", error);
+      return;
+    }
+
+    // 幫一般登入學生加總分
     if (!student.isAnon) {
       const { data: currentData } = await supabase.from('students').select('points').eq('id', student.id).single();
       if (currentData) {
@@ -289,6 +311,7 @@ const uploadRecord = async (gameName) => {
     }
   } catch(err) { 
     console.error('成績上傳失敗', err); 
+    alert(`🚨 發生未知的錯誤：\n${err.message}`);
   }
 };
 // ==========================================
