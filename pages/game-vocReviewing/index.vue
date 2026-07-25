@@ -47,7 +47,7 @@ onMounted(async () => {
   isLoading.value = false;
 });
 
-// 離開頁面時強制停止語音，避免背景繼續唸
+// 離開頁面時強制停止語音
 onUnmounted(() => {
   if (window.speechSynthesis) {
     window.speechSynthesis.cancel();
@@ -59,13 +59,13 @@ const speakText = (text, lang) => {
   return new Promise((resolve) => {
     if (!window.speechSynthesis || !text) return resolve();
     
-    window.speechSynthesis.cancel(); // 清除排隊中的語音
+    window.speechSynthesis.cancel(); 
     
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
-    utterance.rate = lang === 'en-US' ? 0.85 : 1.0; // 英文稍微放慢，適合學習
+    utterance.rate = lang === 'en-US' ? 0.85 : 1.0; 
     
-    // 防卡死計時器 (若瀏覽器發音API當機，強制 resolve 讓程式繼續)
+    // 防卡死計時器
     const timeout = setTimeout(() => {
          resolve();
     }, text.length * 150 + 3000);
@@ -85,13 +85,12 @@ const speakText = (text, lang) => {
 
 // 單顆按鈕發音
 const playSingle = async (text, lang) => {
-    if (isPlayingAll.value) return; // 若正在總複習連播，禁用單獨按鈕
+    if (isPlayingAll.value) return; 
     await speakText(text, lang);
 };
 
 // 總複習發音 (連播)
 const togglePlayAll = async () => {
-  // 如果正在播放，則中斷
   if (isPlayingAll.value) {
     isPlayingAll.value = false;
     window.speechSynthesis.cancel();
@@ -105,27 +104,30 @@ const togglePlayAll = async () => {
     currentPlayIndex.value = i;
     const v = vocabList.value[i];
     
-    // 1. 唸單字
-    await speakText(v.word, 'en-US');
-    if (!isPlayingAll.value) break;
-    await new Promise(r => setTimeout(r, 400));
+    // 1. 唸單字 (en_us)
+    if (v.en_us) {
+      await speakText(v.en_us, 'en-US');
+      if (!isPlayingAll.value) break;
+      await new Promise(r => setTimeout(r, 400));
+    }
     
-    // 2. 唸中文
-    await speakText(v.chinese, 'zh-TW');
-    if (!isPlayingAll.value) break;
-    await new Promise(r => setTimeout(r, 400));
+    // 2. 唸中文 (zh_tw)
+    if (v.zh_tw) {
+      await speakText(v.zh_tw, 'zh-TW');
+      if (!isPlayingAll.value) break;
+      await new Promise(r => setTimeout(r, 400));
+    }
     
-    // 3. 唸例句 (如果有)
-    if (v.sentence) {
-        await speakText(v.sentence, 'en-US');
+    // 3. 唸例句 (example_en)
+    if (v.example_en) {
+        await speakText(v.example_en, 'en-US');
         if (!isPlayingAll.value) break;
-        await new Promise(r => setTimeout(r, 800)); // 例句唸完稍微停頓久一點換下一個單字
+        await new Promise(r => setTimeout(r, 800)); 
     } else {
         await new Promise(r => setTimeout(r, 500));
     }
   }
   
-  // 播完後重置狀態
   isPlayingAll.value = false;
   currentPlayIndex.value = -1;
 };
@@ -159,17 +161,21 @@ const togglePlayAll = async () => {
           <!-- 單字與中文區塊 -->
           <div class="word-section">
             <div class="word-header">
-              <h2 class="word-text">{{ v.word }}</h2>
-              <button class="sound-btn" @click="playSingle(v.word, 'en-US')" :disabled="isPlayingAll" title="發音">🔊</button>
+              <h2 class="word-text">{{ v.en_us }}</h2>
+              <button v-if="v.en_us" class="sound-btn" @click="playSingle(v.en_us, 'en-US')" :disabled="isPlayingAll" title="發音">🔊</button>
             </div>
-            <p class="chinese-text">{{ v.chinese }}</p>
+            <p class="chinese-text">{{ v.zh_tw }}</p>
           </div>
           
           <!-- 例句區塊 -->
           <div class="sentence-section">
-            <div v-if="v.sentence" class="sentence-header">
-              <p class="sentence-text">{{ v.sentence }}</p>
-              <button class="sound-btn" @click="playSingle(v.sentence, 'en-US')" :disabled="isPlayingAll" title="唸例句">🔊</button>
+            <div v-if="v.example_en" class="sentence-header">
+              <div class="sentence-content">
+                <p class="sentence-text">{{ v.example_en }}</p>
+                <!-- 順便把例句中文翻譯加進去 -->
+                <p v-if="v.example_zh" class="sentence-zh-text">{{ v.example_zh }}</p>
+              </div>
+              <button class="sound-btn" @click="playSingle(v.example_en, 'en-US')" :disabled="isPlayingAll" title="唸例句">🔊</button>
             </div>
             <div v-else class="sentence-header">
               <p class="sentence-text" style="color: #999; font-style: italic;">(本單字無提供例句)</p>
@@ -208,7 +214,9 @@ const togglePlayAll = async () => {
 
 .sentence-section { background: #f9f9f9; padding: 15px; border-radius: 8px; border: 2px dashed #bbb; display: flex; flex-direction: column; justify-content: center;}
 .sentence-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 15px;}
+.sentence-content { display: flex; flex-direction: column; gap: 5px;}
 .sentence-text { font-size: 1.15rem; color: #333; margin: 0; line-height: 1.5; font-weight: 500;}
+.sentence-zh-text { font-size: 1rem; color: #777; margin: 0; line-height: 1.4;}
 
 .sound-btn { background: #fff; border: 2px solid #1976d2; border-radius: 50%; width: 42px; height: 42px; font-size: 1.2rem; cursor: pointer; display: flex; justify-content: center; align-items: center; transition: 0.2s; flex-shrink: 0;}
 .sound-btn:active:not(:disabled) { transform: scale(0.9); background: #e3f2fd;}
