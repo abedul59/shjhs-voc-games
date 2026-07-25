@@ -70,7 +70,6 @@ const config = ref({
   tarot_alch_card_set: '1', tarot_alch_hp: 50, tarot_alch_time_limit: 20, tarot_alch_penalty: 5, tarot_alch_win_damage: 10, tarot_alch_blank_count: 3, tarot_alch_max_escapes: 20,
   tarot_uno_card_set: '1', tarot_uno_hp: 50, tarot_uno_time_limit: 15, tarot_uno_penalty: 5, tarot_uno_win_damage: 15, tarot_uno_blank_count: 3, tarot_uno_max_escapes: 20,
   
-  // 🌟 這裡補上了 enable_verbingDual 開關！
   enable_battle: false, enable_tenchi: false, enable_tarot21: false, enable_tarot_alch: false, enable_tarot_uno: false, enable_verbingdual: true
 });
 
@@ -92,51 +91,25 @@ const saveSettings = async () => {
   if (error) alert('更新失敗：' + error.message); else alert('✅ 系統設定更新成功！');
 };
 
-// 🌟 一鍵全校升級邏輯
+// 🌟 一鍵全校升級邏輯 (呼叫 RPC 預存程序的完美升級版本)
 const upgradeStudents = async () => {
   const currentYear = new Date().getFullYear();
-  const confirmMsg = `⚠️ 警告：這將會把所有學生的班級與座號自動升級（例如 701 變 801，901 會變成 901-畢業）。\n\n請問您確定要執行【${currentYear} 年度全校升級】嗎？\n此動作將無法直接復原！`;
+  const confirmMsg = `⚠️ 警告：這將會把 9 年級畢業，並把 7、8 年級連同『所有遊戲與診斷紀錄』一起升級（701變801）。\n\n請問您確定要執行【${currentYear} 年度全校完美升級】嗎？\n此動作將無法直接復原！`;
   
   if (!confirm(confirmMsg)) return;
 
   try {
     isLoading.value = true;
-    const { data: students, error: fetchErr } = await supabase.from('students').select('id, student_id, class_name, last_upgrade_year');
-    if (fetchErr) throw fetchErr;
-
-    let updatedCount = 0;
-    for (const student of students) {
-      // 防止同一年重複升級
-      if (student.last_upgrade_year === currentYear) continue;
-
-      let newClassName = student.class_name;
-      let newStudentId = student.student_id;
-
-      if (newClassName && /^\d{3}$/.test(newClassName)) {
-        const grade = parseInt(newClassName[0]);
-        const classNum = newClassName.substring(1);
-        const seatNum = newStudentId.slice(-2); // 取最後兩碼當座號
-
-        if (grade === 7 || grade === 8) {
-          newClassName = `${grade + 1}${classNum}`;
-          newStudentId = `${newClassName}${seatNum}`;
-        } else if (grade === 9) {
-          newClassName = `${newClassName}-畢業`;
-          // 畢業生保留原ID，以免重複
-        }
-
-        if (newClassName !== student.class_name) {
-          await supabase.from('students').update({ 
-            class_name: newClassName,
-            student_id: newStudentId,
-            last_upgrade_year: currentYear
-          }).eq('id', student.id);
-          updatedCount++;
-        }
-      }
-    }
     
-    alert(`🎉 升級完成！共成功升級了 ${updatedCount} 位學生的班級與帳號。`);
+    // 直接呼叫我們在 Supabase 建立的 RPC 強力升級程式
+    const { error } = await supabase.rpc('upgrade_all_students');
+
+    if (error) {
+      throw error;
+    } else {
+      alert(`🎉 升級完美完成！學生與所有歷史資料已順利對接新年級！`);
+      window.location.reload(); // 重新整理畫面以顯示最新資料
+    }
   } catch (err) {
     console.error("升級失敗", err);
     alert("升級過程發生錯誤：" + err.message);
@@ -157,7 +130,6 @@ const clearGhostRooms = async () => {
     // 計算 15 分鐘前的時間點
     const thresholdTime = new Date(Date.now() - 15 * 60 * 1000).toISOString();
     
-    // 🌟 將 game_rooms 加入清單，這樣新遊戲的房間也能被清掉
     const pvpTables = [
       'battle_rooms', 
       'tenchi_rooms', 
@@ -206,7 +178,7 @@ const clearGhostRooms = async () => {
     
     <div class="actions">
       <NuxtLink to="/admin/verb-mastery" class="retro-btn action-btn" style="background-color: #fff3e0; border-color: #e65100; color: #d35400;">
-  📊 動詞變化精熟度分析
+        📊 動詞變化精熟度分析
       </NuxtLink>
       <NuxtLink to="/admin/records" class="retro-btn record-btn">🏆 紀錄報表</NuxtLink>
       <NuxtLink to="/admin/stats" class="retro-btn stats-btn">📈 對錯分析</NuxtLink>
@@ -261,12 +233,11 @@ const clearGhostRooms = async () => {
         </NuxtLink>
 
         <NuxtLink to="/admin/law-exam"  class="retro-btn test-btn" style="grid-column: span 2;">
-  <div class="ml-4">
-    <h3 class="font-bold text-gray-800">管理員設定</h3>
-    <p class="text-xs text-gray-500">調整系統進階參數與安全性配置</p>
-  </div>
+          <div class="ml-4">
+            <h3 class="font-bold text-gray-800">管理員設定</h3>
+            <p class="text-xs text-gray-500">調整系統進階參數與安全性配置</p>
+          </div>
         </NuxtLink>
-
         
       </template>
     </div>
