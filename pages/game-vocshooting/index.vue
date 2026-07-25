@@ -54,6 +54,7 @@ import { ref, computed, onUnmounted, nextTick } from 'vue';
 
 const supabase = useSupabaseClient(); 
 const route = useRoute();
+const studentCookie = useCookie('currentStudent'); // 🌟 取得登入學生資訊
 
 const gameState = ref('init'); 
 const isLoading = ref(false);
@@ -67,6 +68,9 @@ const remainingCount = computed(() => vocabList.value.length - usedVocabIds.valu
 
 const activeTargets = ref([]);
 let animationFrameId = null;
+
+// 🌟 記錄遊戲時間
+const gameStartTime = ref(0);
 
 const startShootingGame = async () => {
   isLoading.value = true;
@@ -88,6 +92,7 @@ const startShootingGame = async () => {
   vocabList.value = data;
   gameState.value = 'playing';
   isLoading.value = false;
+  gameStartTime.value = Date.now(); // 🌟 遊戲開始計時
   nextRound();
 };
 
@@ -164,6 +169,56 @@ const updatePositions = () => {
   animationFrameId = requestAnimationFrame(updatePositions);
 };
 
+// 🌟 遊戲結束與存檔邏輯
+const endGame = async () => {
+  gameState.value = 'init';
+  usedVocabIds.value.clear();
+  cancelAnimationFrame(animationFrameId);
+
+  const totalTimeTaken = Math.floor((Date.now() - gameStartTime.value) / 1000);
+  alert(`🎉 神槍手！你已清空所有目標！\n最終分數：${score.value}\n總花費時間：${totalTimeTaken} 秒`);
+
+  if (studentCookie.value) {
+    let userIp = 'Unknown'; 
+    try { userIp = (await (await fetch('https://api.ipify.org?format=json')).json()).ip; } catch (e) {}
+
+    // 取得嘗試次數
+    const { count } = await supabase.from('game_records')
+      .select('*', { count: 'exact', head: true })
+      .eq('student_id', studentCookie.value.id)
+      .eq('unit_played', route.query.unit)
+      .eq('game_type', '飛鼠單字射擊');
+
+    // 寫入 game_records
+    const { error } = await supabase.from('game_records').insert([{
+      student_id: studentCookie.value.id,
+      game_type: '飛鼠單字射擊',
+      score: Math.round(score.value),
+      time_taken_seconds: totalTimeTaken,
+      version: route.query.version,
+      volume: route.query.volume || '',
+      unit_played: route.query.unit,
+      attempt_number: (count || 0) + 1,
+      ip_address: userIp,
+      device_info: navigator.userAgent
+    }]);
+
+    if (error) {
+      alert(`🚨 資料庫寫入失敗！請截圖給老師：\n${error.message}`);
+      console.error("寫入錯誤:", error);
+      return;
+    }
+
+    // 幫一般登入學生加總分
+    if (!studentCookie.value.isAnon) {
+      const { data } = await supabase.from('students').select('points').eq('id', studentCookie.value.id).single();
+      if (data) {
+        await supabase.from('students').update({ points: data.points + Math.round(score.value) }).eq('id', studentCookie.value.id);
+      }
+    }
+  }
+};
+
 const shootTarget = (target) => {
   if (target.hitState !== 'none' || gameState.value !== 'playing') return;
 
@@ -174,9 +229,8 @@ const shootTarget = (target) => {
 
     setTimeout(() => {
       if (usedVocabIds.value.size >= vocabList.value.length) {
-        alert(`🎉 神槍手！你已清空所有目標！\n最終分數：${score.value}`);
-        gameState.value = 'init';
-        usedVocabIds.value.clear();
+        // 🌟 呼叫存檔函數
+        endGame();
       } else {
         nextRound();
       }
