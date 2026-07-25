@@ -67,21 +67,22 @@ const gameDict = {
   'tarotUno': { name: '🃏 塔羅 UNO', path: '/game-tarotUno', class: 'tarot-btn', pvpKey: 'enable_tarot_uno' },
   'verbing': { name: '🌀 動詞變化大師', path: '/game-verbing', class: 'exam-btn full-width' },
   'verbingDual': { name: '⚔️ 動詞變化大師(對戰)', path: '/game-verbingDual', class: 'battle-btn full-width', pvpKey: 'enable_verbingDual' },
-  // 🌟 加入全新的動詞變化遊樂園
   'verbAmuPark': { name: '🎢 動詞變化遊樂園', path: '/game-verbAmuPark', class: 'exam-btn full-width' },
+  
+  // 🌟 單字例句總複習
+  'vocReviewing': { name: '📖 單字例句總複習', path: '/game-vocReviewing', class: 'picture2meaning-btn full-width' }
 };
 
-// 🌟 將 verbAmuPark 加入不需選單元的名單
 const noUnitGames = ['speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examRead1', 'examRead2', 'verbing', 'verbingDual', 'verbAmuPark'];
 const isNoUnitGame = computed(() => noUnitGames.includes(selectedGameType.value));
 
-// 🌟 預設分類 (加入動詞變化遊樂園)
 const defaultCategories = [
   { id: 'c1', name: '🕹️ 經典單字遊戲', games: ['match', 'move', 'choice', 'fill', 'sentence', 'listen', 'puzzle', 'cross', 'review', 'picture2meaning', 'ninja'] },
   { id: 'c2', name: '🏆 體感與趣味挑戰', games: ['shake2shuffle', 'tilt2sort', 'gravitymaze', 'swing2cast', 'ARsniper', 'GPSmap', 'vocshooting', 'noropejump'] },
   { id: 'c3', name: '👾 懷舊街機遊樂場', games: ['tetris', 'pinball', 'angrybirds', 'solitaire', 'pikavolley', 'pacman', 'minesweeper', 'sudoku'] },
   { id: 'c4', name: '⚔️ 雙人對戰與領域牌組', games: ['battle', 'tenchi', 'tarot21', 'tarotAlch', 'tarotUno', 'tarotUno1', 'tarot21solo', 'tarotAlch1'] },
-  { id: 'c5', name: '🎓 考試與口說訓練', games: ['speak', 'speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examListen1', 'examRead1', 'examRead2', 'gramAmuPark', 'verbing', 'verbAmuPark'] }
+  // 🌟 將總複習加入此分類
+  { id: 'c5', name: '🎓 考試與口說訓練', games: ['speak', 'speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examListen1', 'examRead1', 'examRead2', 'gramAmuPark', 'verbing', 'verbAmuPark', 'vocReviewing'] }
 ];
 
 const dynamicCategories = ref([...defaultCategories]);
@@ -99,7 +100,6 @@ onMounted(async () => {
     vData.forEach(item => { if (!uniqueMenu.find(u => u.version === item.version && u.volume === item.volume && u.unit === item.unit)) uniqueMenu.push(item); });
     vocabMenu.value = uniqueMenu;
 
-    // 讀取上次記憶的範圍
     if (typeof window !== 'undefined') {
       const savedVersion = localStorage.getItem('shjhs_selectedVersion');
       const savedVolume = localStorage.getItem('shjhs_selectedVolume');
@@ -135,12 +135,13 @@ onMounted(async () => {
       if (!hasShooting && dynamicCategories.value.length > 0) {
         dynamicCategories.value[0].games.push('vocshooting');
       }
-      // 防呆：如果資料庫的分類裡沒有這兩個遊戲，自動塞進最後一個分類
       const hasVerbing = dynamicCategories.value.some(cat => cat.games.includes('verbing'));
       const hasVerbAmuPark = dynamicCategories.value.some(cat => cat.games.includes('verbAmuPark'));
+      const hasVocReviewing = dynamicCategories.value.some(cat => cat.games.includes('vocReviewing'));
       if (dynamicCategories.value.length > 0) {
         if (!hasVerbing) dynamicCategories.value[dynamicCategories.value.length - 1].games.push('verbing');
         if (!hasVerbAmuPark) dynamicCategories.value[dynamicCategories.value.length - 1].games.push('verbAmuPark');
+        if (!hasVocReviewing) dynamicCategories.value[dynamicCategories.value.length - 1].games.push('vocReviewing');
       }
     }
     
