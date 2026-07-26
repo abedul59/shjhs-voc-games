@@ -18,24 +18,31 @@ const allowedClasses = Array.isArray(authCookie.value?.classes)
   : [];
 const isSuperAdmin = allowedClasses.includes('ALL');
 
-// 🌟 修正：加入 000 班與 999 班的選項！
+// 🌟 產生基本預設班級清單
 const generateAllClasses = () => {
-  const list = ['000']; // 先放入 000 班
+  const list = ['000']; 
   for (let grade of [7, 8, 9]) {
     for (let i = 1; i <= 14; i++) {
       list.push(`${grade}${String(i).padStart(2, '0')}`);
     }
   }
-  list.push('999'); // 最後放入 999 班
+  list.push('999'); 
   return list;
 };
 
+// 🌟 用來儲存從資料庫動態撈取的實際班級
+const dynamicClasses = ref([]);
+
 const displayClasses = computed(() => {
-  if (isSuperAdmin) return generateAllClasses();
+  if (isSuperAdmin) {
+    // 🌟 將預設班級與資料庫實際存在的班級合併去重複，確保特殊班級一定會出現
+    const allSet = new Set([...generateAllClasses(), ...dynamicClasses.value]);
+    return Array.from(allSet).sort();
+  }
   return [...allowedClasses].sort();
 });
 
-const selectedClass = ref(displayClasses.value.length > 0 ? displayClasses.value[0] : '');
+const selectedClass = ref('');
 
 const showModal = ref(false);
 const isEditing = ref(false);
@@ -48,14 +55,32 @@ const studentLoginLogs = ref([]);
 const gameStats = ref({});
 const playedUnitsList = ref([]);
 
+// 🌟 獨立抽出的更新班級清單函數
+const refreshClasses = async () => {
+  if (isSuperAdmin) {
+    const { data: classData } = await supabase.from('students').select('class_name');
+    if (classData) {
+      dynamicClasses.value = [...new Set(classData.map(c => c.class_name))];
+    }
+  }
+};
+
 onMounted(async () => {
   if (!authCookie.value) {
     alert('身分已過期，請重新登入！');
     navigateTo('/login');
     return;
   }
+  
   const { data: settings } = await supabase.from('system_settings').select('school_phone').eq('id', 1).single();
   if (settings) schoolPhone.value = settings.school_phone || '';
+
+  // 初始化撈取班級
+  await refreshClasses();
+  if (!selectedClass.value && displayClasses.value.length > 0) {
+    selectedClass.value = displayClasses.value[0];
+  }
+
   fetchStudents();
 });
 
@@ -89,6 +114,7 @@ watch(() => formData.value.real_name, async (newName) => {
     else if (newName.length >= 3) formData.value.hidden_name = newName[0] + 'O' + newName.substring(2);
   }
 });
+
 watch([() => formData.value.class_name, () => formData.value.seat_number], ([cls, seat]) => {
   if (cls && seat && !isEditing.value) formData.value.student_id = `${cls}${String(seat).padStart(2, '0')}`;
 });
@@ -179,6 +205,7 @@ const handleImportCsv = (e) => {
       if (cleanData.length > 0) {
         await supabase.from('students').insert(cleanData);
         alert(`✅ 成功匯入 ${cleanData.length} 位學生到 ${selectedClass.value} 班！`);
+        await refreshClasses(); // 匯入後刷新可能產生的新班級
         fetchStudents();
       } else { alert('❌ 匯入失敗，請檢查 CSV 格式 (需有 seat_number 與 real_name)'); }
       isUploading.value = false; e.target.value = '';
@@ -215,12 +242,56 @@ const saveStudent = async () => {
   };
   if (isEditing.value) await supabase.from('students').update(payload).eq('id', formData.value.id);
   else await supabase.from('students').insert([payload]);
-  showModal.value = false; fetchStudents();
+  
+  showModal.value = false;
+  await refreshClasses(); // 若新增了新班級，刷新清單
+  fetchStudents();
 };
 
 const deleteStudent = async (id) => {
-  if (!confirm('⚠️ 確定要刪除？')) return;
+  if (!confirm('⚠️ 確定要刪除該名學生？')) return;
   await supabase.from('students').delete().eq('id', id); fetchStudents();
+};
+
+// 🌟 新增：重新命名班級 (僅總管理員)
+const renameClass = async (oldName) => {
+  const newName = prompt(`請輸入新的班級名稱 (原名稱: ${oldName})：\n⚠️ 系統會將該班【所有學生】的班級同步更新。`, oldName);
+  if (!newName || newName.trim() === '' || newName === oldName) return;
+  
+  if (!confirm(`確定要將【${oldName}】班改名為【${newName.trim()}】班嗎？`)) return;
+
+  isLoading.value = true;
+  const { error } = await supabase.from('students').update({ class_name: newName.trim() }).eq('class_name', oldName);
+  if (error) {
+    alert('修改失敗：' + error.message);
+  } else {
+    alert('✅ 班級名稱修改成功！');
+    await refreshClasses();
+    selectedClass.value = newName.trim();
+  }
+  isLoading.value = false;
+};
+
+// 🌟 新增：刪除整個班級 (僅總管理員)
+const deleteClass = async (className) => {
+  if (!confirm(`⚠️ 嚴重警告！確定要刪除整個【${className}】班以及裡面的「所有學生資料」嗎？\n刪除後將無法還原！`)) return;
+  
+  const confirmText = prompt(`為防止誤刪，請輸入「${className}」以確認刪除：`);
+  if (confirmText !== className) {
+    alert('輸入錯誤，已取消刪除操作。');
+    return;
+  }
+
+  isLoading.value = true;
+  const { error } = await supabase.from('students').delete().eq('class_name', className);
+  if (error) {
+    alert('刪除失敗：' + error.message);
+  } else {
+    alert(`✅ 【${className}】班已成功刪除！`);
+    await refreshClasses();
+    selectedClass.value = displayClasses.value.length > 0 ? displayClasses.value[0] : '';
+  }
+  isLoading.value = false;
 };
 </script>
 
@@ -254,6 +325,10 @@ const deleteStudent = async (id) => {
             {{ cls }} 班
           </option>
         </select>
+        
+        <!-- 🌟 新增：班級批次操作按鈕 -->
+        <button v-if="isSuperAdmin && selectedClass" class="action-btn edit" @click="renameClass(selectedClass)" title="修改班級名稱">✏️</button>
+        <button v-if="isSuperAdmin && selectedClass" class="action-btn del" @click="deleteClass(selectedClass)" title="刪除整個班級">🗑️</button>
       </div>
     </div>
 
@@ -273,7 +348,7 @@ const deleteStudent = async (id) => {
             </td>
             <td style="color:var(--danger-color); font-weight:bold;">{{ stu.pin_code }}</td>
             <td><span class="badge" :class="stu.unlocked_themes?.length > 0 ? 'bgm-badge' : 'none-badge'">{{ stu.unlocked_themes?.length || 0 }} 款</span></td>
-            <td><button class="action-btn edit" @click="openEditModal(stu)">✏️</button><button class="action-btn del" @click="deleteStudent(stu.id)">🗑️</button></td>
+            <td><button class="action-btn edit" @click="openEditModal(stu)" title="編輯學生">✏️</button><button class="action-btn del" @click="deleteStudent(stu.id)" title="刪除學生">🗑️</button></td>
           </tr>
         </tbody>
       </table>
