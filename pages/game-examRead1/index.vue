@@ -75,7 +75,8 @@ const setupQuestion = () => {
     { originalKey: 'C', text: currentQ.value.option_c },
     { originalKey: 'D', text: currentQ.value.option_d }
   ];
-  opts.sort(() => Math.random() - 0.5);
+  
+  // 🌟 修正點 1：移除 opts.sort() 隨機打亂，固定 A B C D 順序避免錯位
   currentOptions.value = opts;
 
   timeLeft.value = timerTotal.value;
@@ -102,7 +103,10 @@ const selectAnswer = (opt) => {
   isAnswered.value = true;
   selectedOption.value = opt.originalKey;
 
-  const isCorrect = (opt.originalKey === currentQ.value.answer);
+  // 🌟 修正點 2：加入 .trim().toUpperCase() 防呆，無視資料庫裡多餘的空白與大小寫
+  const correctAnswer = currentQ.value.answer?.trim().toUpperCase();
+  const isCorrect = (opt.originalKey === correctAnswer);
+  
   recordAnswer(isCorrect);
 
   if (isCorrect) { score.value++; playSound(correctSound.value); } 
@@ -120,7 +124,10 @@ const handleTimeout = () => {
 
 const getOptionClass = (opt) => {
   if (!isAnswered.value) return 'option-btn';
-  if (opt.originalKey === currentQ.value.answer) return 'option-btn correct';
+  
+  // 🌟 確保按鈕變色邏輯也套用防呆
+  const correctAnswer = currentQ.value.answer?.trim().toUpperCase();
+  if (opt.originalKey === correctAnswer) return 'option-btn correct';
   if (opt.originalKey === selectedOption.value) return 'option-btn wrong';
   return 'option-btn disabled';
 };
@@ -207,9 +214,9 @@ const playSound = (audio) => { if (audio) { audio.currentTime = 0; audio.play().
         </button>
       </div>
       <div class="feedback-section" v-if="isAnswered">
-        <div v-if="selectedOption === currentQ.answer" class="feedback correct-text">⭕ 答對了！非常棒！</div>
-        <div v-else-if="selectedOption === 'TIMEOUT'" class="feedback wrong-text">⏰ 時間到！正確答案是 <strong>({{ currentQ.answer }})</strong></div>
-        <div v-else class="feedback wrong-text">❌ 答錯了... 正確答案是 <strong>({{ currentQ.answer }})</strong></div>
+        <div v-if="selectedOption === currentQ.answer?.trim().toUpperCase()" class="feedback correct-text">⭕ 答對了！非常棒！</div>
+        <div v-else-if="selectedOption === 'TIMEOUT'" class="feedback wrong-text">⏰ 時間到！正確答案是 <strong>({{ currentQ.answer?.trim().toUpperCase() }})</strong></div>
+        <div v-else class="feedback wrong-text">❌ 答錯了... 正確答案是 <strong>({{ currentQ.answer?.trim().toUpperCase() }})</strong></div>
         <button class="next-btn" @click="nextQuestion">{{ currentIndex < questions.length - 1 ? '下一題 ➡' : '查看成績 📜' }}</button>
       </div>
     </div>
