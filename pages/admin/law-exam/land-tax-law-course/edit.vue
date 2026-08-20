@@ -110,6 +110,7 @@ const switchTab = async (tabName) => {
             <div class="form-group"><label>📊 圖表</label><input v-model="form.notebook_infographic_link" class="input-field" /></div>
             <div class="form-group"><label>📝 測驗</label><input v-model="form.notebook_quiz_link" class="input-field" /></div>
             <div class="form-group"><label>📇 卡片</label><input v-model="form.notebook_flashcard_link" class="input-field" /></div>
+            <div class="form-group"><label>📁 整體資源</label><input v-model="form.notebook_overall_link" class="input-field" /></div>
           </div>
         </div>
         <div class="tab-actions"><button @click="handleSave" class="save-btn" :disabled="isSaving">💾 儲存</button></div>
