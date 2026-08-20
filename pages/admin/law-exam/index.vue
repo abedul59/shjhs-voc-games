@@ -21,6 +21,27 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
 
     <hr class="section-divider" />
 
+    <!-- 🌟 全新的地政士考試專區 -->
+    <h3 class="section-title">🏢 地政士考試專區 <span style="font-size:14px; color:#64748b; font-weight:normal;">(不限講數，自由新增)</span></h3>
+    <div class="cards-grid course-grid">
+      <NuxtLink to="/admin/law-exam/land-registration-rule-course" class="dash-card course-card emerald-theme">
+        <div class="icon">📜</div><div class="course-info"><span class="course-tag tag-emerald">地政士</span><h2>土地登記規則</h2></div>
+      </NuxtLink>
+      <NuxtLink to="/admin/law-exam/land-law-course" class="dash-card course-card amber-theme">
+        <div class="icon">🏞️</div><div class="course-info"><span class="course-tag tag-amber">地政士</span><h2>土地法規</h2></div>
+      </NuxtLink>
+      <NuxtLink to="/admin/law-exam/land-tax-law-course" class="dash-card course-card rose-theme">
+        <div class="icon">💰</div><div class="course-info"><span class="course-tag tag-rose">地政士</span><h2>土地稅法</h2></div>
+      </NuxtLink>
+      <NuxtLink to="/admin/law-exam/civil-and-trust-law-course" class="dash-card course-card indigo-theme">
+        <div class="icon">🤝</div><div class="course-info"><span class="course-tag tag-indigo">地政士</span><h2>民法與信託法</h2></div>
+      </NuxtLink>
+    </div>
+
+    
+
+    <hr class="section-divider" />
+
     <h3 class="section-title">🎓 學分班筆記專區</h3>
     <div class="cards-grid course-grid">
       <NuxtLink to="/admin/law-exam/civil-course" class="dash-card course-card civil-theme"><div class="icon">📘</div><div class="course-info"><span class="course-tag tag-civil">學分班</span><h2>民法 55 堂課</h2></div></NuxtLink>
@@ -125,6 +146,11 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
 .law-pink:hover { border-color: #ec4899; background: #fdf2f8; }
 .law-teal:hover { border-color: #14b8a6; background: #f0fdfa; }
 .law-orange:hover { border-color: #ea580c; background: #fff7ed; }
+/* 地政士專屬色彩 */
+.tag-emerald { background: #10b981; } .emerald-theme:hover { border-color: #10b981; background: white;}
+.tag-amber { background: #f59e0b; } .amber-theme:hover { border-color: #f59e0b; background: white;}
+.tag-rose { background: #e11d48; } .rose-theme:hover { border-color: #e11d48; background: white;}
+.tag-indigo { background: #6366f1; } .indigo-theme:hover { border-color: #6366f1; background: white;}
 
 @media (max-width: 768px) { 
   .cards-grid { grid-template-columns: 1fr 1fr; }
