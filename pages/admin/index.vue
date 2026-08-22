@@ -92,27 +92,51 @@ const saveSettings = async () => {
 };
 
 // 🌟 一鍵全校升級邏輯 (呼叫 RPC 預存程序的完美升級版本)
-const upgradeStudents = async () => {
+const executeGradeUpgrade = async () => {
   const currentYear = new Date().getFullYear();
-  const confirmMsg = `⚠️ 警告：這將會把 9 年級畢業，並把 7、8 年級連同『所有遊戲與診斷紀錄』一起升級（701變801）。\n\n請問您確定要執行【${currentYear} 年度全校完美升級】嗎？\n此動作將無法直接復原！`;
+  if (!confirm(`🚀 確定要執行「${currentYear} 年度全校一鍵升年級」嗎？\n\n系統會將 7 年級升為 8 年級，8 年級升為 9 年級，並將 9 年級加上 post- 前綴。\n(本操作只影響 1~10 班，且所有成績與診斷紀錄將完美保留)`)) return;
   
-  if (!confirm(confirmMsg)) return;
+  const confirmText = prompt('為防止誤觸，請輸入「升級」確認執行：');
+  if (confirmText !== '升級') {
+    alert('輸入錯誤，已取消操作。');
+    return;
+  }
 
   try {
     isLoading.value = true;
-    
-    // 直接呼叫我們在 Supabase 建立的 RPC 強力升級程式
     const { error } = await supabase.rpc('upgrade_all_students');
-
-    if (error) {
-      throw error;
-    } else {
-      alert(`🎉 升級完美完成！學生與所有歷史資料已順利對接新年級！`);
-      window.location.reload(); // 重新整理畫面以顯示最新資料
-    }
+    if (error) throw error;
+    
+    alert('✅ 升級完成！所有學生帳號與成績已成功移轉至新年級。');
+    window.location.reload(); 
   } catch (err) {
     console.error("升級失敗", err);
-    alert("升級過程發生錯誤：" + err.message);
+    alert("🚨 升級失敗：" + err.message);
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+// 🌟 一鍵時光倒流 (復原剛剛的升級)
+const executeGradeUndo = async () => {
+  if (!confirm('⚠️ 嚴重警告：確定要「時光倒流」嗎？\n\n這會將所有的班級與成績紀錄退回上一個年級的狀態。')) return;
+
+  const confirmText = prompt('為防止誤觸，請輸入「還原」確認執行：');
+  if (confirmText !== '還原') {
+    alert('輸入錯誤，已取消操作。');
+    return;
+  }
+
+  try {
+    isLoading.value = true;
+    const { error } = await supabase.rpc('undo_upgrade_students');
+    if (error) throw error;
+
+    alert('✅ 系統已成功時光倒流，所有資料恢復原狀！');
+    window.location.reload(); 
+  } catch (err) {
+    console.error("還原失敗", err);
+    alert("🚨 還原失敗：" + err.message);
   } finally {
     isLoading.value = false;
   }
@@ -207,8 +231,12 @@ const clearGhostRooms = async () => {
               {{ isLoading ? '🧹 清理中...' : '🧹 一鍵清除對戰幽靈房間' }}
             </button>
             
-            <button @click="upgradeStudents" class="retro-btn nav-btn" style="background: #ffb300; border-color: #ffe082; color: #3e2723;" :disabled="isLoading">
-              {{ isLoading ? '🔄 升級中...' : '🆙 一鍵全校升年級 (暑假專用)' }}
+            <button @click="executeGradeUpgrade" class="retro-btn nav-btn" style="background: #3f51b5; border-color: #303f9f; color: white;" :disabled="isLoading">
+              {{ isLoading ? '處理中...' : '🚀 全校一鍵升年級' }}
+            </button>
+
+            <button @click="executeGradeUndo" class="retro-btn nav-btn" style="background: #f44336; border-color: #d32f2f; color: white;" :disabled="isLoading">
+              {{ isLoading ? '還原中...' : '🔄 復原 (時光倒流)' }}
             </button>
           </div>
         </div>
