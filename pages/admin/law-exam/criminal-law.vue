@@ -1,26 +1,22 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, nextTick } from 'vue';
 import Papa from 'papaparse';
 
-// 🌟 只要加這一行，引入全站共用的法律清單！
+// 🌟 引入全站共用的法律清單
 import { LAW_TABLE_MAP } from '~/utils/lawMap';
 definePageMeta({ middleware: ['auth', 'law-auth'] });
 
 // 🌟🌟🌟 依據不同的法規專頁，替換此 CONFIG 區塊 🌟🌟🌟
-// (此處以《民法》為例，您可自行更改 tableName 與顏色)
 const CONFIG = {
   tableName: 'criminal_law_clauses',
   pageTitle: '刑法',
-  parentLawName: '刑法', // 刑法本身即為母法
+  parentLawName: '刑法', 
   primaryColor: '#e11d48', // 玫瑰紅
   hoverColor: '#be123c',
   lightBg: '#fff1f2',
   activeBg: '#ffe4e6'
 };
 // 🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟
-
-// 涵蓋系統內所有的母法與子法
-
 
 const supabase = useSupabaseClient();
 const clauses = ref([]);
@@ -33,10 +29,9 @@ const newMapCorrect = ref(CONFIG.pageTitle);
 const isLoading = ref(true);
 const isUploading = ref(false);
 
-// 🌟 觀看模式：'single'(逐條), 'chapter'(分章節), 'all'(全覽)
 const viewMode = ref('single'); 
-const selectedChapter = ref(null); // 當前選擇的章/編
-const selectedSection = ref(null); // 當前選擇的節
+const selectedChapter = ref(null); 
+const selectedSection = ref(null); 
 
 const searchQuery = ref('');
 const selectedClause = ref(null);
@@ -45,6 +40,12 @@ const floatingReference = ref(null);
 const isSaving = ref(false);
 const showSavedToast = ref(false);
 const showSidebar = ref(false);
+
+const newUrlLabel = ref('');
+const newUrlLink = ref('');
+
+// 🌟 新增：用來管理單一法條的「複數實務見解與筆記」
+const currentClauseNotes = ref(['']);
 
 const cssVars = computed(() => ({
   '--primary': CONFIG.primaryColor,
@@ -58,6 +59,32 @@ const uniqueLawNames = computed(() => {
   names.delete(CONFIG.pageTitle); 
   return Array.from(names).sort();
 });
+
+// 解析資料庫中可能為舊版純文字，或新版 JSON 陣列的筆記
+const parseNotes = (notesData) => {
+  if (!notesData) return [''];
+  try {
+    const parsed = JSON.parse(notesData);
+    return Array.isArray(parsed) ? parsed : [notesData];
+  } catch (e) {
+    return [notesData]; // 舊版純文字相容
+  }
+};
+
+// 用於「全覽」與「章節」模式中顯示富文本筆記
+const displayNotes = (notesRaw) => {
+  if (!notesRaw) return '';
+  try {
+    const parsed = JSON.parse(notesRaw);
+    if (Array.isArray(parsed)) {
+      const valid = parsed.filter(n => n.trim() !== '');
+      if (valid.length === 0) return '';
+      // 複數筆記之間用虛線隔開
+      return valid.join('<hr style="border-top:1px dashed #cbd5e1; margin: 15px 0;">');
+    }
+  } catch (e) {}
+  return notesRaw; 
+};
 
 const fetchData = async () => {
   isLoading.value = true;
@@ -122,7 +149,6 @@ const filteredFlatClauses = computed(() => {
   return clauses.value.filter(c => (c.title || '').includes(searchQuery.value) || (c.content || '').includes(searchQuery.value));
 });
 
-// 🌟 篩選當前章節的條文
 const chapterClauses = computed(() => {
   return filteredFlatClauses.value.filter(c => {
     const matchChap = (c.chapter_name || '未分類編') === selectedChapter.value;
@@ -133,10 +159,9 @@ const chapterClauses = computed(() => {
   });
 });
 
-// 🌟 切換至「分章節觀看」模式
 const viewChapter = (chapter) => {
   selectedChapter.value = chapter;
-  selectedSection.value = null; // null 表示顯示該編/章底下的所有節
+  selectedSection.value = null; 
   viewMode.value = 'chapter';
   showSidebar.value = false;
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -150,7 +175,6 @@ const viewSection = (chapter, section) => {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
-// 🌟 返回鍵邏輯
 const goBackToChapter = () => {
   if (selectedClause.value) {
     selectedChapter.value = selectedClause.value.chapter_name || '未分類編';
@@ -160,8 +184,72 @@ const goBackToChapter = () => {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
-const selectClause = (clause) => { selectedClause.value = clause; viewMode.value = 'single'; showSavedToast.value = false; showSidebar.value = false; window.scrollTo({ top: 0, behavior: 'smooth' }); };
-const saveManual = async (clause) => { if (!clause) return; isSaving.value = true; await supabase.from(CONFIG.tableName).update({ notes: clause.notes, urls: clause.urls }).eq('id', clause.id); isSaving.value = false; showSavedToast.value = true; setTimeout(() => { showSavedToast.value = false; }, 2500); };
+const selectClause = (clause) => { 
+  selectedClause.value = clause; 
+  // 🌟 將資料庫內的文字解析成筆記陣列
+  currentClauseNotes.value = parseNotes(clause.notes);
+  viewMode.value = 'single'; 
+  showSavedToast.value = false; 
+  showSidebar.value = false; 
+  window.scrollTo({ top: 0, behavior: 'smooth' }); 
+  
+  // DOM 渲染後將文字填入 contenteditable
+  nextTick(() => {
+    currentClauseNotes.value.forEach((note, index) => {
+      const el = document.getElementById('clause-note-' + index);
+      if (el) el.innerHTML = note || '';
+    });
+  });
+};
+
+const saveManual = async (clause) => { 
+  if (!clause) return; 
+  isSaving.value = true; 
+  
+  // 🌟 從 DOM 中把富文本格式的筆記抓出來存成陣列
+  const updatedNotes = currentClauseNotes.value.map((_, index) => {
+    const el = document.getElementById('clause-note-' + index);
+    return el ? el.innerHTML : '';
+  });
+  currentClauseNotes.value = updatedNotes;
+  const notesToSave = JSON.stringify(updatedNotes);
+  clause.notes = notesToSave; // 更新本地畫面暫存
+
+  await supabase.from(CONFIG.tableName).update({ notes: notesToSave, urls: clause.urls }).eq('id', clause.id); 
+  isSaving.value = false; 
+  showSavedToast.value = true; 
+  setTimeout(() => { showSavedToast.value = false; }, 2500); 
+};
+
+// 🌟 筆記新增與刪除區塊
+const addClauseNote = async () => {
+  currentClauseNotes.value = currentClauseNotes.value.map((_, index) => {
+    const el = document.getElementById('clause-note-' + index);
+    return el ? el.innerHTML : '';
+  });
+  currentClauseNotes.value.push('');
+  await nextTick();
+  currentClauseNotes.value.forEach((note, index) => {
+    const el = document.getElementById('clause-note-' + index);
+    if (el) el.innerHTML = note || '';
+  });
+};
+
+const removeClauseNote = async (index) => {
+  if (!confirm('確定要刪除此實務見解區塊嗎？')) return;
+  currentClauseNotes.value = currentClauseNotes.value.map((_, i) => {
+    const el = document.getElementById('clause-note-' + i);
+    return el ? el.innerHTML : '';
+  });
+  currentClauseNotes.value.splice(index, 1);
+  if (currentClauseNotes.value.length === 0) currentClauseNotes.value.push('');
+  await nextTick();
+  currentClauseNotes.value.forEach((note, i) => {
+    const el = document.getElementById('clause-note-' + i);
+    if (el) el.innerHTML = note || '';
+  });
+};
+
 const addNewUrl = async (clause) => { if (!newUrlLabel.value || !newUrlLink.value) return; if (!clause.urls) clause.urls = []; let link = newUrlLink.value; if (!link.startsWith('http')) link = 'https://' + link; clause.urls.push({ label: newUrlLabel.value, url: link }); newUrlLabel.value = ''; newUrlLink.value = ''; await saveManual(clause); };
 const removeUrl = async (clause, index) => { clause.urls.splice(index, 1); await saveManual(clause); };
 
@@ -342,15 +430,27 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
             <h1>{{ selectedClause.title }}</h1>
           </div>
           <div class="content-box"><div class="content-text" v-html="parseContentWithLinks(selectedClause.content)" @click="handleContentClick"></div></div>
+          
           <div class="notes-section">
             <div class="notes-header">
               <h3>📝 筆記與實務見解</h3>
               <div class="save-actions"><span v-if="showSavedToast" class="save-success-tag">✅ 已儲存</span><button @click="saveManual(selectedClause)" class="btn-save-manual" :disabled="isSaving">💾 儲存筆記</button></div>
             </div>
-            <textarea v-model="selectedClause.notes" class="note-edit" placeholder="在此貼上實務見解..."></textarea>
-            <div class="urls-manager">
+            
+            <!-- 🌟 複數且支援網頁格式的實務見解區塊 -->
+            <div v-for="(note, index) in currentClauseNotes" :key="index" class="personal-note-wrapper">
+              <div class="note-header">
+                <span class="note-badge">實務見解 / 筆記 {{ index + 1 }}</span>
+                <button @click.prevent="removeClauseNote(index)" class="btn-remove-note">🗑️ 刪除</button>
+              </div>
+              <div :id="'clause-note-' + index" contenteditable="true" class="rich-textarea input-field personal-bg" placeholder="在此貼上實務見解，支援保留網頁原本格式與排版..."></div>
+            </div>
+            <button @click.prevent="addClauseNote" class="btn-add-note">➕ 新增筆記區塊</button>
+
+            <!-- 關聯網址區塊不變 -->
+            <div class="urls-manager" style="margin-top: 25px;">
               <h4 class="url-section-title">🔗 參考網址</h4>
-              <div v-for="(linkObj, index) in selectedClause.urls" :key="index" class="url-card"><a :href="linkObj.url" target="_blank">{{ linkObj.label }}</a><button @click="removeUrl(selectedClause, index)" class="btn-remove-url">✕</button></div>
+              <div v-for="(linkObj, index) in selectedClause.urls" :key="index" class="url-card"><a :href="linkObj.url" target="_blank" class="url-link-text">{{ linkObj.label }}</a><button @click="removeUrl(selectedClause, index)" class="btn-remove-url">✕</button></div>
               <div class="url-add-form"><input v-model="newUrlLabel" placeholder="名稱" class="url-input" /><input v-model="newUrlLink" placeholder="網址" class="url-input" /><button @click="addNewUrl(selectedClause)" class="btn-add-url">＋ 新增</button></div>
             </div>
           </div>
@@ -366,7 +466,7 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
           <div class="clauses-container">
             <div v-for="c in chapterClauses" :key="c.id" class="full-clause-card">
               <div class="card-side"><span class="card-num" :style="{color: CONFIG.primaryColor}">{{ c.title }}</span><button @click="selectClause(c)" class="btn-jump-edit">📝 進入本條</button></div>
-              <div class="card-main"><div class="card-content" v-html="parseContentWithLinks(c.content)" @click="handleContentClick"></div><div v-if="c.notes" class="card-note-preview">{{ c.notes }}</div></div>
+              <div class="card-main"><div class="card-content" v-html="parseContentWithLinks(c.content)" @click="handleContentClick"></div><div v-if="c.notes && displayNotes(c.notes)" class="card-note-preview" v-html="displayNotes(c.notes)"></div></div>
             </div>
           </div>
         </div>
@@ -377,7 +477,7 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
         <div class="clauses-container">
           <div v-for="c in filteredFlatClauses" :key="c.id" class="full-clause-card">
             <div class="card-side"><span class="card-num" :style="{color: CONFIG.primaryColor}">{{ c.title }}</span><button @click="selectClause(c)" class="btn-jump-edit">📝 進入本條</button></div>
-            <div class="card-main"><div class="card-content" v-html="parseContentWithLinks(c.content)" @click="handleContentClick"></div><div v-if="c.notes" class="card-note-preview">{{ c.notes }}</div></div>
+            <div class="card-main"><div class="card-content" v-html="parseContentWithLinks(c.content)" @click="handleContentClick"></div><div v-if="c.notes && displayNotes(c.notes)" class="card-note-preview" v-html="displayNotes(c.notes)"></div></div>
           </div>
         </div>
       </div>
@@ -389,7 +489,7 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
         <div class="float-header" :style="{ background: CONFIG.primaryColor }"><h4>{{ floatingReference.displayTitle }}</h4><button @click="floatingReference = null">✕</button></div>
         <div class="float-body">
           <p class="float-content-text">{{ floatingReference.content }}</p>
-          <div v-if="floatingReference.notes" class="float-note-preview">{{ floatingReference.notes }}</div>
+          <div v-if="floatingReference.notes && displayNotes(floatingReference.notes)" class="float-note-preview" v-html="displayNotes(floatingReference.notes)"></div>
           <button v-if="floatingReference.canJump" @click="selectClause(floatingReference); floatingReference = null" class="btn-jump-main" :style="{ background: CONFIG.primaryColor }">詳細內容與編輯 ➔</button>
           <button v-else @click="floatingReference = null" class="btn-jump-main" style="background: #94a3b8">關閉視窗</button>
         </div>
@@ -444,7 +544,6 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 .tree-list { flex: 1; overflow-y: auto; padding: 10px; background: #fff; }
 .list-msg { padding: 20px; text-align: center; color: #94a3b8; font-size: 14px;}
 
-/* 🌟 章節與快捷按鈕樣式 */
 .chapter-title, .section-title { display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: bold; padding: 8px 10px; cursor: pointer;}
 .chapter-title { background: #f1f5f9; border-radius: 8px; margin-top: 10px; color: #1e293b;}
 .section-title { color: #64748b; font-size: 13px; }
@@ -463,7 +562,6 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 .empty-box p { font-size: 16px; font-weight: bold; margin-bottom: 20px;}
 .btn-open-menu-large { display: none; background: var(--primary); color: white; border: none; padding: 10px 24px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer;}
 
-/* 🌟 返回鍵樣式 */
 .btn-back-inner { display: inline-block; background: #f1f5f9; border: 1px solid #cbd5e1; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: bold; color: #475569; cursor: pointer; margin-bottom: 15px; transition: 0.2s;}
 .btn-back-inner:hover { background: #e2e8f0; color: #1e293b;}
 
@@ -480,7 +578,18 @@ const clearAll = async () => { if (!confirm('確定清空？')) return; await su
 .save-success-tag { font-size: 13px; color: #10b981; font-weight: bold; animation: fadeIn 0.2s; }
 .btn-save-manual { background: #10b981; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s;}
 .btn-save-manual:hover { background: #059669; transform: translateY(-1px); }
-.note-edit { width: 100%; height: 250px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fffbeb; font-family: inherit; font-size: 15px; line-height: 1.6; resize: vertical; outline: none; margin-bottom: 25px; white-space: pre-wrap; }
+
+/* 🌟 富文本區塊樣式 */
+.rich-textarea { min-height: 150px; overflow-y: auto; padding: 15px; border: 1px solid #e2e8f0; border-radius: 12px; font-family: inherit; font-size: 15px; line-height: 1.6; outline: none; background: #fffbeb; white-space: pre-wrap; word-break: break-word;}
+.rich-textarea:empty:before { content: attr(placeholder); color: #94a3b8; pointer-events: none; }
+.personal-note-wrapper { margin-bottom: 20px; background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0;}
+.note-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.note-badge { background: var(--primary); color: white; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: bold; }
+.btn-remove-note { background: #fee2e2; color: #ef4444; border: 1px solid #fca5a5; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; transition: 0.2s;}
+.btn-remove-note:hover { background: #fecaca; }
+.personal-bg { background: var(--bg-light); border-color: #fda4af; min-height: 150px;}
+.btn-add-note { display: block; width: 100%; padding: 12px; background: var(--bg-light); color: var(--primary); border: 2px dashed #fda4af; border-radius: 10px; font-weight: bold; font-size: 15px; cursor: pointer; transition: 0.2s; margin-bottom: 20px;}
+.btn-add-note:hover { background: var(--bg-active); }
 
 .url-section-title { font-size: 16px; color: #475569; margin: 0 0 15px 0; border-top: 1px solid #f1f5f9; padding-top: 20px;}
 .url-card { display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 10px 15px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 8px;}
