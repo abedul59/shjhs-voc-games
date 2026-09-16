@@ -45,8 +45,8 @@ const openPortal = (url) => { if (url) window.open(url, '_blank', 'noopener,nore
       
       <div class="content-layout">
         <main class="text-area">
-          <!-- 🌟 動態邊框色 -->
-          <section v-if="noteData.introduction" class="intro-card" :style="{ borderLeftColor: var(--theme), background: var(--theme-light) }">
+          <!-- 🌟 修正點在這裡：幫 var(--theme) 加上單引號，確保 Vercel 能順利編譯 -->
+          <section v-if="noteData.introduction" class="intro-card" :style="{ borderLeftColor: 'var(--theme)', background: 'var(--theme-light)' }">
             <p>{{ noteData.introduction }}</p>
           </section>
 
