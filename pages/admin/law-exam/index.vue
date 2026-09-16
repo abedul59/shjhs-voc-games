@@ -98,6 +98,20 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
     </div>
 
   </div>
+
+<hr class="section-divider" />
+
+    <!-- 🌟 全新的高空大 法律校外班專區 -->
+    <h3 class="section-title">🏛️ 高空大 法律校外班 <span style="font-size:14px; color:#64748b; font-weight:normal;">(不限講數，自由新增)</span></h3>
+    <div class="cards-grid course-grid">
+      <NuxtLink to="/admin/law-exam/legal-methodology-course" class="dash-card course-card cyan-theme">
+        <div class="icon">🧭</div><div class="course-info"><span class="course-tag tag-cyan">校外班</span><h2>法學方法論</h2></div>
+      </NuxtLink>
+      
+      <NuxtLink to="/admin/law-exam/political-science-course" class="dash-card course-card violet-theme">
+        <div class="icon">🏛️</div><div class="course-info"><span class="course-tag tag-violet">校外班</span><h2>政治學</h2></div>
+      </NuxtLink>
+    </div>
 </template>
 
 <style scoped>
@@ -166,4 +180,8 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
   .icon { font-size: 30px; margin-bottom: 8px; }
   .dash-card h2 { font-size: 15px; }
 }
+
+/* 高空大校外班專屬色彩 */
+.tag-cyan { background: #0891b2; } .cyan-theme:hover { border-color: #0891b2; background: white;}
+.tag-violet { background: #8b5cf6; } .violet-theme:hover { border-color: #8b5cf6; background: white;}
 </style>
