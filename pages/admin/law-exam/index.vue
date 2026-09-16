@@ -5,8 +5,9 @@ const supabase = useSupabaseClient();
 
 // 🌟 動態科目的狀態管理
 const customCourses = ref([]);
-const isAddingCourse = ref(false);
-const newCourse = ref({ subject: '', icon: '📖', theme_color: '#3b82f6' });
+const showCourseForm = ref(false);
+const editingId = ref(null);
+const courseForm = ref({ subject: '', icon: '📖', theme_color: '#3b82f6' });
 
 // 載入自訂科目
 const fetchCustomCourses = async () => {
@@ -16,18 +17,60 @@ const fetchCustomCourses = async () => {
 
 onMounted(fetchCustomCourses);
 
-// 儲存新科目
-const saveNewCourse = async () => {
-  if (!newCourse.value.subject.trim()) return alert('請輸入科目名稱！');
-  const { error } = await supabase.from('custom_courses').insert([newCourse.value]);
-  if (error) {
-    if (error.code === '23505') alert('這個科目名稱已經存在囉！');
-    else alert('新增失敗：' + error.message);
+// 開啟新增表單
+const openAddForm = () => {
+  editingId.value = null;
+  courseForm.value = { subject: '', icon: '📖', theme_color: '#3b82f6' };
+  showCourseForm.value = true;
+};
+
+// 開啟編輯表單
+const editCourse = (course) => {
+  editingId.value = course.id;
+  courseForm.value = { subject: course.subject, icon: course.icon, theme_color: course.theme_color };
+  showCourseForm.value = true;
+};
+
+// 儲存（包含新增與修改）
+const saveCourse = async () => {
+  if (!courseForm.value.subject.trim()) return alert('請輸入科目名稱！');
+  
+  if (editingId.value) {
+    // ⚠️ 檢查是否有改名，若有改名，連帶更新筆記庫裡面的科目名稱，避免筆記變成孤兒
+    const oldCourse = customCourses.value.find(c => c.id === editingId.value);
+    if (oldCourse && oldCourse.subject !== courseForm.value.subject) {
+      await supabase.from('course_notes').update({ subject: courseForm.value.subject }).eq('subject', oldCourse.subject);
+    }
+    
+    // 更新科目表
+    const { error } = await supabase.from('custom_courses').update({
+      subject: courseForm.value.subject,
+      icon: courseForm.value.icon,
+      theme_color: courseForm.value.theme_color
+    }).eq('id', editingId.value);
+    
+    if (error) return alert('更新失敗：' + error.message);
+    alert('✅ 科目已更新！');
   } else {
-    isAddingCourse.value = false;
-    newCourse.value = { subject: '', icon: '📖', theme_color: '#3b82f6' };
-    fetchCustomCourses();
+    // 新增模式
+    const { error } = await supabase.from('custom_courses').insert([courseForm.value]);
+    if (error) {
+      if (error.code === '23505') return alert('這個科目名稱已經存在囉！');
+      return alert('新增失敗：' + error.message);
+    }
+    alert('✅ 新科目建立成功！');
   }
+  
+  showCourseForm.value = false;
+  fetchCustomCourses();
+};
+
+// 刪除科目
+const deleteCourse = async (id, subject) => {
+  if (!confirm(`確定要刪除「${subject}」這個專區嗎？\n\n(注意：這只會移除專區入口，不會刪除您在此科目建立的筆記資料，以免誤刪)`)) return;
+  const { error } = await supabase.from('custom_courses').delete().eq('id', id);
+  if (error) return alert('刪除失敗：' + error.message);
+  fetchCustomCourses();
 };
 </script>
 
@@ -39,22 +82,35 @@ const saveNewCourse = async () => {
       <p>個人專屬題庫與法典學習系統</p>
     </div>
 
-    <!-- 前面舊的專區維持不變 -->
     <div class="cards-grid">
-      <NuxtLink to="/admin/law-exam/practice" class="dash-card practice-card"><div class="icon">🎯</div><h2>開始刷題練習</h2></NuxtLink>
-      <NuxtLink to="/admin/law-exam/manage" class="dash-card manage-card"><div class="icon">📚</div><h2>題庫與解析管理</h2></NuxtLink>
-    </div>
-    
-    <hr class="section-divider" />
-    <h3 class="section-title">🏢 地政士考試專區</h3>
-    <div class="cards-grid course-grid">
-      <NuxtLink to="/admin/law-exam/land-registration-rule-course" class="dash-card course-card emerald-theme"><div class="icon">📜</div><div class="course-info"><span class="course-tag tag-emerald">地政士</span><h2>土地登記規則</h2></div></NuxtLink>
-      <NuxtLink to="/admin/law-exam/land-law-course" class="dash-card course-card amber-theme"><div class="icon">🏞️</div><div class="course-info"><span class="course-tag tag-amber">地政士</span><h2>土地法規</h2></div></NuxtLink>
-      <NuxtLink to="/admin/law-exam/land-tax-law-course" class="dash-card course-card rose-theme"><div class="icon">💰</div><div class="course-info"><span class="course-tag tag-rose">地政士</span><h2>土地稅法</h2></div></NuxtLink>
-      <NuxtLink to="/admin/law-exam/civil-and-trust-law-course" class="dash-card course-card indigo-theme"><div class="icon">🤝</div><div class="course-info"><span class="course-tag tag-indigo">地政士</span><h2>民法與信託法</h2></div></NuxtLink>
+      <NuxtLink to="/admin/law-exam/practice" class="dash-card practice-card">
+        <div class="icon">🎯</div><h2>開始刷題練習</h2>
+      </NuxtLink>
+      <NuxtLink to="/admin/law-exam/manage" class="dash-card manage-card">
+        <div class="icon">📚</div><h2>題庫與解析管理</h2>
+      </NuxtLink>
     </div>
 
     <hr class="section-divider" />
+
+    <h3 class="section-title">🏢 地政士考試專區 <span style="font-size:14px; color:#64748b; font-weight:normal;">(不限講數，自由新增)</span></h3>
+    <div class="cards-grid course-grid">
+      <NuxtLink to="/admin/law-exam/land-registration-rule-course" class="dash-card course-card emerald-theme">
+        <div class="icon">📜</div><div class="course-info"><span class="course-tag tag-emerald">地政士</span><h2>土地登記規則</h2></div>
+      </NuxtLink>
+      <NuxtLink to="/admin/law-exam/land-law-course" class="dash-card course-card amber-theme">
+        <div class="icon">🏞️</div><div class="course-info"><span class="course-tag tag-amber">地政士</span><h2>土地法規</h2></div>
+      </NuxtLink>
+      <NuxtLink to="/admin/law-exam/land-tax-law-course" class="dash-card course-card rose-theme">
+        <div class="icon">💰</div><div class="course-info"><span class="course-tag tag-rose">地政士</span><h2>土地稅法</h2></div>
+      </NuxtLink>
+      <NuxtLink to="/admin/law-exam/civil-and-trust-law-course" class="dash-card course-card indigo-theme">
+        <div class="icon">🤝</div><div class="course-info"><span class="course-tag tag-indigo">地政士</span><h2>民法與信託法</h2></div>
+      </NuxtLink>
+    </div>
+
+    <hr class="section-divider" />
+
     <h3 class="section-title">🎓 學分班筆記專區</h3>
     <div class="cards-grid course-grid">
       <NuxtLink to="/admin/law-exam/civil-course" class="dash-card course-card civil-theme"><div class="icon">📘</div><div class="course-info"><span class="course-tag tag-civil">學分班</span><h2>民法 55 堂課</h2></div></NuxtLink>
@@ -67,6 +123,7 @@ const saveNewCourse = async () => {
     </div>
 
     <hr class="section-divider" />
+
     <h3 class="section-title">🏛️ 基礎法學專區</h3>
     <div class="cards-grid">
       <NuxtLink to="/admin/law-exam/constitutional-law" class="dash-card law-violet"><div class="icon">👑</div><h2>憲法典籍</h2></NuxtLink>
@@ -77,6 +134,7 @@ const saveNewCourse = async () => {
     </div>
 
     <hr class="section-divider" />
+
     <h3 class="section-title">🏛️ 行政法與公務員法專區</h3>
     <div class="cards-grid">
       <NuxtLink to="/admin/law-exam/administrative-procedure-act" class="dash-card law-gray"><div class="icon">⚙️</div><h2>行政程序法</h2></NuxtLink>
@@ -87,6 +145,7 @@ const saveNewCourse = async () => {
     </div>
 
     <hr class="section-divider" />
+
     <h3 class="section-title">🎓 教育法規專區</h3>
     <div class="cards-grid">
       <NuxtLink to="/admin/law-exam/educational-fundamental-act" class="dash-card law-teal"><div class="icon">📖</div><h2>教育基本法</h2></NuxtLink>
@@ -97,6 +156,7 @@ const saveNewCourse = async () => {
     </div>
 
     <hr class="section-divider" />
+
     <h3 class="section-title">📚 教育與兒少進階法規</h3>
     <div class="cards-grid">
       <NuxtLink to="/admin/law-exam/educational-personnel-employment-act" class="dash-card law-teal"><div class="icon">🧑‍💼</div><h2>教育人員任用條例</h2></NuxtLink>
@@ -111,24 +171,30 @@ const saveNewCourse = async () => {
     <!-- 🌟 全新的高空大 法律校外班專區 (全動態) -->
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
       <h3 class="section-title" style="margin-bottom: 0;">🏛️ 高空大 法律校外班 <span style="font-size:14px; color:#64748b; font-weight:normal;">(不限科目，自由新增)</span></h3>
-      <button @click="isAddingCourse = !isAddingCourse" class="btn-toggle-add">{{ isAddingCourse ? '取消新增' : '➕ 建立新科目' }}</button>
+      <button @click="showCourseForm ? (showCourseForm = false) : openAddForm()" class="btn-toggle-add">
+        {{ showCourseForm ? '取消設定' : '➕ 建立新科目' }}
+      </button>
     </div>
 
-    <!-- 動態新增科目的表單 -->
-    <div v-if="isAddingCourse" class="add-course-panel">
+    <!-- ✏️ 動態新增/編輯科目的表單 -->
+    <div v-if="showCourseForm" class="add-course-panel">
+      <h4 style="margin: 0 0 15px 0; color: #334155;">{{ editingId ? '✏️ 編輯科目外觀' : '✨ 建立新科目' }}</h4>
       <div class="add-grid">
-        <div><label>科目名稱</label><input v-model="newCourse.subject" placeholder="例如：社會學" class="add-input" /></div>
-        <div><label>Emoji 圖示</label><input v-model="newCourse.icon" placeholder="🧑‍🤝‍🧑" class="add-input" /></div>
-        <div><label>主題代表色</label><input type="color" v-model="newCourse.theme_color" class="color-picker" /></div>
-        <div style="display: flex; align-items: flex-end;"><button @click="saveNewCourse" class="btn-confirm-add">💾 儲存並建立科目</button></div>
+        <div><label>科目名稱</label><input v-model="courseForm.subject" placeholder="例如：社會學" class="add-input" /></div>
+        <div><label>Emoji 圖示</label><input v-model="courseForm.icon" placeholder="🧑‍🤝‍🧑" class="add-input" /></div>
+        <div><label>主題代表色</label><input type="color" v-model="courseForm.theme_color" class="color-picker" /></div>
+        <div style="display: flex; align-items: flex-end;"><button @click="saveCourse" class="btn-confirm-add">{{ editingId ? '💾 儲存變更' : '💾 建立科目' }}</button></div>
       </div>
     </div>
 
-    <!-- 動態渲染資料庫中的科目 -->
     <div class="cards-grid course-grid">
-      <!-- 原有的靜態寫法（若您想保留法學與政治學，也可以直接在這裡重寫進資料庫，就可以把靜態的刪掉了） -->
-      <NuxtLink to="/admin/law-exam/legal-methodology-course" class="dash-card course-card cyan-theme"><div class="icon">🧭</div><div class="course-info"><span class="course-tag tag-cyan">校外班</span><h2>法學方法論</h2></div></NuxtLink>
-      <NuxtLink to="/admin/law-exam/political-science-course" class="dash-card course-card violet-theme"><div class="icon">🏛️</div><div class="course-info"><span class="course-tag tag-violet">校外班</span><h2>政治學</h2></div></NuxtLink>
+      <!-- 靜態卡片 -->
+      <NuxtLink to="/admin/law-exam/legal-methodology-course" class="dash-card course-card cyan-theme">
+        <div class="icon">🧭</div><div class="course-info"><span class="course-tag tag-cyan">校外班</span><h2>法學方法論</h2></div>
+      </NuxtLink>
+      <NuxtLink to="/admin/law-exam/political-science-course" class="dash-card course-card violet-theme">
+        <div class="icon">🏛️</div><div class="course-info"><span class="course-tag tag-violet">校外班</span><h2>政治學</h2></div>
+      </NuxtLink>
       
       <!-- 👇 這是動態長出來的科目 -->
       <NuxtLink v-for="course in customCourses" :key="course.id" :to="`/admin/law-exam/custom-course/${course.subject}`" class="dash-card course-card dynamic-theme" :style="{ '--theme-color': course.theme_color }">
@@ -136,6 +202,11 @@ const saveNewCourse = async () => {
         <div class="course-info">
           <span class="course-tag dynamic-tag" :style="{ backgroundColor: course.theme_color }">自訂</span>
           <h2>{{ course.subject }}</h2>
+        </div>
+        <!-- 🌟 動態卡片的編輯與刪除按鈕 (滑鼠移過去才會出現) -->
+        <div class="card-admin-actions">
+           <button @click.prevent="editCourse(course)" class="action-btn" title="編輯科目">✏️</button>
+           <button @click.prevent="deleteCourse(course.id, course.subject)" class="action-btn" title="刪除專區">🗑️</button>
         </div>
       </NuxtLink>
     </div>
@@ -195,7 +266,12 @@ const saveNewCourse = async () => {
 .btn-confirm-add { background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; height: 40px;}
 .btn-confirm-add:hover { background: #059669; }
 
-/* CSS 變數魔法：讓動態資料套用顏色 */
+/* 🌟 動態卡片懸浮按鈕 */
+.dynamic-theme { position: relative; }
+.card-admin-actions { position: absolute; top: 10px; right: 10px; display: flex; gap: 5px; opacity: 0; transition: opacity 0.2s ease-in-out; }
+.dynamic-theme:hover .card-admin-actions { opacity: 1; }
+.action-btn { background: white; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px; font-size: 14px; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+.action-btn:hover { background: #f1f5f9; transform: scale(1.1); border-color: #94a3b8;}
 .dynamic-theme:hover { border-color: var(--theme-color); background: white;}
 
 @media (max-width: 768px) { 
@@ -204,5 +280,14 @@ const saveNewCourse = async () => {
   .course-grid { grid-template-columns: 1fr; }
   .course-grid > .dash-card:last-child:nth-child(odd) { grid-column: auto; }
   .add-grid { grid-template-columns: 1fr; }
+  .card-admin-actions { opacity: 1; } /* 手機版常駐顯示按鈕 */
+}
+@media (max-width: 500px) {
+  .dashboard-container { padding: 20px 15px; }
+  .cards-grid { grid-template-columns: 1fr; }
+  .cards-grid > .dash-card:last-child:nth-child(odd) { grid-column: auto; }
+  .dash-card { padding: 20px 15px; }
+  .icon { font-size: 30px; margin-bottom: 8px; }
+  .dash-card h2 { font-size: 15px; }
 }
 </style>
