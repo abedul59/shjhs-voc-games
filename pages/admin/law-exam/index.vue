@@ -38,8 +38,6 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
       </NuxtLink>
     </div>
 
-    
-
     <hr class="section-divider" />
 
     <h3 class="section-title">🎓 學分班筆記專區</h3>
@@ -97,9 +95,7 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
       <NuxtLink to="/admin/law-exam/tainan-tutoring-guidelines" class="dash-card law-gray"><div class="icon">🏫</div><h2>臺南市課輔實施要點</h2></NuxtLink>
     </div>
 
-  </div>
-
-<hr class="section-divider" />
+    <hr class="section-divider" />
 
     <!-- 🌟 全新的高空大 法律校外班專區 -->
     <h3 class="section-title">🏛️ 高空大 法律校外班 <span style="font-size:14px; color:#64748b; font-weight:normal;">(不限講數，自由新增)</span></h3>
@@ -112,6 +108,8 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
         <div class="icon">🏛️</div><div class="course-info"><span class="course-tag tag-violet">校外班</span><h2>政治學</h2></div>
       </NuxtLink>
     </div>
+
+  </div> <!-- 🌟 關鍵：結尾標籤移動到所有專區的最下方，完美置中！ -->
 </template>
 
 <style scoped>
@@ -166,6 +164,10 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
 .tag-rose { background: #e11d48; } .rose-theme:hover { border-color: #e11d48; background: white;}
 .tag-indigo { background: #6366f1; } .indigo-theme:hover { border-color: #6366f1; background: white;}
 
+/* 高空大校外班專屬色彩 */
+.tag-cyan { background: #0891b2; } .cyan-theme:hover { border-color: #0891b2; background: white;}
+.tag-violet { background: #8b5cf6; } .violet-theme:hover { border-color: #8b5cf6; background: white;}
+
 @media (max-width: 768px) { 
   .cards-grid { grid-template-columns: 1fr 1fr; }
   .cards-grid > .dash-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
@@ -180,8 +182,4 @@ definePageMeta({ middleware: ['auth', 'law-auth'] });
   .icon { font-size: 30px; margin-bottom: 8px; }
   .dash-card h2 { font-size: 15px; }
 }
-
-/* 高空大校外班專屬色彩 */
-.tag-cyan { background: #0891b2; } .cyan-theme:hover { border-color: #0891b2; background: white;}
-.tag-violet { background: #8b5cf6; } .violet-theme:hover { border-color: #8b5cf6; background: white;}
 </style>
