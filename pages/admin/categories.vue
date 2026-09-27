@@ -50,6 +50,7 @@ const allGames = [
   { id: 'verbAmuPark', name: '🎢 動詞變化遊樂園' }, 
   { id: 'verbingDual', name: '⚔️ 動詞變化大師(對戰)' },
   { id: 'vocReviewing', name: '📖 單字例句總複習' }, // 🌟 補上新的總複習項目
+  { id: 'monopolyDual', name: '🏘️ 單字大富翁（雙人）' },
   { id: 'battle', name: '⚔️ 單字方塊陣' },
   { id: 'tenchi', name: '🐎 吞食天地' },
   { id: 'tarot21', name: '🃏 塔羅 21 點' },
