@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
+import { rankDuels } from '~/lib/monopoly-duel';
 
 const supabase = useSupabaseClient();
 const isAdminCookie = useCookie('isAdmin');
@@ -26,7 +27,7 @@ const rankedList = ref([]);
 const pvpSortMode = ref('wins'); 
 const tetrisSortMode = ref('word'); 
 
-const pvpGames = ['單字方塊陣', '單字吞食天地', '單字塔羅21點', '單字塔羅鍊金術', '單字塔羅UNO對決', '動詞對戰大師'];
+const pvpGames = ['單字大富翁（雙人）', '單字方塊陣', '單字吞食天地', '單字塔羅21點', '單字塔羅鍊金術', '單字塔羅UNO對決', '動詞對戰大師'];
 
 onMounted(async () => {
   const { data: sData } = await supabase.from('students').select('student_id, class_name, hidden_name, real_name').limit(10000);
@@ -81,11 +82,13 @@ const fetchLeaderboard = async () => {
   if (data) {
     const filteredData = data.filter(r => {
       const isAnonRecord = r.student_id.startsWith('anon_');
-      if (selectedGameType.value === '單字大富翁' && identityMode.value === 'student' && selectedClass.value !== 'ALL' && studentsMap.value[r.student_id]?.class_name !== selectedClass.value) return false;
+      if (['單字大富翁', '單字大富翁（雙人）'].includes(selectedGameType.value) && identityMode.value === 'student' && selectedClass.value !== 'ALL' && studentsMap.value[r.student_id]?.class_name !== selectedClass.value) return false;
       return identityMode.value === 'student' ? !isAnonRecord : isAnonRecord;
     });
 
-    if (pvpGames.includes(selectedGameType.value)) {
+    if (selectedGameType.value === '單字大富翁（雙人）') {
+      rankedList.value = rankDuels(filteredData, pvpSortMode.value);
+    } else if (pvpGames.includes(selectedGameType.value)) {
         const pvpRecords = {};
         filteredData.forEach(r => {
             if (!pvpRecords[r.student_id]) {
@@ -98,7 +101,7 @@ const fetchLeaderboard = async () => {
         });
         
         let pvpArray = Object.values(pvpRecords);
-        if (pvpSortMode.value === 'wins') {
+        if (!['losses', 'escapes'].includes(pvpSortMode.value)) {
             pvpArray = pvpArray.filter(r => r.wins > 0).sort((a, b) => b.wins - a.wins || a.escapes - b.escapes || a.losses - b.losses);
         } else if (pvpSortMode.value === 'losses') {
             pvpArray = pvpArray.filter(r => r.losses > 0).sort((a, b) => b.losses - a.losses || b.wins - a.wins);
@@ -210,6 +213,7 @@ const getPlayerName = (id) => {
         <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅鍊金術(單人)' }" @click="selectedGameType = '單字塔羅鍊金術(單人)'; fetchLeaderboard()">🔮 鍊金術(單)</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅UNO(單人)' }" @click="selectedGameType = '單字塔羅UNO(單人)'; fetchLeaderboard()">🃏 塔羅UNO(單)</button>
 
+        <button class="type-btn" :class="{ active: selectedGameType === '單字大富翁（雙人）' }" @click="selectedGameType = '單字大富翁（雙人）'; fetchLeaderboard()">🏘️ 大富翁（雙人）</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊陣' }" @click="selectedGameType = '單字方塊陣'; fetchLeaderboard()">⚔️ 對戰方塊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字吞食天地' }" @click="selectedGameType = '單字吞食天地'; fetchLeaderboard()">🐎 吞食天地</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅21點' }" @click="selectedGameType = '單字塔羅21點'; fetchLeaderboard()">🃏 塔羅21(雙)</button>
@@ -237,6 +241,8 @@ const getPlayerName = (id) => {
         <button class="sub-btn wins" :class="{ 'active': pvpSortMode === 'wins' }" @click="pvpSortMode = 'wins'; fetchLeaderboard()">🏆 勝利榜</button>
         <button class="sub-btn losses" :class="{ 'active': pvpSortMode === 'losses' }" @click="pvpSortMode = 'losses'; fetchLeaderboard()">💀 敗戰榜</button>
         <button class="sub-btn escapes" :class="{ 'active': pvpSortMode === 'escapes' }" @click="pvpSortMode = 'escapes'; fetchLeaderboard()">🏃 逃跑榜</button>
+        <button v-if="selectedGameType === '單字大富翁（雙人）'" class="sub-btn" :class="{ active: pvpSortMode === 'draws' }" @click="pvpSortMode = 'draws'; fetchLeaderboard()">🤝 平手榜</button>
+        <button v-if="selectedGameType === '單字大富翁（雙人）'" class="sub-btn" :class="{ active: pvpSortMode === 'score' }" @click="pvpSortMode = 'score'; fetchLeaderboard()">💰 現金分數榜</button>
       </div>
 
       <div v-if="selectedGameType === '單字俄羅斯方塊'" class="sub-tabs">
@@ -265,6 +271,7 @@ const getPlayerName = (id) => {
     </div>
 
     <p v-if="selectedGameType === '單字大富翁'" class="monopoly-note">🏘️ 分數為結束時的現金。每人取本單元最高分，同分以較短耗時優先；單字明細對應該筆最佳成績。</p>
+    <p v-if="selectedGameType === '單字大富翁（雙人）'" class="monopoly-note">🏘️ 可依勝、敗、逃、平或最高現金排名；單字明細對應該學生的最佳現金紀錄。</p>
     <p v-if="isLoading" class="loading-msg">⏳ 統計中...</p>
     <div v-else-if="rankedList.length === 0 && selectedUnit" class="empty-msg retro-element">目前還沒有紀錄！</div>
 
@@ -275,8 +282,9 @@ const getPlayerName = (id) => {
         <!-- 🌟 名次區塊增加遊玩模式標示 -->
         <div class="rank-info">
           <div class="player-name">{{ getPlayerName(record.student_id) }}</div>
-          <details v-if="selectedGameType === '單字大富翁'" class="monopoly-words">
-            <summary>查看這筆成績的對錯單字</summary>
+          <details v-if="['單字大富翁', '單字大富翁（雙人）'].includes(selectedGameType)" class="monopoly-words">
+            <summary>查看最佳成績的對錯單字</summary>
+            <p v-if="selectedGameType === '單字大富翁（雙人）'">最佳現金：{{ record.score }} 分 · {{ record.draws }} 平</p>
             <p class="correct-words"><strong>答對：</strong>{{ record.correct_words || '無' }}</p>
             <p class="wrong-words"><strong>答錯：</strong>{{ record.wrong_words || '無' }}</p>
             <p>錯誤次數：{{ record.mistakes ?? 0 }} 次</p>
@@ -288,7 +296,7 @@ const getPlayerName = (id) => {
         </div>
         
         <div class="rank-score" v-if="pvpGames.includes(selectedGameType)">
-          <template v-if="pvpSortMode === 'wins'">
+          <template v-if="pvpSortMode === 'wins' || (selectedGameType !== '單字大富翁（雙人）' && !['losses', 'escapes'].includes(pvpSortMode))">
              <strong style="color: #4caf50;">{{ record.wins }} 勝</strong><br>
              <small><span style="color: #f44336;">{{ record.losses }} 敗</span> / <span style="color: #ff9800;">{{ record.escapes }} 逃</span></small>
           </template>
@@ -296,6 +304,8 @@ const getPlayerName = (id) => {
              <strong style="color: #f44336;">{{ record.losses }} 敗</strong><br>
              <small><span style="color: #4caf50;">{{ record.wins }} 勝</span> / <span style="color: #ff9800;">{{ record.escapes }} 逃</span></small>
           </template>
+          <template v-else-if="selectedGameType === '單字大富翁（雙人）' && pvpSortMode === 'score'"><strong>{{ record.score }}</strong> 分<br><small>{{ record.wins }} 勝 / {{ record.draws }} 平</small></template>
+          <template v-else-if="selectedGameType === '單字大富翁（雙人）' && pvpSortMode === 'draws'"><strong>{{ record.draws }}</strong> 平<br><small>{{ record.wins }} 勝 / {{ record.losses }} 敗</small></template>
           <template v-else-if="pvpSortMode === 'escapes'">
              <strong style="color: #ff9800;">{{ record.escapes }} 逃</strong><br>
              <small><span style="color: #4caf50;">{{ record.wins }} 勝</span> / <span style="color: #f44336;">{{ record.losses }} 敗</span></small>
