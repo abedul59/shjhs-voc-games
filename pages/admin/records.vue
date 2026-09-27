@@ -143,6 +143,7 @@ const exportToCSV = () => {
 
     <div class="filters-panel retro-element">
 <div class="game-type-tabs">
+        <button class="type-btn" :class="{ active: selectedGameType === '單字大富翁' }" @click="selectedGameType = '單字大富翁'">🏘️ 大富翁</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊消消樂' }" @click="selectedGameType = '單字方塊消消樂'">🟦 方塊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字神移動' }" @click="selectedGameType = '單字神移動'">🔠 移動</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字選選樂' }" @click="selectedGameType = '單字選選樂'">✅ 選擇</button>
@@ -195,6 +196,7 @@ const exportToCSV = () => {
       </div>
     </div>
 
+    <p v-if="selectedGameType === '單字大富翁'">🏘️ 分數為本局結算現金；點學生姓名可查看每局對錯單字，也可使用「匯出CSV」下載完整紀錄。</p>
     <div class="table-container retro-element">
       <p v-if="isLoading" class="loading-msg">⏳ 讀取中...</p>
       <table v-else class="retro-table">
