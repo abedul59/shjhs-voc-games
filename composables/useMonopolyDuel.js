@@ -104,7 +104,8 @@ export function useMonopolyDuel() {
   }
   async function candidates(key) {
     const { data, error: problem } = await db.from('game_rooms').select('*').eq('unit_info', key).eq('status', 'waiting')
-      .neq('host_id', student.value.id).order('created_at').order('id').limit(30);
+      .neq('host_id', student.value.id).gte('monopoly_state->presence->>0', String(Date.now() - 30000))
+      .order('created_at').order('id').limit(30);
     if (problem) throw problem;
     return (data || []).filter(item => item.monopoly_state?.schema === 1 && Date.now() - item.monopoly_state.presence[0] <= 30000);
   }
