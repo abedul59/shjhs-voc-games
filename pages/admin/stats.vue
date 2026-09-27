@@ -95,12 +95,12 @@ const fetchStats = async () => {
 
       cw.forEach(w => { 
           // 🌟 智慧過濾：忽略 PvP 對戰紀錄留下的中文狀態文字
-          if (w.includes('結果:') || w.includes('剩餘血量:') || w.includes('【勝】') || w.includes('【敗】') || w.includes('【逃】')) return;
+          if (w.includes('結果:') || w.includes('剩餘血量:') || w.includes('【勝】') || w.includes('【敗】') || w.includes('【逃】') || w.includes('【平】')) return;
           ensureWord(w); 
           statsMap[w].correct++; 
       });
       ww.forEach(w => { 
-          if (w.includes('結果:') || w.includes('剩餘血量:') || w.includes('【勝】') || w.includes('【敗】') || w.includes('【逃】')) return;
+          if (w.includes('結果:') || w.includes('剩餘血量:') || w.includes('【勝】') || w.includes('【敗】') || w.includes('【逃】') || w.includes('【平】')) return;
           ensureWord(w); 
           statsMap[w].wrong++; 
       });
@@ -145,6 +145,7 @@ const fetchStats = async () => {
 
     <div class="filter-box retro-element">
       <div class="game-type-tabs">
+        <button class="type-btn" :class="{ active: selectedGameType === '單字大富翁' }" @click="selectedGameType = '單字大富翁'; fetchStats()">🏘️ 大富翁</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊消消樂' }" @click="selectedGameType = '單字方塊消消樂'; fetchStats()">🟦 方塊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字神移動' }" @click="selectedGameType = '單字神移動'; fetchStats()">🔠 移動</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字選選樂' }" @click="selectedGameType = '單字選選樂'; fetchStats()">✅ 選擇</button>
@@ -163,6 +164,7 @@ const fetchStats = async () => {
         <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅鍊金術(單人)' }" @click="selectedGameType = '單字塔羅鍊金術(單人)'; fetchStats()">🔮 鍊金術(單)</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅UNO(單人)' }" @click="selectedGameType = '單字塔羅UNO(單人)'; fetchStats()">🃏 塔羅UNO(單)</button>
 
+        <button class="type-btn" :class="{ active: selectedGameType === '單字大富翁（雙人）' }" @click="selectedGameType = '單字大富翁（雙人）'; fetchStats()">🏘️ 大富翁（雙人）</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊陣' }" @click="selectedGameType = '單字方塊陣'; fetchStats()">⚔️ 對戰方塊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字吞食天地' }" @click="selectedGameType = '單字吞食天地'; fetchStats()">🐎 吞食天地</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅21點' }" @click="selectedGameType = '單字塔羅21點'; fetchStats()">🃏 塔羅21(雙)</button>
@@ -201,6 +203,8 @@ const fetchStats = async () => {
       </div>
     </div>
 
+    <p v-if="selectedGameType === '單字大富翁（雙人）'">🏘️ 分別統計兩位學生各自的作答；勝敗、平手與離場文字不計為單字。</p>
+    <p v-if="selectedGameType === '單字大富翁'">🏘️ 僅統計學生本人的作答；同一單字重複作答會逐次計入，電腦作答不列入分析。</p>
     <div v-if="isSpecialGame" class="special-msg-box retro-element">
       <div class="icon-big">ℹ️</div>
       <h3>此模式不支援單字對錯分析</h3>

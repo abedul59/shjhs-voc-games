@@ -143,6 +143,7 @@ const exportToCSV = () => {
 
     <div class="filters-panel retro-element">
 <div class="game-type-tabs">
+        <button class="type-btn" :class="{ active: selectedGameType === '單字大富翁' }" @click="selectedGameType = '單字大富翁'">🏘️ 大富翁</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊消消樂' }" @click="selectedGameType = '單字方塊消消樂'">🟦 方塊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字神移動' }" @click="selectedGameType = '單字神移動'">🔠 移動</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字選選樂' }" @click="selectedGameType = '單字選選樂'">✅ 選擇</button>
@@ -161,6 +162,7 @@ const exportToCSV = () => {
         <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅鍊金術(單人)' }" @click="selectedGameType = '單字塔羅鍊金術(單人)'">🔮 鍊金術(單)</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅UNO(單人)' }" @click="selectedGameType = '單字塔羅UNO(單人)'">🃏 塔羅UNO(單)</button>
 
+        <button class="type-btn" :class="{ active: selectedGameType === '單字大富翁（雙人）' }" @click="selectedGameType = '單字大富翁（雙人）'">🏘️ 大富翁（雙人）</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊陣' }" @click="selectedGameType = '單字方塊陣'">⚔️ 對戰方塊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字吞食天地' }" @click="selectedGameType = '單字吞食天地'">🐎 吞食天地</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅21點' }" @click="selectedGameType = '單字塔羅21點'">🃏 塔羅21(雙)</button>
@@ -195,6 +197,8 @@ const exportToCSV = () => {
       </div>
     </div>
 
+    <p v-if="selectedGameType === '單字大富翁（雙人）'">🏘️ 每位學生各有一筆紀錄：結算現金、勝敗／平手／離場與個人對錯單字。可點姓名查看明細或匯出 CSV。</p>
+    <p v-if="selectedGameType === '單字大富翁'">🏘️ 分數為本局結算現金；點學生姓名可查看每局對錯單字，也可使用「匯出CSV」下載完整紀錄。</p>
     <div class="table-container retro-element">
       <p v-if="isLoading" class="loading-msg">⏳ 讀取中...</p>
       <table v-else class="retro-table">
