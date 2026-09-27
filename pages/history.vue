@@ -6,7 +6,8 @@ const studentCookie = useCookie('currentStudent');
 const historyRecords = ref([]);
 const isLoading = ref(true);
 
-const selectedGameType = ref('單字方塊消消樂');
+const route = useRoute();
+const selectedGameType = ref(route.query.game === '單字大富翁' ? '單字大富翁' : '單字方塊消消樂');
 
 // 🌟 統一定義所有 PvP 對戰遊戲
 const pvpGames = ['單字方塊陣', '單字吞食天地', '單字塔羅21點', '單字塔羅鍊金術', '單字塔羅UNO對決'];
@@ -77,6 +78,7 @@ const pvpTotalEscapes = computed(() => historyRecords.value.filter(r => getBattl
 
     <div class="filter-box retro-element">
 <div class="game-type-tabs">
+        <button class="type-btn" :class="{ active: selectedGameType === '單字大富翁' }" @click="selectedGameType = '單字大富翁'; fetchHistory()">🏘️ 大富翁</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊消消樂' }" @click="selectedGameType = '單字方塊消消樂'; fetchHistory()">🟦 方塊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字神移動' }" @click="selectedGameType = '單字神移動'; fetchHistory()">🔠 移動</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字選選樂' }" @click="selectedGameType = '單字選選樂'; fetchHistory()">✅ 選擇</button>
@@ -155,6 +157,7 @@ const pvpTotalEscapes = computed(() => historyRecords.value.filter(r => getBattl
             </div>
 
             <div class="stats-text">
+              <p v-if="item.game_type === '單字大富翁'">🏘️ 分數＝結算現金 · 第 {{ item.attempt_number || 1 }} 次</p>
               <p>⏱️ 花費時間：{{ item.time_taken_seconds ?? item.time_spent ?? 0 }} 秒</p>
               <p v-if="item.mistakes !== null && !pvpGames.includes(item.game_type)">❌ 錯誤次數：{{ item.mistakes }} 次</p>
             </div>

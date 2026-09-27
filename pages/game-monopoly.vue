@@ -13,8 +13,12 @@ const question = ref(null), answer = ref(''), message = ref('載入題庫…'), 
 const aiBusy = ref(false), playerBusy = ref(false), responding = ref(false);
 const selectedMap = ref('taiwan'), gameMap = ref('taiwan'), started = ref(false), loading = ref(true);
 const viewedCity = ref(0), eventCard = ref(null), letterInput = ref(null), saveStatus = ref('');
+const savingRecord = ref(false), recordSaved = ref(false), saveError = ref('');
 const mistakes = ref(0), rightWords = ref([]), wrongWords = ref([]);
 let startedAt = 0, aiTimer = null, disposed = false, eventResolve = null;
+let pendingRecord = null, gameStudentId = null;
+const gameLesson = ref({ version: '', volume: '', unit: '' });
+const leaderboardLink = computed(() => ({ path: '/leaderboard', query: { game: '單字大富翁', version: gameLesson.value.version, volume: gameLesson.value.volume, unit: gameLesson.value.unit } }));
 const timers = new Map();
 const decks = { chance: [], fate: [] };
 
@@ -54,6 +58,8 @@ function chooseMap() {
 function startGame() {
   if (started.value || loading.value || !routeStops.value.length) return;
   gameMap.value = selectedMap.value; started.value = true; startedAt = Date.now();
+  gameStudentId = student.value?.id ? String(student.value.id) : null;
+  for (const key of ['version', 'volume', 'unit']) gameLesson.value[key] = typeof route.query[key] === 'string' ? route.query[key] : '';
   message.value = '地圖已鎖定。沿城市路線往返，答對買地；標記站點先抽機會或命運卡。輪到你擲骰！';
 }
 function newGame() {
@@ -62,6 +68,7 @@ function newGame() {
   players.value = newPlayers(); owned.value = {}; boardWords.value = shuffle(words.value).slice(0, 12);
   turn.value = 0; round.value = 1; die.value = '—'; dice.value = [1, 1]; viewedCity.value = 0;
   question.value = null; eventCard.value = null; aiStatus.value = ''; saveStatus.value = '';
+  pendingRecord = null; recordSaved.value = false; saveError.value = ''; savingRecord.value = false;
   mistakes.value = 0; rightWords.value = []; wrongWords.value = [];
   aiBusy.value = false; playerBusy.value = false; responding.value = false;
   decks.chance = []; decks.fate = []; started.value = false; done.value = false;
@@ -92,6 +99,36 @@ function advance(player) {
   else if (next < 0) { player.direction = 1; next = 1; player.cash += 200; message.value = player.name + ' 經過起點，領取 $200。'; }
   player.pos = next;
 }
+async function saveGameRecord() {
+  if (!pendingRecord || savingRecord.value || recordSaved.value) return;
+  savingRecord.value = true; saveError.value = ''; saveStatus.value = '儲存遊戲紀錄中…';
+  try {
+    // Freeze one UUID and result per game so a lost response can be retried safely.
+    if (!pendingRecord.attempt_number) {
+      let query = db.from('game_records').select('id', { count: 'exact', head: true })
+        .eq('student_id', pendingRecord.student_id).eq('game_type', '單字大富翁');
+      for (const key of ['version', 'volume', 'unit_played']) {
+        query = pendingRecord[key] === null ? query.is(key, null) : query.eq(key, pendingRecord[key]);
+      }
+      const { count, error } = await query;
+      if (error) throw error;
+      pendingRecord.attempt_number = (count || 0) + 1;
+    }
+    const { error } = await db.from('game_records').insert([pendingRecord]);
+    if (error) {
+      if (error.code !== '23505') throw error;
+      // The previous request may have committed before the connection was lost.
+      const { data, error: lookupError } = await db.from('game_records').select('id')
+        .eq('id', pendingRecord.id).eq('student_id', pendingRecord.student_id).eq('game_type', '單字大富翁').maybeSingle();
+      if (lookupError || !data) throw lookupError || error;
+    }
+    recordSaved.value = true;
+    saveStatus.value = '分數與對錯單字已儲存，可在學習紀錄、英雄榜與後台報表查看。';
+  } catch (error) {
+    saveStatus.value = '本局尚未儲存，請按「重試儲存」。';
+    saveError.value = error?.message || '連線中斷，請稍後重試。';
+  } finally { savingRecord.value = false; }
+}
 async function endTurn() {
   if (disposed || done.value) return;
   question.value = null;
@@ -99,13 +136,18 @@ async function endTurn() {
   if (nextRound > 20 || players.value.some(player => player.cash <= 0)) {
     done.value = true; aiStatus.value = '';
     if (aiTimer) window.clearTimeout(aiTimer);
-    if (student.value?.id) {
-      saveStatus.value = '儲存遊戲紀錄中…';
-      try {
-        const { error } = await db.from('game_records').insert([{ student_id: student.value.id, game_type: '單字大富翁', version: route.query.version || null, volume: route.query.volume || null, unit_played: route.query.unit || null, score: players.value[0].cash, time_taken_seconds: Math.floor((Date.now() - startedAt) / 1000), mistakes: mistakes.value, wrong_words: [...new Set(wrongWords.value)].join(', '), correct_words: [...new Set(rightWords.value)].join(', ') }]);
-        if (done.value && !disposed) saveStatus.value = error ? '本局已結束，但遊戲紀錄儲存失敗。' : '遊戲紀錄已儲存。';
-      } catch { if (done.value && !disposed) saveStatus.value = '本局已結束，但遊戲紀錄儲存失敗。'; }
-    }
+    if (gameStudentId) {
+      pendingRecord = {
+        id: crypto.randomUUID(), student_id: gameStudentId, game_type: '單字大富翁',
+        version: gameLesson.value.version || null, volume: gameLesson.value.volume || null, unit_played: gameLesson.value.unit || null,
+        score: players.value[0].cash, played_at: new Date().toISOString(),
+        time_taken_seconds: Math.floor((Date.now() - startedAt) / 1000), mistakes: mistakes.value,
+        // Preserve every student answer for per-word counts; AI answers never enter these arrays.
+        correct_words: rightWords.value.join(', '), wrong_words: wrongWords.value.join(', '),
+        device_info: navigator.userAgent
+      };
+      await saveGameRecord();
+    } else saveStatus.value = '本局沒有登入身分，未儲存成績；請先登入學生帳號再遊玩。';
     return;
   }
   round.value = nextRound; turn.value = 1 - turn.value;
@@ -288,7 +330,18 @@ onBeforeUnmount(() => {
    <form v-else @submit.prevent="submit"><h2>「{{ question.word.zh_tw }}」<br>請補出英文單字缺少的兩個字母</h2><p class="masked-word">{{ question.masked }}</p><label class="letter-label" for="missing-letters">依空格順序，輸入兩個英文字母</label><input id="missing-letters" ref="letterInput" v-model="answer" autocomplete="off" autocapitalize="none" :spellcheck="false" maxlength="2" minlength="2" pattern="[A-Za-z]{2}" required placeholder="輸入兩個字母"><button type="submit" :disabled="responding">確認答案</button></form>
   </template>
  </section></div>
- <div v-if="done" class="overlay"><section class="modal" role="dialog" aria-modal="true" aria-label="遊戲結果"><h1>🏁 {{ players[0].cash === players[1].cash ? '平手' : players[0].cash > players[1].cash ? '你贏了！' : '電腦獲勝' }}</h1><p>你：{{ players[0].cash }} 元　電腦：{{ players[1].cash }} 元</p><p>{{ saveStatus }}</p><button type="button" :disabled="saveStatus === '儲存遊戲紀錄中…' || aiBusy || responding" @click="newGame">再玩一次・重新選國家</button><p><NuxtLink to="/">回遊戲選單</NuxtLink></p></section></div>
+ <div v-if="done" class="overlay"><section class="modal result-modal" role="dialog" aria-modal="true" aria-label="遊戲結果">
+  <h1>🏁 {{ players[0].cash === players[1].cash ? '平手' : players[0].cash > players[1].cash ? '你贏了！' : '電腦獲勝' }}</h1>
+  <p><strong>本局分數：{{ players[0].cash }} 分（結算現金）</strong></p>
+  <p>電腦：{{ players[1].cash }} 元 · 你答對 {{ rightWords.length }} 次／答錯 {{ mistakes }} 次</p>
+  <details class="result-words"><summary>查看本局對錯單字</summary><p>✅ 答對：{{ rightWords.join(', ') || '無' }}</p><p>❌ 答錯：{{ wrongWords.join(', ') || '無' }}</p></details>
+  <p role="status">{{ saveStatus }}</p>
+  <p v-if="saveError" class="save-error">{{ saveError }}</p>
+  <button v-if="saveError" type="button" :disabled="savingRecord" @click="saveGameRecord">重試儲存</button>
+  <p v-if="recordSaved" class="result-links"><NuxtLink :to="{ path: '/history', query: { game: '單字大富翁' } }">📊 我的學習紀錄</NuxtLink><NuxtLink :to="leaderboardLink">🏆 全校英雄榜</NuxtLink></p>
+  <button type="button" :disabled="savingRecord || aiBusy || responding" @click="newGame">再玩一次・重新選國家</button>
+  <p><NuxtLink to="/">回遊戲選單</NuxtLink></p>
+ </section></div>
 </main>
 </template>
 
@@ -317,4 +370,5 @@ button:focus-visible,select:focus-visible,a:focus-visible,input:focus-visible{ou
 @media(max-width:1050px){.title-block{gap:8px}.title-block h1{font-size:1.05rem}.title-block p{display:none}.map-picker label{display:none}.map-layout{grid-template-columns:minmax(0,1fr) 270px}}
 @media(max-width:850px){.map-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto}.map-main{grid-template-rows:minmax(320px,48vh) auto}.route-panel{max-height:none}.route-panel ol{overflow:visible}.route-panel li>button{min-height:48px}.scores{flex-wrap:wrap}.scores .round-card{min-width:100px}.event-card{flex-wrap:wrap}.event-copy{min-width:65%}.event-card button{margin-left:auto}}
 @media(prefers-reduced-motion:reduce){.dice-display.rolling,.thinking-dots i{animation:none}}
+.result-modal{max-height:calc(100dvh - 36px);overflow:auto}.result-words{text-align:left;line-height:1.5;overflow-wrap:anywhere}.result-words summary{cursor:pointer;font-weight:700}.result-links{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}.save-error{color:#a12222;font-size:.8rem}
 </style>

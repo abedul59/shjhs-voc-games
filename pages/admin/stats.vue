@@ -145,6 +145,7 @@ const fetchStats = async () => {
 
     <div class="filter-box retro-element">
       <div class="game-type-tabs">
+        <button class="type-btn" :class="{ active: selectedGameType === '單字大富翁' }" @click="selectedGameType = '單字大富翁'; fetchStats()">🏘️ 大富翁</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊消消樂' }" @click="selectedGameType = '單字方塊消消樂'; fetchStats()">🟦 方塊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字神移動' }" @click="selectedGameType = '單字神移動'; fetchStats()">🔠 移動</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字選選樂' }" @click="selectedGameType = '單字選選樂'; fetchStats()">✅ 選擇</button>
@@ -201,6 +202,7 @@ const fetchStats = async () => {
       </div>
     </div>
 
+    <p v-if="selectedGameType === '單字大富翁'">🏘️ 僅統計學生本人的作答；同一單字重複作答會逐次計入，電腦作答不列入分析。</p>
     <div v-if="isSpecialGame" class="special-msg-box retro-element">
       <div class="icon-big">ℹ️</div>
       <h3>此模式不支援單字對錯分析</h3>
