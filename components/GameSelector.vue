@@ -127,19 +127,13 @@ onMounted(async () => {
       return; 
     }
 
-    if (settings.game_categories && settings.game_categories.length > 0) {
+    if (Array.isArray(settings.game_categories)) {
       dynamicCategories.value = settings.game_categories.map((c, i) => ({
         id: c.id || `cat_${i}`,
         name: c.name || c.category_name || `分類 ${i+1}`,
-        games: c.games || []
+        games: Array.isArray(c.games) ? [...c.games] : []
       }));
-      if (!dynamicCategories.value.some(cat => cat.games.includes('monopolyDual'))) {
-        const pvpCategory = dynamicCategories.value.find(cat => cat.games.includes('battle'));
-        if (pvpCategory) pvpCategory.games.unshift('monopolyDual');
-        else dynamicCategories.value.push({ id: 'monopoly_dual_category', name: '⚔️ 雙人對戰', games: ['monopolyDual'] });
-      }
-      const hasMonopoly = dynamicCategories.value.some(cat => cat.games.includes('monopoly'));
-      if (!hasMonopoly && dynamicCategories.value.length > 0) dynamicCategories.value[0].games.unshift('monopoly');
+      // 自訂分類以後台儲存內容為準，讓兩款大富翁可以自由移動或取消顯示。
       const hasShooting = dynamicCategories.value.some(cat => cat.games.includes('vocshooting'));
       if (!hasShooting && dynamicCategories.value.length > 0) {
         dynamicCategories.value[0].games.push('vocshooting');

@@ -5,6 +5,7 @@ const supabase = useSupabaseClient();
 const isLoading = ref(true);
 const isSaving = ref(false);
 const categories = ref([]);
+const loadError = ref('');
 
 const allGames = [
   { id: 'match', name: '🟦 方塊消消樂' },
@@ -50,6 +51,7 @@ const allGames = [
   { id: 'verbAmuPark', name: '🎢 動詞變化遊樂園' }, 
   { id: 'verbingDual', name: '⚔️ 動詞變化大師(對戰)' },
   { id: 'vocReviewing', name: '📖 單字例句總複習' }, // 🌟 補上新的總複習項目
+  { id: 'monopoly', name: '🏘️ 單字大富翁（單人）' },
   { id: 'monopolyDual', name: '🏘️ 單字大富翁（雙人）' },
   { id: 'battle', name: '⚔️ 單字方塊陣' },
   { id: 'tenchi', name: '🐎 吞食天地' },
@@ -59,11 +61,22 @@ const allGames = [
 ];
 
 onMounted(async () => {
-  const { data } = await supabase.from('system_settings').select('game_categories').eq('id', 1).single();
-  if (data && data.game_categories) {
-    categories.value = data.game_categories;
+  try {
+    const { data, error } = await supabase.from('system_settings').select('game_categories').eq('id', 1).single();
+    if (error) throw error;
+    if (Array.isArray(data?.game_categories)) {
+      categories.value = data.game_categories.map((cat, index) => ({
+        ...cat,
+        id: cat.id || `cat_${index}`,
+        name: cat.name || cat.category_name || `分類 ${index + 1}`,
+        games: Array.isArray(cat.games) ? [...cat.games] : []
+      }));
+    }
+  } catch (error) {
+    loadError.value = `分類設定載入失敗：${error.message || '請稍後重新整理頁面。'}`;
+  } finally {
+    isLoading.value = false;
   }
-  isLoading.value = false;
 });
 
 const addCategory = () => {
@@ -82,9 +95,18 @@ const moveUp = (index) => {
 };
 
 const saveSettings = async () => {
+  if (isLoading.value || isSaving.value || loadError.value) return;
   isSaving.value = true;
-  await supabase.from('system_settings').update({ game_categories: categories.value }).eq('id', 1);
-  setTimeout(() => { isSaving.value = false; alert('✅ 前台分類與排版已儲存！'); }, 500);
+  try {
+    const { error } = await supabase.from('system_settings')
+      .update({ game_categories: categories.value }).eq('id', 1).select('id').single();
+    if (error) throw error;
+    alert('✅ 前台分類與排版已儲存！');
+  } catch (error) {
+    alert(`❌ 儲存失敗：${error.message || '請稍後再試。'}`);
+  } finally {
+    isSaving.value = false;
+  }
 };
 </script>
 
@@ -94,33 +116,35 @@ const saveSettings = async () => {
       <h1>🗂️ 前台遊戲分類與排版管理</h1>
       <div style="display: flex; gap: 10px;">
         <NuxtLink to="/admin" class="retro-btn btn-secondary" style="text-decoration:none;">返回後台</NuxtLink>
-        <button class="retro-btn btn-primary" @click="saveSettings">{{ isSaving ? '儲存中...' : '💾 儲存分類設定' }}</button>
+        <button class="retro-btn btn-primary" :disabled="isLoading || isSaving || !!loadError" @click="saveSettings">{{ isSaving ? '儲存中...' : '💾 儲存分類設定' }}</button>
       </div>
     </div>
 
     <div v-if="isLoading">載入中...</div>
+    <p v-else-if="loadError" role="alert">{{ loadError }}</p>
     
     <div v-else>
       <p style="color: #666; margin-bottom: 20px;">您可以在這裡自訂前台的遊戲區塊。打勾的遊戲會出現在該分類中，分類順序也會直接影響前台顯示順序。</p>
+      <p style="color: #666; margin-bottom: 20px;">🏘️ 單字大富翁（單人）與（雙人）可分別勾選到指定分類；移動到其他分類時，請取消原分類的勾選，再勾選新分類並儲存。</p>
       
       <div v-for="(cat, index) in categories" :key="cat.id" class="cat-card">
         <div class="cat-header">
-          <input v-model="cat.name" class="cat-title-input" placeholder="請輸入分類名稱 (例如: 📖 讀寫測驗)" />
+          <input v-model="cat.name" :disabled="isSaving" class="cat-title-input" placeholder="請輸入分類名稱 (例如: 📖 讀寫測驗)" />
           <div class="cat-actions">
-            <button @click="moveUp(index)" :disabled="index === 0" class="mini-btn">⬆️ 上移</button>
-            <button @click="removeCategory(index)" class="mini-btn btn-danger">✖ 刪除分類</button>
+            <button @click="moveUp(index)" :disabled="index === 0 || isSaving" class="mini-btn">⬆️ 上移</button>
+            <button @click="removeCategory(index)" :disabled="isSaving" class="mini-btn btn-danger">✖ 刪除分類</button>
           </div>
         </div>
         
         <div class="games-grid">
           <label v-for="game in allGames" :key="game.id" class="game-cb" :class="{ 'is-selected': cat.games.includes(game.id) }">
-            <input type="checkbox" :value="game.id" v-model="cat.games" />
+            <input type="checkbox" :value="game.id" v-model="cat.games" :disabled="isSaving" />
             {{ game.name }}
           </label>
         </div>
       </div>
 
-      <button class="retro-btn btn-secondary" style="width: 100%; border: 2px dashed #888; margin-top: 20px;" @click="addCategory">
+      <button class="retro-btn btn-secondary" :disabled="isSaving" style="width: 100%; border: 2px dashed #888; margin-top: 20px;" @click="addCategory">
         ➕ 新增一個遊戲分類
       </button>
     </div>
@@ -134,6 +158,7 @@ const saveSettings = async () => {
 .btn-primary { background: #007bff; color: white; border-color: #0056b3; }
 .btn-secondary { background: #e0e0e0; color: #333; border-color: #ccc; }
 .btn-danger { background: #dc3545; color: white; border-color: #a71d2a; }
+button:disabled { opacity: 0.6; cursor: not-allowed; }
 .mini-btn { padding: 5px 10px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; font-weight: bold;}
 
 .cat-card { background: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);}
