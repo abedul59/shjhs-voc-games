@@ -1,5 +1,9 @@
 <script setup>
 const props = defineProps({ config: Object });
+const toggleMonopolyDuel = event => {
+  const disabled = (props.config.disabled_games || []).filter(id => id !== 'monopolyDual');
+  props.config.disabled_games = event.target.checked ? disabled : [...disabled, 'monopolyDual'];
+};
 </script>
 
 <template>
@@ -10,6 +14,7 @@ const props = defineProps({ config: Object });
       <label style="color: #c62828; font-size: 1.2rem; border-bottom: 1px dashed #f44336; padding-bottom: 5px;">🚦 伺服器流量管理：對戰遊戲開放控制</label>
       <p style="color: #d32f2f; font-weight: bold; margin: 0; font-size: 0.95rem;">(當本月 Supabase 免費額度即將耗盡時，可在此關閉對戰遊戲功能，首頁將對學生顯示 🔒維護中)</p>
       <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-top: 10px; font-weight: bold;">
+        <label><input type="checkbox" :checked="!config.disabled_games?.includes('monopolyDual')" @change="toggleMonopolyDuel" style="transform: scale(1.3); margin-right: 5px;" /> 🏘️ 單字大富翁（雙人）</label>
         <label><input type="checkbox" v-model="config.enable_battle" style="transform: scale(1.3); margin-right: 5px;" /> ⚔️ 單字方塊陣</label>
         <label><input type="checkbox" v-model="config.enable_tenchi" style="transform: scale(1.3); margin-right: 5px;" /> 🐎 吞食天地</label>
         <label><input type="checkbox" v-model="config.enable_tarot21" style="transform: scale(1.3); margin-right: 5px;" /> 🃏 塔羅21點</label>
