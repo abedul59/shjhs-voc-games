@@ -65,20 +65,42 @@ const clampSetting = (value, fallback, min, max) => {
 };
 const send = (event, payload = {}) => channel?.send({ type: 'broadcast', event, payload });
 
-function tone(frequency, duration = .12) {
+function primeAudio() {
   try {
     const Audio = window.AudioContext || window.webkitAudioContext;
-    if (!Audio) return;
-    if (!soundContext) soundContext = new Audio();
-    if (soundContext.state === 'suspended') void soundContext.resume();
+    if (Audio && !soundContext) soundContext = new Audio();
+    if (soundContext?.state === 'suspended') void soundContext.resume();
+  } catch { /* 裝置不支援音訊時仍可遊玩 */ }
+}
+
+function tone(frequency, duration = .12, type = 'sine', volume = .1, endFrequency = frequency, delay = 0) {
+  try {
+    primeAudio();
+    if (!soundContext || soundContext.state === 'closed') return;
+    const start = soundContext.currentTime + delay;
     const oscillator = soundContext.createOscillator();
     const gain = soundContext.createGain();
-    oscillator.frequency.value = frequency;
-    gain.gain.setValueAtTime(.08, soundContext.currentTime);
-    gain.gain.exponentialRampToValueAtTime(.001, soundContext.currentTime + duration);
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequency, start);
+    if (endFrequency !== frequency) oscillator.frequency.exponentialRampToValueAtTime(Math.max(1, endFrequency), start + duration);
+    gain.gain.setValueAtTime(.001, start);
+    gain.gain.exponentialRampToValueAtTime(volume, start + .015);
+    gain.gain.exponentialRampToValueAtTime(.001, start + duration);
     oscillator.connect(gain); gain.connect(soundContext.destination);
-    oscillator.start(); oscillator.stop(soundContext.currentTime + duration);
+    oscillator.start(start); oscillator.stop(start + duration);
   } catch { /* 裝置不支援音訊時仍可遊玩 */ }
+}
+
+function sound(kind) {
+  if (kind === 'start') { tone(523, .13); tone(659, .13, 'sine', .1, 659, .14); tone(784, .25, 'sine', .12, 784, .28); }
+  else if (kind === 'stretch') tone(100, .1, 'sawtooth', .05);
+  else if (kind === 'launch') tone(300, .4, 'sine', .14, 800);
+  else if (kind === 'hit') tone(150, .2, 'square', .13, 50);
+  else if (kind === 'correct') { tone(880, .12); tone(1100, .18, 'sine', .12, 1100, .12); }
+  else if (kind === 'wrong') tone(200, .3, 'sawtooth', .12, 100);
+  else if (kind === 'word') [523, 659, 783, 1046].forEach((frequency, index) => tone(frequency, .17, 'sine', .12, frequency, index * .15));
+  else if (kind === 'win') { tone(659, .15); tone(880, .15, 'sine', .1, 880, .16); tone(1175, .35, 'sine', .12, 1175, .32); }
+  else if (kind === 'lose') { tone(392, .2); tone(294, .3, 'sine', .1, 294, .21); }
 }
 
 function speakWord(word) {
@@ -122,7 +144,7 @@ async function completeWord() {
   correctWords.value.push(currentWord.value.en_us);
   completed.value++;
   score.value += 10;
-  tone(780, .2);
+  sound('word');
   progress();
   if (completed.value >= settings.target) await finishRoom(student.value.id);
   else roundTimer = setTimeout(nextRound, 900);
@@ -131,17 +153,18 @@ async function completeWord() {
 function hitPig(pig) {
   bird.state = 'hit';
   pigs.value = pigs.value.filter(item => item.id !== pig.id);
+  sound('hit');
   const slot = slots.value.find(item => item.blank && !item.filled && item.char === pig.char);
   if (!pig.fake && slot) {
     slot.filled = true;
-    tone(520);
+    sound('correct');
     if (slots.value.every(item => !item.blank || item.filled)) void completeWord();
     else roundTimer = setTimeout(resetBird, 450);
   } else {
     mistakes.value++;
     wrongWords.value.push(currentWord.value.en_us);
     score.value = Math.max(0, score.value - settings.penalty);
-    tone(190, .22);
+    sound('wrong');
     progress();
     roundTimer = setTimeout(resetBird, 450);
   }
@@ -216,6 +239,7 @@ function pointerDown(event) {
   if (Math.hypot(point.x - bird.x, point.y - bird.y) > 65) return;
   event.preventDefault(); canvas.value.setPointerCapture(event.pointerId);
   dragging = true; bird.state = 'dragging';
+  primeAudio(); sound('stretch');
   pointerMove(event);
 }
 function pointerMove(event) {
@@ -233,7 +257,7 @@ function pointerUp() {
   const dx = slingX - bird.x, dy = slingY - bird.y;
   if (Math.hypot(dx, dy) < 20) { resetBird(); return; }
   bird.vx = dx * .25; bird.vy = dy * .25; bird.state = 'flying';
-  tone(320, .18);
+  sound('launch');
 }
 function pointerCancel() { if (dragging) resetBird(); }
 
@@ -257,6 +281,7 @@ async function finishLocal(id) {
   if (status.value !== 'playing') return;
   winnerId.value = id;
   status.value = 'over';
+  sound(id == null ? 'word' : String(id) === String(student.value.id) ? 'win' : 'lose');
   clearTimeout(roundTimer);
   if (frame) cancelAnimationFrame(frame);
   if ('speechSynthesis' in window) window.speechSynthesis.cancel();
@@ -293,6 +318,7 @@ async function beginMatch(deadline, rules, rounds) {
   correctWords.value = []; wrongWords.value = [];
   Object.assign(opponentProgress, { completed: 0, score: 0, mistakes: 0 });
   status.value = 'playing';
+  sound('start');
   await nextTick();
   context = canvas.value?.getContext('2d');
   nextRound();
@@ -352,6 +378,7 @@ async function claimRoom(candidate) {
 
 async function findMatch() {
   if (joining.value || status.value !== 'ready') return;
+  primeAudio();
   joining.value = true; notice.value = '';
   try {
     const midnight = new Date(); midnight.setHours(0, 0, 0, 0);

@@ -59,6 +59,17 @@ let lastSequence = 0;
 let sequence = 0;
 let disposed = false;
 let savingPromise = null;
+let soundContext = null;
+let localUnlockSeq = 0;
+let pendingUnlockSeq = 0;
+let lastRemoteUnlockSeq = 0;
+let lastUnlockAttempt = 0;
+let lastHitSound = 0;
+const soundFiles = {
+  pika: 'WAVE141_1.wav', chu: 'WAVE142_1.wav', hit: 'WAVE140_1.wav',
+  point: 'WAVE143_1.wav', start: 'WAVE144_1.wav'
+};
+const samples = {};
 
 const send = (event, payload = {}) => channel?.send({ type: 'broadcast', event, payload });
 const positive = (value, fallback, min, max) => {
@@ -69,6 +80,65 @@ const position = (piece, width = 64, height = 64) => ({
   left: `${piece.x / 800 * 100}%`, top: `${piece.y / 400 * 100}%`,
   width: `${width / 800 * 100}%`, height: `${height / 400 * 100}%`
 });
+
+function primeAudio() {
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (AudioContextClass && !soundContext) soundContext = new AudioContextClass();
+    if (soundContext?.state === 'suspended') void soundContext.resume();
+  } catch { /* 音訊不可用時仍可遊玩 */ }
+}
+
+function note(frequency, duration = .12, type = 'sine', delay = 0) {
+  try {
+    primeAudio();
+    if (!soundContext || soundContext.state === 'closed') return;
+    const start = soundContext.currentTime + delay;
+    const oscillator = soundContext.createOscillator();
+    const gain = soundContext.createGain();
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequency, start);
+    gain.gain.setValueAtTime(.001, start);
+    gain.gain.exponentialRampToValueAtTime(.12, start + .015);
+    gain.gain.exponentialRampToValueAtTime(.001, start + duration);
+    oscillator.connect(gain); gain.connect(soundContext.destination);
+    oscillator.start(start); oscillator.stop(start + duration);
+  } catch { /* 音訊不可用時仍可遊玩 */ }
+}
+
+function playSound(kind, share = false) {
+  if (share && host.value) void send('sound', { kind });
+  const sample = samples[kind];
+  if (sample?.readyState >= 2) {
+    try {
+      const playback = sample.cloneNode();
+      playback.volume = .65;
+      const result = playback.play();
+      if (result?.catch) void result.catch(() => fallbackSound(kind));
+      return;
+    } catch { /* 改用合成音效 */ }
+  }
+  fallbackSound(kind);
+}
+
+function fallbackSound(kind) {
+  if (kind === 'start') { note(523, .14); note(784, .25, 'sine', .15); }
+  else if (kind === 'point') { note(660, .18); note(880, .28, 'sine', .18); }
+  else if (kind === 'hit') note(250, .1, 'triangle');
+  else if (kind === 'pika') note(720, .12, 'square');
+  else if (kind === 'chu') note(500, .13, 'triangle');
+  else if (kind === 'wrong') note(180, .25, 'sawtooth');
+  else if (kind === 'letter') note(640, .1);
+  else if (kind === 'word') { note(659, .12); note(880, .2, 'sine', .13); }
+  else if (kind === 'win') { note(523, .12); note(659, .12, 'sine', .14); note(784, .3, 'sine', .28); }
+  else if (kind === 'lose') { note(350, .18); note(260, .3, 'sine', .2); }
+}
+
+function sendUnlock() {
+  if (!pendingUnlockSeq || host.value || !student.value?.id) return;
+  lastUnlockAttempt = Date.now();
+  void send('unlock', { id: String(student.value.id), seq: pendingUnlockSeq });
+}
 
 function nextWord() {
   if (!words.value.length || status.value !== 'playing') return;
@@ -92,6 +162,7 @@ function pickLetter(option) {
   if (option.char !== slot.char) {
     wrong.value.push(prompt.value.en);
     error.value = `拼字錯誤：${prompt.value.zh}，請再試一次。`;
+    playSound('wrong');
     return;
   }
   option.used = true;
@@ -99,10 +170,13 @@ function pickLetter(option) {
   picked.value.push(option.id);
   error.value = '';
   // 與單人版相同：每拼對一個字母都重新取得操作時間。
-  if (host.value) unlockUntil[1] = Date.now() + config.unlock * 1000;
-  else void send('unlock', { id: String(student.value.id) });
+  unlockUntil[mySide.value] = Date.now() + config.unlock * 1000;
+  now.value = Date.now();
+  playSound('letter');
+  if (!host.value) { pendingUnlockSeq = ++localUnlockSeq; sendUnlock(); }
   if (prompt.value.slots.every(item => !item.blank || item.filled)) {
     correct.value.push(prompt.value.en);
+    playSound('word');
     nextWord();
   }
 }
@@ -122,7 +196,9 @@ function snapshot() {
   void send('state', {
     sequence: ++sequence, left: { ...left }, right: { ...right }, ball: { ...ball },
     p1: game.p1, p2: game.p2, time: game.time, serve: game.serve,
-    inPlay: game.inPlay, message: game.message, unlock1: unlockUntil[1], unlock2: unlockUntil[2],
+    inPlay: game.inPlay, message: game.message,
+    unlockRemaining1: Math.max(0, unlockUntil[1] - Date.now()),
+    unlockRemaining2: Math.max(0, unlockUntil[2] - Date.now()), unlockSeq: lastRemoteUnlockSeq,
     rules: { duration: config.duration, unlock: config.unlock, blanks: config.blanks, penalty: config.penalty, target: config.target }
   });
 }
@@ -137,7 +213,13 @@ function takeSnapshot(data) {
   Object.assign(ball, data.ball);
   game.p1 = data.p1; game.p2 = data.p2; game.time = data.time;
   game.serve = data.serve; game.inPlay = data.inPlay; game.message = data.message;
-  unlockUntil[1] = data.unlock1; unlockUntil[2] = data.unlock2;
+  const receivedAt = Date.now();
+  unlockUntil[1] = receivedAt + Math.max(0, Number(data.unlockRemaining1) || 0);
+  if (!pendingUnlockSeq || Number(data.unlockSeq) >= pendingUnlockSeq) {
+    pendingUnlockSeq = 0;
+    unlockUntil[2] = receivedAt + Math.max(0, Number(data.unlockRemaining2) || 0);
+  }
+  now.value = receivedAt;
 }
 
 function scorePoint(side) {
@@ -146,6 +228,7 @@ function scorePoint(side) {
   if (side === 1) game.p1++; else game.p2++;
   game.serve = side;
   game.message = `${side === 1 ? leftName.value : rightName.value}得分！`;
+  playSound('point', true);
   snapshot();
   if (game.p1 >= config.target || game.p2 >= config.target) {
     roundTimer = setTimeout(() => { void finishMatch(side); }, 1000);
@@ -158,7 +241,7 @@ function movePlayer(piece, controls, side, step) {
   const available = unlockUntil[side] > Date.now();
   const speed = available ? 8 : 0;
   piece.vx = controls.left ? -speed : controls.right ? speed : 0;
-  if (available && controls.up && !piece.jumping) { piece.vy = -16; piece.jumping = true; }
+  if (available && controls.up && !piece.jumping) { piece.vy = -16; piece.jumping = true; playSound(side === 1 ? 'pika' : 'chu', true); }
   if (available && controls.down) piece.vx *= 1.35;
   piece.vy += step;
   piece.x += piece.vx * step;
@@ -179,6 +262,7 @@ function simulate(step) {
     if (controls.serve && unlockUntil[game.serve] > Date.now()) {
       game.inPlay = true; ball.vy = -15; ball.vx = game.serve === 1 ? 5 : -5;
       controls.serve = false;
+      playSound('start', true);
     }
     return;
   }
@@ -196,6 +280,7 @@ function simulate(step) {
       ball.vx = Math.max(-15, Math.min(15, offset * 12 + (side === 1 ? 3 : -3)));
       ball.vy = controls.smash && piece.jumping ? 12 : -17;
       ball.y = ball.vy < 0 ? piece.y - 41 : piece.y + 65;
+      if (Date.now() - lastHitSound > 120) { playSound('hit', true); lastHitSound = Date.now(); }
     }
   }
   if (ball.y >= 320) { ball.y = 320; scorePoint(ball.x < 400 ? 2 : 1); }
@@ -231,6 +316,7 @@ async function finishMatch(winner) {
   if (status.value === 'over' || status.value !== 'playing') return;
   game.winner = winner;
   status.value = 'over';
+  playSound(winner === mySide.value ? 'win' : winner === null ? 'point' : 'lose');
   clearTimeout(roundTimer);
   if (frame) cancelAnimationFrame(frame);
   if (host.value && room.value) {
@@ -245,9 +331,12 @@ function beginMatch() {
   status.value = 'playing';
   game.p1 = 0; game.p2 = 0; game.time = config.duration;
   game.winner = null; game.serve = 1;
+  localUnlockSeq = 0; pendingUnlockSeq = 0; lastRemoteUnlockSeq = 0;
+  unlockUntil[1] = 0; unlockUntil[2] = 0;
   matchStarted.value = Date.now();
   gameEndsAt.value = Date.now() + config.duration * 1000;
   resetRally(); nextWord();
+  playSound('start');
   if (host.value) { lastFrame = 0; frame = requestAnimationFrame(frameTick); snapshot(); }
 }
 
@@ -276,9 +365,23 @@ async function connectRoom() {
       for (const key of Object.keys(remoteInput)) remoteInput[key] = !!payload.keys?.[key];
   }).on('broadcast', { event: 'unlock' }, ({ payload }) => {
     if (host.value && String(payload.id) === String(room.value?.guest_id) && status.value === 'playing') {
-      unlockUntil[2] = Date.now() + config.unlock * 1000;
-      snapshot();
+      const seq = Number(payload.seq);
+      if (Number.isInteger(seq) && seq > lastRemoteUnlockSeq) {
+        lastRemoteUnlockSeq = seq;
+        unlockUntil[2] = Date.now() + config.unlock * 1000;
+        snapshot();
+      }
+      if (Number.isInteger(seq) && seq <= lastRemoteUnlockSeq)
+        void send('unlock_ack', { id: String(room.value.guest_id), seq, remainingMs: Math.max(0, unlockUntil[2] - Date.now()) });
     }
+  }).on('broadcast', { event: 'unlock_ack' }, ({ payload }) => {
+    if (!host.value && status.value === 'playing' && String(payload.id) === String(student.value?.id) && Number(payload.seq) >= pendingUnlockSeq) {
+      pendingUnlockSeq = 0;
+      unlockUntil[2] = Date.now() + Math.max(0, Number(payload.remainingMs) || 0);
+      now.value = Date.now();
+    }
+  }).on('broadcast', { event: 'sound' }, ({ payload }) => {
+    if (!host.value && status.value === 'playing' && Object.prototype.hasOwnProperty.call(soundFiles, payload.kind)) playSound(payload.kind);
   }).on('broadcast', { event: 'state' }, ({ payload }) => { takeSnapshot(payload); })
     .on('broadcast', { event: 'finished' }, ({ payload }) => {
       if (!host.value && status.value === 'playing') {
@@ -340,6 +443,7 @@ async function pollRoom() {
 
 async function findMatch() {
   if (joining.value || status.value !== 'ready') return;
+  primeAudio();
   joining.value = true; error.value = '';
   try {
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -413,6 +517,11 @@ function control(key, value) { input[key] = value; if (key === 'smash') input.se
 
 onMounted(async () => {
   try {
+    for (const [kind, filename] of Object.entries(soundFiles)) {
+      const sample = new window.Audio(`https://raw.githubusercontent.com/gorisanson/pikachu-volleyball/master/src/resources/assets/sounds/${filename}`);
+      sample.preload = 'auto';
+      samples[kind] = sample;
+    }
     if (!student.value?.id || student.value.isAnon) throw new Error('請先登入學生帳號再玩雙人對戰。');
     if (Object.values(lesson).some(value => !value)) throw new Error('請從遊戲選單選擇完整課程。');
     const { data: settings, error: settingsError } = await db.from('system_settings').select('*').eq('id', 1).single();
@@ -441,6 +550,7 @@ onMounted(async () => {
     roomPoll = setInterval(() => { void pollRoom(); }, 1500);
     clock = setInterval(() => {
       now.value = Date.now();
+      if (!host.value && status.value === 'playing' && pendingUnlockSeq && Date.now() - lastUnlockAttempt > 600) sendUnlock();
       if (host.value && status.value === 'playing') {
         game.time = Math.max(0, Math.ceil((gameEndsAt.value - Date.now()) / 1000));
         if (game.time === 0) void finishMatch(game.p1 === game.p2 ? null : game.p1 > game.p2 ? 1 : 2);
@@ -466,19 +576,21 @@ onUnmounted(() => {
   }
   if (room.value && host.value && status.value === 'searching') void db.from('game_rooms').delete().eq('id', room.value.id).eq('status', 'waiting').is('guest_id', null).then();
   if (channel) void db.removeChannel(channel);
+  if (soundContext) void soundContext.close();
 });
 </script>
 
 <template>
   <main class="pika-duel">
     <header class="top"><h1>⚡ 皮卡丘排球（雙人）</h1><button class="top-back" @click="goHome">← 返回選單</button></header>
+    <p class="device-tip" role="note">手機操作較困難，建議改用電腦或平板遊玩；可用鍵盤方向鍵與空白鍵控制。</p>
     <p v-if="error" class="notice" role="alert">{{ error }}</p>
     <section v-if="status === 'loading'" class="panel">載入單字與設定中…</section>
     <section v-else-if="status === 'error'" class="panel"><p>{{ error }}</p><NuxtLink to="/">返回選單</NuxtLink></section>
     <section v-else-if="status === 'ready'" class="panel">
       <h2>🏐 同課程雙人排球</h2>
       <p>每拼對一個字母可操作 {{ config.unlock }} 秒；先得 {{ config.target }} 分者獲勝，限時 {{ config.duration }} 秒。</p>
-      <p>鍵盤：方向鍵移動／跳躍，空白鍵發球或殺球。手機使用下方按鈕。</p>
+      <p>鍵盤：方向鍵移動／跳躍，空白鍵發球或殺球。</p>
       <button :disabled="joining" @click="findMatch">{{ joining ? '配對中…' : '🔍 尋找對手' }}</button>
     </section>
     <section v-else-if="status === 'searching'" class="panel"><h2>正在等待同課程對手…</h2><p>{{ host ? '已建立房間' : '已加入房間，等待球場同步' }}</p><button @click="leaveMatch">取消配對</button></section>
@@ -500,4 +612,6 @@ onUnmounted(() => {
 <style scoped>
 .pika-duel{position:fixed;inset:0;display:flex;flex-direction:column;gap:8px;padding:env(safe-area-inset-top) 10px env(safe-area-inset-bottom);box-sizing:border-box;overflow:auto;background:#101727;color:#fff;font-family:system-ui,sans-serif}.top{display:flex;align-items:center;justify-content:space-between;gap:10px}.top h1{font-size:clamp(1rem,3vw,1.5rem);margin:8px 0}.top a,.panel a{color:#ffe65b}.notice{background:#5d302e;border-radius:8px;padding:6px;margin:0}.panel{max-width:650px;width:100%;margin:auto;box-sizing:border-box;padding:24px;border:2px solid #ffdc66;border-radius:18px;background:#223454;text-align:center}.panel button,.leave{padding:10px 20px;background:#ffdc66;border:0;border-radius:8px;font-weight:bold;cursor:pointer}.panel button:disabled{opacity:.6}.scoreboard{display:flex;justify-content:space-between;align-items:center;gap:8px;width:min(100%,800px);margin:0 auto;font-size:clamp(.8rem,2vw,1.1rem)}.scoreboard strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.scoreboard span{color:#ffdc66;white-space:nowrap}.court{position:relative;width:min(100%,800px);aspect-ratio:2/1;margin:0 auto;overflow:hidden;border:3px solid white;border-radius:10px;background:linear-gradient(#58b4ed 0%,#c1e9ff 75%,#e3c68c 76%)}.floor{position:absolute;inset:auto 0 0;height:10%;background:#b78957}.net{position:absolute;left:49.5%;top:50%;height:40%;width:1%;background:repeating-linear-gradient(#fff 0 8px,#aaa 8px 12px)}.pika{position:absolute;display:grid;place-items:center;background:#ffe333;border:2px solid #d58a15;border-radius:40% 40% 18% 18%;font-size:clamp(.8rem,4vw,2rem)}.pika.mine{box-shadow:0 0 0 4px #6aff73}.ball{position:absolute;border:2px solid #111;border-radius:50%;background:linear-gradient(#f54747 48%,#222 48% 54%,#fff 54%)}.rally-message{position:absolute;top:15%;width:100%;text-align:center;font-size:1.8rem;font-weight:900;color:#fff;text-shadow:2px 2px #111}.practice{width:min(100%,800px);margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:7px}.question{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center}.question strong{font-size:1.25rem;color:#ffdc66}.letters{display:flex;flex-wrap:wrap;justify-content:center;gap:5px}.letters button,.controls button{min-width:35px;min-height:35px;border:1px solid #fff;border-radius:7px;background:#33466e;color:white;font-weight:bold;touch-action:none}.letters button:disabled{opacity:.3}.unlock{margin:0;color:#90ff9b}.controls{display:flex;gap:8px}.controls button{padding:8px 12px}.leave{background:#ef6969;color:white;padding:7px 14px}@media(max-height:660px){.pika-duel{gap:3px}.court{width:min(75vh,800px)}.panel{padding:10px}.letters button{min-height:28px}}
 .pika::before,.pika::after{content:'';position:absolute;top:-24%;width:24%;height:52%;background:linear-gradient(#222 0 25%,#ffe333 25%);border:2px solid #d58a15;border-radius:50% 50% 0 0}.pika::before{left:4%;transform:rotate(-25deg)}.pika::after{right:4%;transform:rotate(25deg)}.face{position:relative;color:#533925;font-size:clamp(.65rem,2.7vw,1.4rem);font-weight:900}.pika.mine .face{color:#174f27}.top-back{border:0;background:transparent;color:#ffe65b;font:inherit;cursor:pointer;white-space:nowrap}
+.device-tip{display:none;margin:0;padding:7px 10px;border-radius:8px;background:#624b12;color:#fff1b8;text-align:center;font-weight:700;font-size:.88rem}
+@media(max-width:767px),(max-height:500px) and (pointer:coarse){.device-tip{display:block}}
 </style>
