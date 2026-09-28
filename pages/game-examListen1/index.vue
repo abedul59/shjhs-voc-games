@@ -1,4 +1,5 @@
 <script setup>
+import { prepareEnglishUtterance } from '~/utils/englishSpeech';
 import { ref, onMounted, computed, onUnmounted } from 'vue';
 
 useHead({
@@ -64,7 +65,7 @@ const speakSentence = (text) => {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'en-US';
     utterance.rate = 0.85; // 放慢語速適合聽力測驗
-    window.speechSynthesis.speak(utterance);
+    window.speechSynthesis.speak(prepareEnglishUtterance(utterance));
   }
 };
 

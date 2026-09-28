@@ -1,4 +1,5 @@
 <script setup>
+import { prepareEnglishUtterance } from '~/utils/englishSpeech';
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -13,7 +14,6 @@ const isPlayingAll = ref(false);
 const currentPlayIndex = ref(-1);
 
 onMounted(async () => {
-  if ('speechSynthesis' in window) window.speechSynthesis.getVoices();
   if (!studentCookie.value) { 
     router.push('/'); 
     return; 
@@ -55,16 +55,6 @@ onUnmounted(() => {
   }
 });
 
-// macOS 的預設英文聲線可能與中文聲線不同，優先選擇清晰的英語聲線。
-const chooseEnglishVoice = () => {
-  const voices = window.speechSynthesis.getVoices();
-  const american = voices.filter(voice => /^en[-_]US$/i.test(voice.lang));
-  const preferred = ['Ava', 'Samantha', 'Allison', 'Alex'];
-  return preferred.map(name => american.find(voice => voice.name === name || voice.name.startsWith(`${name} (`)))
-    .find(Boolean) || american.find(voice => !/Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Fred|Good News|Jester|Junior|Organ|Ralph|Superstar|Trinoids|Whisper|Wobble|Zarvox/i.test(voice.name))
-    || american[0] || voices.find(voice => /^en[-_]/i.test(voice.lang));
-};
-
 // 核心發音函數 (附帶防卡死機制的 Promise)
 const speakText = (text, lang) => {
   return new Promise((resolve) => {
@@ -74,10 +64,7 @@ const speakText = (text, lang) => {
     
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
-    if (lang === 'en-US') utterance.voice = chooseEnglishVoice() || null;
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-    utterance.volume = 1.0;
+    utterance.rate = lang === 'en-US' ? 0.85 : 1.0;
     
     // 防卡死計時器
     const timeout = setTimeout(() => {
@@ -93,7 +80,7 @@ const speakText = (text, lang) => {
          resolve();
     };
     
-    window.speechSynthesis.speak(utterance);
+    window.speechSynthesis.speak(prepareEnglishUtterance(utterance));
   });
 };
 

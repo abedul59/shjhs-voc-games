@@ -1,4 +1,5 @@
 <script setup>
+import { prepareEnglishUtterance } from '~/utils/englishSpeech';
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 
 useHead({
@@ -62,7 +63,7 @@ const speakText = (text) => {
     const utterance = new SpeechSynthesisUtterance(text.replace(/[^a-zA-Z\s]/g, ''));
     utterance.lang = 'en-US';
     utterance.rate = 0.85; // 稍微放慢讓學生聽清楚
-    window.speechSynthesis.speak(utterance);
+    window.speechSynthesis.speak(prepareEnglishUtterance(utterance));
 };
 
 onMounted(async () => {

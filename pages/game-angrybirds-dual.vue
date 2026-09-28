@@ -1,4 +1,5 @@
 <script setup>
+import { prepareEnglishUtterance } from '~/utils/englishSpeech';
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
 
 useHead({ meta: [{ name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' }] });
@@ -108,7 +109,7 @@ function speakWord(word) {
   window.speechSynthesis.cancel();
   const speech = new SpeechSynthesisUtterance(word);
   speech.lang = 'en-US'; speech.rate = .9;
-  window.speechSynthesis.speak(speech);
+  window.speechSynthesis.speak(prepareEnglishUtterance(speech));
 }
 
 function resetBird() {
