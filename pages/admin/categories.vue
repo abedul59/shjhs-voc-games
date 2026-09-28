@@ -31,6 +31,7 @@ const allGames = [
   { id: 'angrybirds', name: '🐦 單字憤怒鳥' },
   { id: 'solitaire', name: '🃏 撲克牌接龍' },
   { id: 'pikavolley', name: '⚡ 皮卡丘排球' },
+  { id: 'pikavolleyDual', name: '⚡ 皮卡丘排球（雙人）' },
   { id: 'pacman', name: '👻 單字小精靈' },
   { id: 'minesweeper', name: '💣 單字踩地雷' },
   { id: 'sudoku', name: '🔢 9x9數獨' },
