@@ -1,4 +1,5 @@
 <script setup>
+import { prepareEnglishUtterance } from '~/utils/englishSpeech';
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 
 const route = useRoute();
@@ -70,7 +71,7 @@ const speakWord = (text) => {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'en-US'; 
     utterance.rate = 0.9; 
-    window.speechSynthesis.speak(utterance);
+    window.speechSynthesis.speak(prepareEnglishUtterance(utterance));
   }
 };
 

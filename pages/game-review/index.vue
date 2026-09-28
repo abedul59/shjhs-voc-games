@@ -1,4 +1,5 @@
 <script setup>
+import { prepareEnglishUtterance } from '~/utils/englishSpeech';
 import { ref, onMounted, nextTick } from 'vue';
 
 const supabase = useSupabaseClient();
@@ -47,7 +48,7 @@ const playAudio = (text) => {
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'en-US';
   utterance.rate = 0.85; 
-  window.speechSynthesis.speak(utterance);
+  window.speechSynthesis.speak(prepareEnglishUtterance(utterance));
 };
 
 const initTesseract = async () => {

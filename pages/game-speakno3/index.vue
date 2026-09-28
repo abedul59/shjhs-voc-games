@@ -1,4 +1,5 @@
 <script setup>
+import { prepareEnglishUtterance } from '~/utils/englishSpeech';
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 
@@ -73,7 +74,7 @@ const setTarget = (type, rawText, cleanText) => {
 const playTTS = (text) => {
   const msg = new SpeechSynthesisUtterance(text);
   msg.lang = 'en-US'; msg.rate = 0.9;
-  window.speechSynthesis.speak(msg);
+  window.speechSynthesis.speak(prepareEnglishUtterance(msg));
 };
 
 const startRecording = () => {

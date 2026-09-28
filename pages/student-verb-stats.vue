@@ -1,4 +1,5 @@
 <script setup>
+import { prepareEnglishUtterance } from '~/utils/englishSpeech';
 import { ref, onMounted, computed } from 'vue';
 
 const supabase = useSupabaseClient();
@@ -61,7 +62,7 @@ const playPronunciation = (word) => {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(cleanWord);
     utterance.lang = 'en-US';
-    window.speechSynthesis.speak(utterance);
+    window.speechSynthesis.speak(prepareEnglishUtterance(utterance));
   }
 };
 </script>

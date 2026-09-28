@@ -1,4 +1,5 @@
 <script setup>
+import { prepareEnglishUtterance } from '~/utils/englishSpeech';
 import { ref, onMounted, computed, onUnmounted } from 'vue';
 import confetti from 'canvas-confetti';
 import { useBgmUnlock } from '~/composables/useBgmUnlock';
@@ -70,7 +71,7 @@ const playPronunciation = (word) => {
     if (window.speechSynthesis) {
       const utterance = new SpeechSynthesisUtterance(word);
       utterance.lang = 'en-US'; utterance.rate = 0.9;
-      window.speechSynthesis.speak(utterance);
+      window.speechSynthesis.speak(prepareEnglishUtterance(utterance));
     }
   });
 };
