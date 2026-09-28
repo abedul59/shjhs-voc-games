@@ -117,7 +117,8 @@ const pathNames = {
   '/game-battle': '⚔️ 單字方塊陣',
   '/game-tetris': '🧱 單字俄羅斯方塊',
   '/game-pinball': '🎰 單字彈珠台',
-  '/game-angrybirds': '🐦 單字憤怒鳥'
+  '/game-angrybirds': '🐦 單字憤怒鳥',
+  '/game-angrybirds-dual': '🐦 單字憤怒鳥（雙人）'
 };
 
 const translatePath = (path) => {

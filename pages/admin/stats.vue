@@ -177,6 +177,7 @@ const fetchStats = async () => {
         <button class="type-btn" :class="{ active: selectedGameType === '單字皮卡丘排球（雙人）' }" @click="selectedGameType = '單字皮卡丘排球（雙人）'; fetchStats()">🏐 皮卡排球（雙人）</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字彈珠台' }" @click="selectedGameType = '單字彈珠台'; fetchStats()">🎰 彈珠台</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字憤怒鳥' }" @click="selectedGameType = '單字憤怒鳥'; fetchStats()">🐦 憤怒鳥</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字憤怒鳥（雙人）' }" @click="selectedGameType = '單字憤怒鳥（雙人）'; fetchStats()">🐦 憤怒鳥（雙人）</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字看圖辨義' }" @click="selectedGameType = '單字看圖辨義'; fetchStats()">🖼️ 看圖辨義</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字音節忍者' }" @click="selectedGameType = '單字音節忍者'; fetchStats()">🥷 音節忍者</button>
         <button class="type-btn" :class="{ active: selectedGameType === '英語口說學霸' }" @click="selectedGameType = '英語口說學霸'; fetchStats()">🗣️ 口說學霸</button>
@@ -206,6 +207,7 @@ const fetchStats = async () => {
 
     <p v-if="selectedGameType === '單字大富翁（雙人）'">🏘️ 分別統計兩位學生各自的作答；勝敗、平手與離場文字不計為單字。</p>
     <p v-if="selectedGameType === '單字皮卡丘排球（雙人）'">🏐 分別統計兩位學生各自的作答；勝敗、平手、離場與排球比分不計為單字。</p>
+    <p v-if="selectedGameType === '單字憤怒鳥（雙人）'">🐦 分別統計兩位學生各自的作答；勝敗、平手、離場與完成字數不計為單字。</p>
     <p v-if="selectedGameType === '單字大富翁'">🏘️ 僅統計學生本人的作答；同一單字重複作答會逐次計入，電腦作答不列入分析。</p>
     <div v-if="isSpecialGame" class="special-msg-box retro-element">
       <div class="icon-big">ℹ️</div>
