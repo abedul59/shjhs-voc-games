@@ -23,6 +23,7 @@ const selVer = ref(''); const selVol = ref(''); const selUnit = ref('');
 const gamesList = [
   { id: 'monopolyDual', name: '🏘️ 單字大富翁（雙人）' },
   { id: 'pikavolleyDual', name: '⚡ 皮卡丘排球（雙人）' },
+  { id: 'angrybirdsDual', name: '🐦 單字憤怒鳥（雙人）' },
   { id: 'match', name: '🟦 方塊消消樂' }, { id: 'move', name: '🔠 單字神移動' }, { id: 'choice', name: '✅ 單字選選樂' }, { id: 'fill', name: '⌨️ 單字填一填' },
   { id: 'sentence', name: '📝 單字例句神絕配' }, { id: 'listen', name: '🎧 單字例句順風耳' }, { id: 'puzzle', name: '🧩 單字拼起來' }, { id: 'speakno1', name: '🗣️ 英語口說學霸-多元評量' },
   { id: 'speak', name: '🎙️ 單字口說測一測' }, { id: 'cross', name: '🔠 單字填字FUN' }, { id: 'review', name: '✍️ 單字複習趣' }, { id: 'tetris', name: '🧱 俄羅斯方塊' },

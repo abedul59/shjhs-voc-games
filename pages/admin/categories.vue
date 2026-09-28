@@ -29,6 +29,7 @@ const allGames = [
   { id: 'tetris', name: '🧱 俄羅斯方塊' },
   { id: 'pinball', name: '🎰 單字彈珠台' },
   { id: 'angrybirds', name: '🐦 單字憤怒鳥' },
+  { id: 'angrybirdsDual', name: '🐦 單字憤怒鳥（雙人）' },
   { id: 'solitaire', name: '🃏 撲克牌接龍' },
   { id: 'pikavolley', name: '⚡ 皮卡丘排球' },
   { id: 'pikavolleyDual', name: '⚡ 皮卡丘排球（雙人）' },

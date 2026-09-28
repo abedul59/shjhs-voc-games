@@ -8,6 +8,10 @@ const togglePikavolleyDuel = event => {
   const disabled = (props.config.disabled_games || []).filter(id => id !== 'pikavolleyDual');
   props.config.disabled_games = event.target.checked ? disabled : [...disabled, 'pikavolleyDual'];
 };
+const toggleAngrybirdsDuel = event => {
+  const disabled = (props.config.disabled_games || []).filter(id => id !== 'angrybirdsDual');
+  props.config.disabled_games = event.target.checked ? disabled : [...disabled, 'angrybirdsDual'];
+};
 </script>
 
 <template>
@@ -20,6 +24,7 @@ const togglePikavolleyDuel = event => {
       <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-top: 10px; font-weight: bold;">
         <label><input type="checkbox" :checked="!config.disabled_games?.includes('monopolyDual')" @change="toggleMonopolyDuel" style="transform: scale(1.3); margin-right: 5px;" /> 🏘️ 單字大富翁（雙人）</label>
         <label><input type="checkbox" :checked="!config.disabled_games?.includes('pikavolleyDual')" @change="togglePikavolleyDuel" style="transform: scale(1.3); margin-right: 5px;" /> ⚡ 皮卡丘排球（雙人）</label>
+        <label><input type="checkbox" :checked="!config.disabled_games?.includes('angrybirdsDual')" @change="toggleAngrybirdsDuel" style="transform: scale(1.3); margin-right: 5px;" /> 🐦 單字憤怒鳥（雙人）</label>
         <label><input type="checkbox" v-model="config.enable_battle" style="transform: scale(1.3); margin-right: 5px;" /> ⚔️ 單字方塊陣</label>
         <label><input type="checkbox" v-model="config.enable_tenchi" style="transform: scale(1.3); margin-right: 5px;" /> 🐎 吞食天地</label>
         <label><input type="checkbox" v-model="config.enable_tarot21" style="transform: scale(1.3); margin-right: 5px;" /> 🃏 塔羅21點</label>
@@ -183,7 +188,8 @@ const togglePikavolleyDuel = event => {
     </div>
 
     <div class="setting-card highlight-item" style="background: #ffcdd2; border-color: #b71c1c;">
-        <h3 class="card-title angrybirds" style="background: #b71c1c; color: #fff; border-color: #b71c1c;">🐦 單字憤怒鳥</h3>
+        <h3 class="card-title angrybirds" style="background: #b71c1c; color: #fff; border-color: #b71c1c;">🐦 單字憤怒鳥（單人與雙人共用設定）</h3>
+        <p style="margin: 0 0 8px; color: #6d3333;">雙人版的勝利目標沿用「單字方塊陣」的目標分數設定，每完成一字計一分。</p>
         <div class="field-row">
           <label>🕳️ 單字預設挖空：</label>
           <div class="input-group">
