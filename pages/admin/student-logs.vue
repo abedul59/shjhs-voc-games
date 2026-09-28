@@ -113,6 +113,7 @@ const pathNames = {
   '/game-cross': '🔠 單字填字FUN',
   '/game-review': '✍️ 單字複習趣',
   '/game-monopoly-dual': '🏘️ 單字大富翁（雙人）',
+  '/game-pikavolley-dual': '⚡ 皮卡丘排球（雙人）',
   '/game-battle': '⚔️ 單字方塊陣',
   '/game-tetris': '🧱 單字俄羅斯方塊',
   '/game-pinball': '🎰 單字彈珠台',

@@ -4,6 +4,10 @@ const toggleMonopolyDuel = event => {
   const disabled = (props.config.disabled_games || []).filter(id => id !== 'monopolyDual');
   props.config.disabled_games = event.target.checked ? disabled : [...disabled, 'monopolyDual'];
 };
+const togglePikavolleyDuel = event => {
+  const disabled = (props.config.disabled_games || []).filter(id => id !== 'pikavolleyDual');
+  props.config.disabled_games = event.target.checked ? disabled : [...disabled, 'pikavolleyDual'];
+};
 </script>
 
 <template>
@@ -15,6 +19,7 @@ const toggleMonopolyDuel = event => {
       <p style="color: #d32f2f; font-weight: bold; margin: 0; font-size: 0.95rem;">(當本月 Supabase 免費額度即將耗盡時，可在此關閉對戰遊戲功能，首頁將對學生顯示 🔒維護中)</p>
       <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-top: 10px; font-weight: bold;">
         <label><input type="checkbox" :checked="!config.disabled_games?.includes('monopolyDual')" @change="toggleMonopolyDuel" style="transform: scale(1.3); margin-right: 5px;" /> 🏘️ 單字大富翁（雙人）</label>
+        <label><input type="checkbox" :checked="!config.disabled_games?.includes('pikavolleyDual')" @change="togglePikavolleyDuel" style="transform: scale(1.3); margin-right: 5px;" /> ⚡ 皮卡丘排球（雙人）</label>
         <label><input type="checkbox" v-model="config.enable_battle" style="transform: scale(1.3); margin-right: 5px;" /> ⚔️ 單字方塊陣</label>
         <label><input type="checkbox" v-model="config.enable_tenchi" style="transform: scale(1.3); margin-right: 5px;" /> 🐎 吞食天地</label>
         <label><input type="checkbox" v-model="config.enable_tarot21" style="transform: scale(1.3); margin-right: 5px;" /> 🃏 塔羅21點</label>
@@ -392,7 +397,7 @@ const toggleMonopolyDuel = event => {
 
 
     <div class="setting-item highlight-item" style="background: #fffde7; border-color: #fbc02d; flex-direction: column; align-items: stretch;">
-      <label style="color:#f57f17; margin-bottom: 10px; font-weight: bold;">⚡ 皮卡丘排球 (半回合制):</label>
+      <label style="color:#f57f17; margin-bottom: 10px; font-weight: bold;">⚡ 皮卡丘排球（單人與雙人共用設定）：</label>
 
       <div class="multi-input" style="margin-bottom: 10px;">
         全局限時<input type="number" v-model="config.pikavolley_time_limit" class="retro-input num-input" />秒, 

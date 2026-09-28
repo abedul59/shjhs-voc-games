@@ -42,6 +42,7 @@ const gameDict = {
   'angrybirds': { name: '🐦 單字憤怒鳥', path: '/game-angrybirds', class: 'angrybirds-btn' },
   'solitaire': { name: '🃏 撲克牌接龍', path: '/game-solitaire', class: 'solitaire-btn' },
   'pikavolley': { name: '⚡ 皮卡丘排球', path: '/game-pikavolley', class: 'pika-btn' },
+  'pikavolleyDual': { name: '⚡ 皮卡丘排球（雙人）', path: '/game-pikavolley-dual', class: 'battle-btn full-width' },
   'pacman': { name: '👻 單字小精靈', path: '/game-pacman', class: 'pacman-btn' },
   'minesweeper': { name: '💣 單字踩地雷', path: '/game-minesweeper', class: 'minesweeper-btn' },
   'sudoku': { name: '🔢 單字9x9數獨', path: '/game-9x9sudoku', class: 'sudoku-btn' },
@@ -82,7 +83,7 @@ const defaultCategories = [
   { id: 'c1', name: '🕹️ 經典單字遊戲', games: ['monopoly', 'match', 'move', 'choice', 'fill', 'sentence', 'listen', 'puzzle', 'cross', 'review', 'picture2meaning', 'ninja'] },
   { id: 'c2', name: '🏆 體感與趣味挑戰', games: ['shake2shuffle', 'tilt2sort', 'gravitymaze', 'swing2cast', 'ARsniper', 'GPSmap', 'vocshooting', 'noropejump'] },
   { id: 'c3', name: '👾 懷舊街機遊樂場', games: ['tetris', 'pinball', 'angrybirds', 'solitaire', 'pikavolley', 'pacman', 'minesweeper', 'sudoku'] },
-  { id: 'c4', name: '⚔️ 雙人對戰與領域牌組', games: ['monopolyDual', 'battle', 'tenchi', 'tarot21', 'tarotAlch', 'tarotUno', 'tarotUno1', 'tarot21solo', 'tarotAlch1'] },
+  { id: 'c4', name: '⚔️ 雙人對戰與領域牌組', games: ['monopolyDual', 'pikavolleyDual', 'battle', 'tenchi', 'tarot21', 'tarotAlch', 'tarotUno', 'tarotUno1', 'tarot21solo', 'tarotAlch1'] },
   // 🌟 將總複習加入此分類
   { id: 'c5', name: '🎓 考試與口說訓練', games: ['speak', 'speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examListen1', 'examRead1', 'examRead2', 'gramAmuPark', 'verbing', 'verbAmuPark', 'vocReviewing'] }
 ];
@@ -137,6 +138,11 @@ onMounted(async () => {
         const pvpCategory = dynamicCategories.value.find(cat => cat.games.includes('battle'));
         if (pvpCategory) pvpCategory.games.unshift('monopolyDual');
         else dynamicCategories.value.push({ id: 'monopoly_dual_category', name: '⚔️ 雙人對戰', games: ['monopolyDual'] });
+      }
+      if (!dynamicCategories.value.some(cat => cat.games.includes('pikavolleyDual'))) {
+        const pvpCategory = dynamicCategories.value.find(cat => cat.games.includes('battle') || cat.games.includes('monopolyDual'));
+        if (pvpCategory) pvpCategory.games.push('pikavolleyDual');
+        else dynamicCategories.value.push({ id: 'pikavolley_dual_category', name: '⚔️ 雙人對戰', games: ['pikavolleyDual'] });
       }
       const hasMonopoly = dynamicCategories.value.some(cat => cat.games.includes('monopoly'));
       if (!hasMonopoly && dynamicCategories.value.length > 0) dynamicCategories.value[0].games.unshift('monopoly');
