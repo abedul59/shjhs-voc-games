@@ -8,6 +8,7 @@ const props = defineProps({
 });
 
 const supabase = useSupabaseClient();
+const gradeLabels = { 7: '七', 8: '八', 9: '九' };
 const grade = ref(7);
 const specialClasses = ref([]);
 const selectedSpecialId = ref('');
@@ -206,7 +207,7 @@ watch(grade, async value => {
   sourceClass.value = '';
   members.value = []; memberIds.value = []; sourceStudents.value = [];
   checkedStudentIds.value = [];
-  newClassName.value = value === 7 ? '七年級學習扶助' : '八年級學習扶助';
+  newClassName.value = `${gradeLabels[value]}年級學習扶助`;
   editingName.value = false;
   await refresh();
 });
@@ -219,14 +220,14 @@ onMounted(() => { void refresh(); });
 <template>
   <section id="special-classes" class="special-panel retro-element">
     <h2>📚 學習扶助／特殊班級</h2>
-    <p class="description">從原班選入學生；原班、座號、遊戲帳號及學習紀錄都會保留。特殊班級只分七、八年級。</p>
+    <p class="description">從原班選入學生；原班、座號、遊戲帳號及學習紀錄都會保留。特殊班級分七、八、九年級。</p>
     <p v-if="errorMessage" class="error" role="alert">{{ errorMessage }}</p>
     <p v-if="missingSchema" class="error" role="alert">尚未建立特殊班級資料表。請先在新專案 Supabase SQL Editor 執行 <code>supabase/migrations/20260928_special_classes.sql</code>。</p>
 
     <template v-else>
       <div class="toolbar">
         <label>年級
-          <select v-model.number="grade" :disabled="working"><option :value="7">七年級</option><option :value="8">八年級</option></select>
+          <select v-model.number="grade" :disabled="working"><option :value="7">七年級</option><option :value="8">八年級</option><option :value="9">九年級</option></select>
         </label>
         <label>特殊班級
           <select v-model="selectedSpecialId" :disabled="loading || working || !specialClasses.length">

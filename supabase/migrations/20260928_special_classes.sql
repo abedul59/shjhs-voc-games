@@ -1,16 +1,20 @@
--- 在「新專案」Supabase SQL Editor 執行一次。
+-- 在「新專案」Supabase SQL Editor 執行；若已執行過舊版，可再次執行。
 -- 特殊班級是額外編組；學生原班、座號、帳號及既有紀錄均不變。
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.special_classes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  grade smallint NOT NULL CHECK (grade IN (7, 8)),
+  grade smallint NOT NULL CONSTRAINT special_classes_grade_check CHECK (grade IN (7, 8, 9)),
   name varchar(60) NOT NULL CHECK (length(btrim(name)) > 0),
   created_by text NOT NULL DEFAULT '',
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT special_classes_grade_name_key UNIQUE (grade, name)
 );
 ALTER TABLE public.special_classes ADD COLUMN IF NOT EXISTS created_by text NOT NULL DEFAULT '';
+-- 若七、八年級版已執行過，重新執行本檔即可擴充為九年級。
+ALTER TABLE public.special_classes DROP CONSTRAINT IF EXISTS special_classes_grade_check;
+ALTER TABLE public.special_classes ADD CONSTRAINT special_classes_grade_check
+  CHECK (grade IN (7, 8, 9));
 
 CREATE TABLE IF NOT EXISTS public.special_class_members (
   special_class_id uuid NOT NULL REFERENCES public.special_classes(id) ON DELETE CASCADE,
@@ -22,7 +26,7 @@ CREATE TABLE IF NOT EXISTS public.special_class_members (
 CREATE INDEX IF NOT EXISTS special_class_members_student_id_idx
   ON public.special_class_members (student_id);
 
-COMMENT ON TABLE public.special_classes IS '七、八年級學習扶助及自訂特殊班級；不取代學生原班。';
+COMMENT ON TABLE public.special_classes IS '七、八、九年級學習扶助及自訂特殊班級；不取代學生原班。';
 COMMENT ON TABLE public.special_class_members IS '特殊班級與既有學生帳號的額外編組；刪班只移除編組。';
 
 -- 現有後台使用 teacher_auth Cookie 與 Supabase anon key；權限模式比照既有 students 表。
