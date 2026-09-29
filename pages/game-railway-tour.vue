@@ -102,6 +102,7 @@ const saved = ref(false);
 const imageFailures = ref([]);
 const progressStatus = ref('');
 const mapMode = ref('nearby');
+const branchSearch = ref('');
 const nearbyZoom = ref(0);
 const mapSvg = ref(null);
 const mapPixelSize = ref({ width: 650, height: 450 });
@@ -133,8 +134,10 @@ watch([viewedId, selectedMapId, viewedInAtlas], async () => {
   try {
     let page;
     let wikiLanguage = 'ja';
-    for (const [language, suffix] of [['zh', '站'], ['zh', '車站'], ['ja', '駅']]) {
-      const response = await fetch(`https://${language}.wikipedia.org/api/rest_v1/page/summary/` + encodeURIComponent(station.name + suffix));
+    for (const [language, title] of [['zh', station.zhName], ['zh', station.name + '站'],
+      ['zh', station.name + '車站'], ['ja', station.name + '駅']]) {
+      if (!title) continue;
+      const response = await fetch(`https://${language}.wikipedia.org/api/rest_v1/page/summary/` + encodeURIComponent(title));
       if (!response.ok) continue;
       const candidate = await response.json();
       if (candidate.type === 'disambiguation') continue;
@@ -225,6 +228,53 @@ const visibleLinks = computed(() => {
 const mapUnit = computed(() => mapBounds.value.width / mapPixelSize.value.width);
 const markerRadius = computed(() => mapUnit.value * 5);
 const markerHitRadius = computed(() => mapUnit.value * 14);
+const branchStations = computed(() => {
+  const query = branchSearch.value.trim().toLocaleLowerCase();
+  return query ? regionStations.value.filter(station =>
+    station.zhName?.toLocaleLowerCase().includes(query) || station.name.toLocaleLowerCase().includes(query))
+    : regionStations.value;
+});
+const mapLabels = computed(() => {
+  const stations = mapMode.value === 'nearby' ? visibleStations.value
+    : visibleStations.value.filter(station => station.id === currentId.value || station.id === viewedId.value);
+  const bounds = mapBounds.value;
+  const unit = mapUnit.value;
+  const canvasWidth = mapPixelSize.value.width;
+  const canvasHeight = mapPixelSize.value.height;
+  const occupied = [];
+  const textWidth = value => [...value].reduce((sum, letter) => sum + (letter.charCodeAt(0) < 128 ? 6 : 11), 0);
+  return [...stations].sort((a, b) =>
+    Number(b.id === currentId.value) - Number(a.id === currentId.value) ||
+    Number(b.id === viewedId.value) - Number(a.id === viewedId.value) || a.y - b.y).map(station => {
+    const chinese = selectedMapId.value === 'japan' ? station.zhName || station.name : station.name;
+    const japanese = selectedMapId.value === 'japan' ? station.name + '駅' : '';
+    const lines = japanese && chinese !== japanese ? [chinese, japanese] : [chinese];
+    const width = Math.min(canvasWidth - 4, Math.max(...lines.map(textWidth)) + 12);
+    const height = lines.length === 2 ? 31 : 18;
+    const pointX = (station.x - bounds.x) / unit;
+    const pointY = (station.y - bounds.y) / unit;
+    const choices = [
+      [pointX + 12, pointY - height / 2], [pointX - width - 12, pointY - height / 2],
+      [pointX + 9, pointY - height - 9], [pointX - width - 9, pointY - height - 9],
+      [pointX + 9, pointY + 9], [pointX - width - 9, pointY + 9],
+      [pointX - width / 2, pointY - height - 12], [pointX - width / 2, pointY + 12]
+    ];
+    let best;
+    for (const [desiredX, desiredY] of choices) {
+      const x = Math.max(2, Math.min(canvasWidth - width - 2, desiredX));
+      const y = Math.max(2, Math.min(canvasHeight - height - 2, desiredY));
+      const overlap = occupied.reduce((sum, box) => sum +
+        Math.max(0, Math.min(x + width, box.x + box.width) - Math.max(x, box.x)) *
+        Math.max(0, Math.min(y + height, box.y + box.height) - Math.max(y, box.y)), 0);
+      const cost = overlap * 4 + Math.abs(x - desiredX) + Math.abs(y - desiredY);
+      if (!best || cost < best.cost) best = { x, y, width, height, cost };
+    }
+    occupied.push(best);
+    return { id: station.id, x: bounds.x + best.x * unit, y: bounds.y + best.y * unit,
+      width: best.width * unit, height: best.height * unit, markerX: station.x, markerY: station.y,
+      chinese, japanese, current: station.id === currentId.value };
+  });
+});
 function adjustNearbyZoom(change) {
   nearbyZoom.value = Math.max(-1, Math.min(3, nearbyZoom.value + change));
   mapMode.value = 'nearby';
@@ -255,7 +305,8 @@ const shuffle = source => {
 };
 const wikiUrl = station => station.wiki
   ? 'https://zh.wikipedia.org/wiki/' + encodeURIComponent(station.wiki.replaceAll(' ', '_'))
-      : 'https://ja.wikipedia.org/wiki/Special:Search?search=' + encodeURIComponent(station.name + '駅');
+  : station.zhName ? 'https://zh.wikipedia.org/wiki/' + encodeURIComponent(station.zhName.replaceAll(' ', '_'))
+    : 'https://ja.wikipedia.org/wiki/Special:Search?search=' + encodeURIComponent(station.name + '駅');
 const progressKey = () => `railway-tour-v2:${String(student.value?.id || 'guest')}`;
 
 function saveProgressLocally() {
@@ -653,14 +704,24 @@ onMounted(async () => {
         <svg ref="mapSvg" :viewBox="mapViewBox" class="rail-map" role="group" :aria-label="activeRegion.name + (mapMode === 'nearby' ? '目前車站附近路線' : '全區路線')">
           <path :d="islandOutline" class="island"/>
           <line v-for="link in visibleLinks" :key="link.a.id + link.b.id" :x1="link.a.x" :y1="link.a.y" :x2="link.b.x" :y2="link.b.y" class="rail-line" :class="{ reachable: adjacentIds.includes(link.a.id) && link.b.id === currentId || adjacentIds.includes(link.b.id) && link.a.id === currentId }"/>
-          <g v-for="station in visibleStations" :key="station.id" class="station-marker" :class="{ current: currentId === station.id, reachable: adjacentIds.includes(station.id) && started && !finished, stamped: progress.visitedIds.includes(station.id), viewed: viewedId === station.id }" role="button" tabindex="0" :aria-label="station.name + '車站，' + (progress.visitedIds.includes(station.id) ? '已集章' : '未集章') + '，查看收集狀態'" @click="viewedId = station.id" @keydown.enter.prevent="viewedId = station.id" @keydown.space.prevent="viewedId = station.id">
-            <title>{{ station.name }}車站 · {{ station.line }}</title>
+          <g v-for="station in visibleStations" :key="station.id" class="station-marker" :class="{ current: currentId === station.id, reachable: adjacentIds.includes(station.id) && started && !finished, stamped: progress.visitedIds.includes(station.id), viewed: viewedId === station.id }" role="button" tabindex="0" :aria-label="(station.zhName ? station.zhName + '，' + station.name + '駅' : station.name + '車站') + '，' + (progress.visitedIds.includes(station.id) ? '已集章' : '未集章') + '，查看收集狀態'" @click="viewedId = station.id" @keydown.enter.prevent="viewedId = station.id" @keydown.space.prevent="viewedId = station.id">
+            <title>{{ selectedMapId === 'japan' ? `${station.zhName} · ${station.name}駅` : `${station.name}車站` }} · {{ station.line }}</title>
             <circle class="hit-area" :cx="station.x" :cy="station.y" :r="markerHitRadius"/>
             <circle :cx="station.x" :cy="station.y" :r="markerRadius"/>
-            <text v-if="currentId === station.id || viewedId === station.id" :x="station.x + markerRadius + mapUnit * 3" :y="station.y - markerRadius" :style="{ fontSize: mapUnit * 12 + 'px' }">{{ station.name }}</text>
           </g>
           <g class="train-token" :style="{ transform: 'translate(' + currentStation.x + 'px,' + currentStation.y + 'px)' }"><text :x="-mapUnit * 5" :y="-mapUnit * 8" :style="{ fontSize: mapUnit * 16 + 'px' }">🚂</text></g>
+          <g v-for="label in mapLabels" :key="label.id" class="station-label" :class="{ current: label.current }" aria-hidden="true">
+            <line :x1="label.markerX" :y1="label.markerY" :x2="label.x + label.width / 2" :y2="label.y + label.height / 2"/>
+            <rect :x="label.x" :y="label.y" :width="label.width" :height="label.height" :rx="mapUnit * 4"/>
+            <text :x="label.x + mapUnit * 6" :y="label.y + mapUnit * 13" :style="{ fontSize: mapUnit * 11 + 'px' }">{{ label.chinese }}</text>
+            <text v-if="label.japanese" :x="label.x + mapUnit * 6" :y="label.y + mapUnit * 26" :style="{ fontSize: mapUnit * 10 + 'px' }" lang="ja">{{ label.japanese }}</text>
+          </g>
         </svg>
+        <section v-if="selectedMapId === 'japan' && selectedScopeSize === 'line'" class="branch-stations" :aria-label="activeRegion.name + '全部車站的中日文名稱'">
+          <div class="branch-stations-heading"><strong>🚉 {{ activeRegion.name }}完整車站列表 · {{ activeRegion.stationIds.length }} 站</strong><label>搜尋站名 <input v-model="branchSearch" type="search" placeholder="中文或日文"></label></div>
+          <ol><li v-for="station in branchStations" :key="station.id"><button type="button" :class="{ current: currentId === station.id, viewed: viewedId === station.id }" @click="viewedId = station.id"><span class="branch-zh">{{ station.zhName }}</span><span class="branch-ja" lang="ja">{{ station.name }}駅</span><small>{{ progress.visitedIds.includes(station.id) ? '📍' : '' }}</small></button></li></ol>
+          <p v-if="!branchStations.length">找不到相符車站。</p>
+        </section>
         <p class="map-caption">附近地圖以目前車站為中心，顯示視野內所有路線與車站；可用 ＋／－ 調整倍率。全區總覽顯示所選範圍，全國輪廓可查看海岸形狀。資料：<a v-if="selectedMapId === 'taiwan'" href="https://data.gov.tw/dataset/33425" target="_blank" rel="noopener noreferrer">臺鐵車站 ↗</a><a v-else href="https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N02-2025.html" target="_blank" rel="noopener noreferrer">日本國土交通省 2025 鐵道資料（CC BY 4.0）↗</a>；海岸輪廓：<a href="https://www.naturalearthdata.com/downloads/10m-cultural-vectors/" target="_blank" rel="noopener noreferrer">Natural Earth 1:10m ↗</a>。</p>
       </section>
 
@@ -671,7 +732,7 @@ onMounted(async () => {
         </div>
         <div class="station-info">
           <p class="eyebrow">{{ viewedStation.line }} · {{ viewedStation.en || viewedStation.prefectureName || '' }}</p>
-          <h2>{{ viewedStation.name }}車站 <span v-if="progress.visitedIds.includes(viewedStation.id)">📍 已集章</span></h2>
+          <h2>{{ selectedMapId === 'japan' ? viewedStation.zhName : viewedStation.name + '車站' }} <small v-if="selectedMapId === 'japan'" lang="ja">{{ viewedStation.name }}駅</small> <span v-if="progress.visitedIds.includes(viewedStation.id)">📍 已集章</span></h2>
           <p>{{ viewedInAtlas ? (viewedWiki.summary || `${viewedStation.name}站位於${viewedStation.prefectureName || '日本'}，營運路線：${viewedStation.lines?.join('、') || viewedStation.line}。點選維基百科搜尋車站照片與詳細介紹。`) : `圖鑑尚未解鎖：先到達這座車站，並在${activeRegion.name}累積 ${atlasGoal} 座不同車站章。` }}</p>
           <div v-if="viewedInAtlas" class="source-links"><a :href="viewedWiki.wikiPage || wikiUrl(viewedStation)" target="_blank" rel="noopener noreferrer">{{ selectedMapId === 'japan' ? `維基百科${viewedWiki.wikiLanguage === 'zh' ? '中文' : '日文'}簡介（CC BY-SA）↗` : '維基百科簡介 ↗' }}</a><a v-if="viewedWiki.imagePage" :href="viewedWiki.imagePage" target="_blank" rel="noopener noreferrer" :title="(viewedWiki.imageAuthor || 'Wikimedia Commons') + ' · ' + (viewedWiki.imageLicense || '請於圖片頁查看授權')">圖片：{{ viewedWiki.imageAuthor || 'Wikimedia Commons' }} · {{ viewedWiki.imageLicense || '授權資訊見圖片頁' }} ↗</a></div>
         </div>
@@ -726,18 +787,21 @@ onMounted(async () => {
 .rail-status{display:grid;grid-template-columns:repeat(6,minmax(0,1fr)) auto auto;gap:7px;margin:12px 0}.rail-status>div,.rail-status>a{display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:0;padding:7px 9px;border:2px solid #98bdc8;border-radius:11px;background:#fff;box-shadow:0 3px #aecbd3}.rail-status span{font-size:.72rem}.rail-status strong{font-size:1rem}.rail-status>a{color:#125777;text-align:center;text-decoration:none;font-weight:900;font-size:.82rem}
 .notice{margin:0 0 10px;padding:9px 13px;border-left:5px solid #21829f;border-radius:7px;background:#effafe;font-weight:750}.notice small{display:block;font-size:.7rem}.rail-layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(270px,.65fr) minmax(300px,.7fr);gap:12px;align-items:stretch}
 .map-card,.station-card,.trip-card{min-width:0;border:2px solid #7aa8b3;border-radius:17px;background:#f9fdff;box-shadow:0 5px 0 #b4cbd0;overflow:hidden}.map-card{display:flex;flex-direction:column;background:#d3e8e8}.map-title{display:flex;justify-content:space-between;gap:9px;padding:10px 13px;background:#e9f6f3}.map-title span{font-size:.73rem}.rail-map{width:100%;height:0;flex:1;min-height:340px}.island{fill:#d8dfb6;stroke:#517e70;stroke-width:1}.rail-line{stroke:#856942;stroke-width:1.2;stroke-linecap:round}.rail-line.reachable{stroke:#e68a19;stroke-width:2}.station-marker{cursor:pointer}.station-marker circle{fill:#f5f2e3;stroke:#345969;stroke-width:1}.station-marker .hit-area{fill:transparent;stroke:none}.station-marker.stamped circle:not(.hit-area){fill:#65c18b}.station-marker.reachable circle:not(.hit-area){fill:#ffd56f;stroke:#965300;stroke-width:1.5}.station-marker.current circle:not(.hit-area){fill:#dc6f53;stroke:#832d19;stroke-width:1.5}.station-marker.viewed circle:not(.hit-area){stroke-width:2}.station-marker text{font-size:5.5px;font-weight:900;paint-order:stroke;stroke:#eef7ea;stroke-width:1.2;fill:#163c43}.station-marker:focus{outline:none}.station-marker:focus circle:not(.hit-area){stroke:#202d9a;stroke-width:2}.train-token{font-size:10px;pointer-events:none;transition:transform .65s ease-in-out}.map-caption{margin:0;padding:8px 11px;background:#eff6ed;font-size:.69rem;line-height:1.4}.map-caption a{color:#126481}
-.station-card{display:flex;flex-direction:column}.station-photo{height:43%;min-height:180px;background:#c8dbde}.station-photo img{display:block;width:100%;height:100%;object-fit:cover}.photo-fallback{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:3rem}.photo-fallback span{font-size:.9rem;text-align:center}.station-info{padding:14px;overflow:auto}.eyebrow{margin:0 0 5px;color:#497783;font-size:.75rem;font-weight:900;letter-spacing:.04em}.station-info h2{margin:0 0 9px;color:#164758;font-size:1.28rem}.station-info h2 span{font-size:.72rem;color:#328257}.station-info>p:not(.eyebrow){margin:0;line-height:1.6;font-size:.9rem}.source-links{display:grid;gap:6px;margin-top:14px;font-size:.72rem;overflow-wrap:anywhere}.source-links a{color:#155f79}
+.station-card{display:flex;flex-direction:column}.station-photo{height:43%;min-height:180px;background:#c8dbde}.station-photo img{display:block;width:100%;height:100%;object-fit:cover}.photo-fallback{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:3rem}.photo-fallback span{font-size:.9rem;text-align:center}.station-info{padding:14px;overflow:auto}.eyebrow{margin:0 0 5px;color:#497783;font-size:.75rem;font-weight:900;letter-spacing:.04em}.station-info h2{margin:0 0 9px;color:#164758;font-size:1.28rem}.station-info h2 small{display:block;font-size:.72rem;color:#5b7780;font-weight:650}.station-info h2 span{font-size:.72rem;color:#328257}.station-info>p:not(.eyebrow){margin:0;line-height:1.6;font-size:.9rem}.source-links{display:grid;gap:6px;margin-top:14px;font-size:.72rem;overflow-wrap:anywhere}.source-links a{color:#155f79}
 .trip-card{padding:14px;display:flex;flex-direction:column;gap:9px}.trip-card h2,.trip-card h3{margin:0}.trip-card h2{font-size:1.2rem}.trip-card h3{font-size:.9rem}.turn-indicator{margin:0;font-weight:900;color:#b4571b}.mission{display:grid;gap:3px;padding:9px;border:1px solid #e2b970;border-radius:9px;background:#fff4d5}.mission small{color:#72582e}.destinations{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.destinations button{display:grid;gap:4px;text-align:left;padding:10px;border:2px solid #6fa0b2;border-radius:10px;background:#ecf8fb;color:#16475a}.destinations button:hover:not(:disabled){background:#d9f0f7}.destinations small{font-size:.7rem}.invest-button{padding:10px;border:2px solid #8c742a;border-radius:10px;background:#ffedaa;color:#514014;font-weight:900}.rules,.score-rules{margin:0;line-height:1.45;font-size:.73rem}.score-rules{color:#5d6d73}.finished-box{margin-top:auto;padding:10px;border-radius:10px;background:#e1f4e5}.finished-box p{font-size:.77rem}.finished-box button{border:1px solid #3d8272;border-radius:7px;background:#fff;padding:6px}
 .transfer-box{display:grid;gap:5px;padding:8px;border:1px solid #afcbd0;border-radius:9px;background:#edf7f8}.transfer-box label{display:grid;gap:4px;font-size:.78rem;font-weight:850}.transfer-box input{min-width:0;width:100%;box-sizing:border-box;padding:6px;border:1px solid #8aafb8;border-radius:6px}.transfer-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;max-height:140px;overflow:auto}.transfer-options button{min-width:0;padding:5px;border:1px solid #8bb6ba;border-radius:6px;background:#fff;text-align:left;color:#19556b;font-size:.73rem}.transfer-options small{white-space:nowrap;color:#8a601b}.transfer-box>small{font-size:.67rem;color:#4b6870}
 .question-shade{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:12px;background:#102e3bc9}.question-card{box-sizing:border-box;width:min(100%,520px);max-height:calc(100dvh - 24px);overflow:auto;padding:22px;border:4px solid #69a5b7;border-radius:18px;background:#faffff;box-shadow:0 12px #315565}.question-card h2{margin:4px 0 18px}.choices{display:grid;grid-template-columns:1fr 1fr;gap:8px}.choices button{padding:12px;border:2px solid #9cb9c2;border-radius:9px;background:#fff;color:#234457;font-weight:850}.choices button.selected{background:#ffeda6;border-color:#c17d20}.masked{font-size:1.65rem;font-weight:900;letter-spacing:.12em}.question-card label{display:block;margin-bottom:6px}.question-card input{width:100%;box-sizing:border-box;padding:11px;border:2px solid #83a5ae;border-radius:8px}.question-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.question-actions button{padding:9px 14px;border:2px solid #42859a;border-radius:9px;background:#c8ecf3;font-weight:850}.question-actions .cancel{background:#fff}
 .trip-card{overflow:auto}.station-atlas{border:1px solid #b7d0d5;border-radius:8px;background:#f1f8f7;padding:5px 8px}.station-atlas summary{cursor:pointer;font-size:.8rem;font-weight:850}.station-atlas>div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;max-height:170px;overflow:auto;margin-top:7px}.station-atlas p{margin:6px 0;font-size:.7rem}.station-atlas button{border:1px solid #aac4c9;border-radius:6px;background:#fff;padding:5px 2px;color:#1f5965;font-size:.72rem}.station-atlas button.viewed{background:#ffedaf;border-color:#be8c3c}
 .rail-layout{grid-template-columns:minmax(0,1.7fr) minmax(260px,.55fr) minmax(300px,.7fr)}
 .map-title{align-items:center;flex-wrap:wrap}.map-controls{display:flex;align-items:center;flex-wrap:wrap;gap:5px}.map-controls button{border:1px solid #6b9aa5;border-radius:7px;background:#fff;color:#205062;padding:5px 8px;font-size:.74rem;font-weight:800}.map-controls button.active{background:#ffe3a3;border-color:#b77b22}.zoom-controls{display:flex;align-items:center;gap:2px;border:1px solid #6b9aa5;border-radius:7px;background:#fff}.zoom-controls button{border:0;padding:5px 7px;font-size:1rem;line-height:1}.zoom-controls span{min-width:36px;text-align:center;font-size:.72rem;font-weight:850}
+.station-label{pointer-events:none}.station-label line{stroke:#6b7c75;stroke-width:1;vector-effect:non-scaling-stroke}.station-label rect{fill:#fbfffc;fill-opacity:.9;stroke:#809e9a;stroke-width:.8;vector-effect:non-scaling-stroke}.station-label.current rect{fill:#fff0b4;stroke:#b57624}.station-label text{fill:#174658;font-weight:850}.station-label text[lang=ja]{fill:#526773;font-weight:650}
+.branch-stations{flex:0 1 auto;min-height:0;padding:7px 11px;background:#f3faf9;border-top:1px solid #a5c4c7}.branch-stations-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.78rem}.branch-stations-heading label{display:flex;align-items:center;gap:5px;white-space:nowrap}.branch-stations-heading input{width:125px;min-width:0;padding:4px 6px;border:1px solid #8fafb6;border-radius:6px}.branch-stations ol{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px 7px;max-height:150px;overflow-y:auto;list-style:none;margin:6px 0 0;padding:0}.branch-stations li{min-width:0}.branch-stations li button{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;min-height:42px;padding:5px 24px 5px 7px;border:1px solid #b6cfd0;border-radius:5px;background:#fff;text-align:left;color:#173e4c;font-size:.72rem}.branch-stations li button.current{background:#ffedb4;border-color:#b9872f}.branch-stations li button.viewed{outline:2px solid #388fa1}.branch-stations li button small{position:absolute;right:5px;top:5px}.branch-zh,.branch-ja{overflow-wrap:anywhere}.branch-zh{font-weight:850}.branch-ja{color:#58717b}.branch-stations p{margin:4px 0;font-size:.75rem}
 .island,.rail-line,.station-marker circle:not(.hit-area),.station-marker text{vector-effect:non-scaling-stroke}.rail-line{stroke-width:1.5}.rail-line.reachable{stroke-width:3}.station-marker circle:not(.hit-area){stroke-width:1.5}.station-marker.reachable circle:not(.hit-area),.station-marker.current circle:not(.hit-area){stroke-width:2}.station-marker.viewed circle:not(.hit-area){stroke-width:2.5}.station-marker text{stroke-width:2}
 @media(min-width:1200px) and (min-height:720px){.rail-page{height:100dvh;overflow:hidden;display:flex;flex-direction:column}.rail-header,.rail-status,.notice,.region-picker{flex:none}.rail-layout{min-height:0;flex:1}.rail-map{min-height:0}.station-photo{min-height:0}}
 @media(max-width:1150px){.rail-status{grid-template-columns:repeat(4,minmax(0,1fr))}.rail-layout{grid-template-columns:minmax(0,1fr) minmax(270px,.8fr)}.trip-card{grid-column:1/-1}.station-photo{min-height:160px}.rail-map{min-height:450px}.region-picker{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:700px){.rail-header{align-items:flex-start;flex-direction:column}.setup{width:100%}.rail-status{grid-template-columns:repeat(2,minmax(0,1fr))}.rail-layout{grid-template-columns:1fr}.trip-card{grid-column:auto}.rail-map{height:470px;min-height:0;flex:none}.station-card{display:grid;grid-template-columns:38% 1fr}.station-photo{height:100%;min-height:185px}.station-info{padding:10px}.station-info h2{font-size:1rem}.station-info>p:not(.eyebrow){font-size:.78rem}.map-title{flex-direction:column}.choices{grid-template-columns:1fr}.region-picker{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.japan-scope{display:grid}.japan-scope label{display:grid;white-space:normal}.japan-scope select{max-width:100%;width:100%}}
+@media(max-width:700px){.branch-stations ol{grid-template-columns:1fr;max-height:180px}.branch-stations-heading{align-items:flex-start;flex-direction:column}.branch-stations-heading input{width:160px}}
 @media(max-width:430px){.station-card{grid-template-columns:1fr}.station-photo{height:180px}.rail-map{height:420px}.rail-status>div,.rail-status>a{padding:6px;font-size:.77rem}.rail-status strong{font-size:.86rem}}
 @media(prefers-reduced-motion:reduce){.train-token{transition:none}}
 </style>
