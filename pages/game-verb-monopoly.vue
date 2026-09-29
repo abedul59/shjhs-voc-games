@@ -6,9 +6,8 @@ import starterVerbs from '~/data/verb-monopoly-starter.json';
 import MonopolyCityCard from '~/components/MonopolyCityCard.vue';
 
 const db = useSupabaseClient(), student = useCookie('currentStudent');
-const words = ref([]), boardWords = ref([]), owned = ref({});
-const databaseWords = ref([]), usingStarter = ref(false), databaseUnavailable = ref(false);
 const builtInWords = starterVerbs.map((verb, index) => ({ ...verb, id: `starter-${index}`, en_us: verb.base_form, zh_tw: verb.chinese }));
+const words = ref(builtInWords), boardWords = ref([]), owned = ref({});
 const newPlayers = () => [{ name: '你', cash: 1500, pos: 0, direction: 1, shields: 0 }, { name: '電腦', cash: 1500, pos: 0, direction: 1, shields: 0 }];
 const players = ref(newPlayers());
 const turn = ref(0), round = ref(1), die = ref('—'), dice = ref([1, 1]), rolling = ref(false), done = ref(false);
@@ -38,16 +37,11 @@ const shuffle = items => {
   return result;
 };
 function chooseBoard() {
-  const eligible = list => list.filter(word => selectedGrade.value !== 9 || canonical(word.past_participle));
-  const databasePool = eligible(databaseWords.value);
-  usingStarter.value = databasePool.length < 2;
-  words.value = usingStarter.value ? builtInWords : databaseWords.value;
-  const pool = usingStarter.value ? eligible(builtInWords) : databasePool;
-  boardWords.value = shuffle(pool).slice(0, 12);
+  boardWords.value = shuffle(builtInWords).slice(0, 12);
   viewedCity.value = 0;
   message.value = boardWords.value.length >= 2
     ? (selectedGrade.value === 8 ? '八年級只測驗過去式。選好國家與回合數即可開始。' : selectedGrade.value === 9 ? '九年級同時測驗過去式與過去分詞。選好國家與回合數即可開始。' : '先選八年級或九年級，再選國家與回合數。')
-    : '此模式的動詞題庫不足，請由老師先匯入至少兩個動詞。';
+    : '動詞題庫不足。';
 }
 const pause = ms => new Promise(resolve => {
   if (disposed) { resolve(false); return; }
@@ -279,16 +273,10 @@ watch(turn, next => {
   else if (next === 0) aiStatus.value = '';
 });
 watch(selectedGrade, () => { if (!started.value) chooseBoard(); });
-onMounted(async () => {
+onMounted(() => {
   try { const stored = localStorage.getItem('shjhs_monopoly_map'); if (maps.some(map => map.id === stored)) selectedMap.value = stored; } catch { /* Use the default map if storage is unavailable. */ }
-  try {
-    const { data, error } = await db.from('irregular_verbs').select('id,base_form,past_tense,past_participle,chinese').limit(500);
-    if (disposed) return;
-    if (error) throw error;
-    databaseWords.value = (data || []).filter(verb => String(verb.base_form || '').trim() && canonical(verb.past_tense) && String(verb.chinese || '').trim())
-      .map(verb => ({ ...verb, en_us: verb.base_form.trim(), zh_tw: verb.chinese.trim() }));
-  } catch { databaseUnavailable.value = true; }
-  finally { if (!disposed) { chooseBoard(); loading.value = false; } }
+  chooseBoard();
+  loading.value = false;
 });
 onBeforeUnmount(() => {
   disposed = true;
@@ -361,7 +349,7 @@ onBeforeUnmount(() => {
   </aside>
  </section>
  <section v-else class="empty-board">{{ loading ? '正在準備城市旅行…' : '動詞題庫不足' }}</section>
- <p class="message" role="status" aria-live="polite"><span>{{ message }}</span><span v-if="usingStarter && !loading" class="bank-note">{{ databaseUnavailable ? '後台題庫暫時無法讀取；本局使用內建動詞題庫，成績儲存需資料庫連線。' : '目前使用內建 81 筆動詞題庫；後台有足夠題目時會優先使用後台資料。' }}</span></p>
+ <p class="message" role="status" aria-live="polite"><span>{{ message }}</span><span v-if="!loading" class="bank-note">固定使用 81 筆動詞題庫。</span></p>
  <div v-if="question" class="overlay"><section class="modal verb-modal" role="dialog" aria-modal="true" aria-label="動詞變化購地問答">
   <template v-if="turn === 1"><p class="modal-turn">🤖 電腦回合 · 正在思考答案</p><h2>{{ question.word.en_us }}（{{ question.word.zh_tw }}）</h2><p>電腦正在回答{{ gameGrade === 9 ? '過去式與過去分詞' : '過去式' }}…</p><div class="thinking-dots" aria-label="電腦思考中"><i></i><i></i><i></i></div><p>請稍候看電腦的作答結果。</p></template>
   <form v-else @submit.prevent="submit">
