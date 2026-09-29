@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import taiwanRail from '~/data/railway-taiwan.json';
 import japanIndex from '~/data/railway-japan-index.json';
 import outlines from '~/data/railway-outlines.json';
+import { prepareEnglishUtterance, primeEnglishVoices } from '~/utils/englishSpeech';
 
 const GAME_TYPE = '單字鐵路旅遊高手';
 const railwayMaps = [{ id: 'taiwan', name: '臺灣' }, { id: 'japan', name: '日本' }];
@@ -101,6 +102,148 @@ const saving = ref(false);
 const saved = ref(false);
 const imageFailures = ref([]);
 const progressStatus = ref('');
+const announcement = ref(null);
+const announcementStatus = ref('');
+const announcementEnabled = ref(true);
+let announcementRun = 0;
+let finishCurrentSpeech;
+const englishStationNames = new Map();
+
+function stopAnnouncement() {
+  announcementRun++;
+  if (typeof window === 'undefined') return;
+  finishCurrentSpeech?.();
+  window.speechSynthesis?.cancel();
+}
+
+function toggleAnnouncement() {
+  announcementEnabled.value = !announcementEnabled.value;
+  if (announcementEnabled.value && announcement.value) void playAnnouncement();
+  else {
+    stopAnnouncement();
+    announcementStatus.value = '已關閉自動到站播報，可按重播聆聽。';
+  }
+}
+
+function stationAnnouncement(station, mapId, side) {
+  const sideZh = side === 'right' ? '右' : '左';
+  if (mapId === 'japan') return {
+    station, mapId, side,
+    lines: [
+      { label: '日本語', lang: 'ja-JP', text: `まもなく、${station.name}駅です。お出口は${sideZh}側です。` },
+      { label: 'English', lang: 'en-US', text: '' }
+    ]
+  };
+  return {
+    station, mapId, side,
+    lines: [
+      { label: '國語', lang: 'zh-TW', text: `即將抵達${station.name}站，出口在${sideZh}側。` },
+      { label: '台語', lang: 'nan-TW', text: `欲到${station.name}車站矣，${side === 'right' ? '正爿' : '倒爿'}落車。` },
+      { label: '客語', lang: 'hak-TW', text: `就愛到${station.name}車站咧，對${sideZh}片落車。` },
+      { label: 'English', lang: 'en-US', text: `We will soon arrive at ${station.en || station.name} Station. The doors will open on the ${side}.` }
+    ]
+  };
+}
+
+async function getJapaneseEnglishName(station) {
+  if (englishStationNames.has(station.id)) return englishStationNames.get(station.id);
+  try {
+    const params = new URLSearchParams({ action: 'query', prop: 'langlinks', lllang: 'en',
+      titles: `${station.name}駅`, redirects: '1', format: 'json', origin: '*' });
+    const response = await fetch(`https://ja.wikipedia.org/w/api.php?${params}`);
+    if (!response.ok) throw new Error('English station name unavailable');
+    const data = await response.json();
+    const title = Object.values(data.query?.pages || {})[0]?.langlinks?.[0]?.['*'] || '';
+    const english = title.replace(/\s+(?:railway\s+)?station\s*$/i, '').trim();
+    englishStationNames.set(station.id, english);
+    return english;
+  } catch {
+    englishStationNames.set(station.id, '');
+    return '';
+  }
+}
+
+function announceText(text, lang, voice, run) {
+  return new Promise(resolve => {
+    if (run !== announcementRun || !window.speechSynthesis) return resolve();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = lang;
+    utterance.rate = .92;
+    utterance.volume = 1;
+    if (voice) utterance.voice = voice;
+    if (lang === 'en-US') prepareEnglishUtterance(utterance);
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (finishCurrentSpeech === done) finishCurrentSpeech = null;
+      resolve();
+    };
+    const timeout = setTimeout(() => {
+      window.speechSynthesis.cancel();
+      done();
+    }, Math.max(12000, text.length * 450));
+    finishCurrentSpeech = done;
+    utterance.onend = done;
+    utterance.onerror = done;
+    window.speechSynthesis.speak(utterance);
+  });
+}
+
+async function playAnnouncement() {
+  if (!announcement.value || typeof window === 'undefined') return;
+  stopAnnouncement();
+  const run = announcementRun;
+  const item = announcement.value;
+  if (!window.speechSynthesis) {
+    announcementStatus.value = '這個瀏覽器沒有語音播報功能。';
+    return;
+  }
+  primeEnglishVoices();
+  const englishName = item.mapId === 'japan' ? getJapaneseEnglishName(item.station) : null;
+  const skipped = [];
+  for (const line of item.lines) {
+    if (run !== announcementRun) return;
+    if (line.lang === 'en-US' && item.mapId === 'japan') {
+      const name = await englishName;
+      if (run !== announcementRun) return;
+      if (name) {
+        line.text = `We will soon arrive at ${name} Station. The doors will open on the ${item.side}.`;
+      } else {
+        line.text = `We will soon arrive at ${item.station.name} Station. The doors will open on the ${item.side}.`;
+        announcementStatus.value = '英文站名未收錄：英文播報中的站名由日語聲音唸出。';
+        await announceText('We will soon arrive at', 'en-US', null, run);
+        await announceText(`${item.station.name}駅`, 'ja-JP', null, run);
+        await announceText(`The doors will open on the ${item.side}.`, 'en-US', null, run);
+        continue;
+      }
+    }
+    const voices = window.speechSynthesis.getVoices();
+    const voice = voices.find(candidate => candidate.lang.replaceAll('_', '-').toLowerCase() === line.lang.toLowerCase())
+      || (line.lang === 'zh-TW' ? voices.find(candidate => /^cmn[-_]Hant[-_]TW$/i.test(candidate.lang)) : null)
+      || (line.lang === 'nan-TW' || line.lang === 'hak-TW' ? null
+        : voices.find(candidate => candidate.lang.toLowerCase().startsWith(line.lang.split('-')[0].toLowerCase() + '-')));
+    if ((line.lang === 'nan-TW' || line.lang === 'hak-TW') && !voice) {
+      skipped.push(line.label);
+      continue;
+    }
+    announcementStatus.value = `正在播報：${line.label} · ${item.station.name}站`;
+    await announceText(line.text, line.lang, voice, run);
+  }
+  if (run === announcementRun) announcementStatus.value = skipped.length
+    ? `播報完成；本裝置沒有${skipped.join('、')}專用語音，已跳過這些語言。`
+    : '到站播報完成。';
+}
+
+function arrivalAnnouncement(station) {
+  const side = Math.random() < .5 ? 'left' : 'right';
+  announcement.value = stationAnnouncement(station, selectedMapId.value, side);
+  announcementStatus.value = '準備到站播報…';
+  if (announcementEnabled.value) void playAnnouncement();
+}
+
+onUnmounted(stopAnnouncement);
 const mapMode = ref('nearby');
 const branchSearch = ref('');
 const nearbyZoom = ref(0);
@@ -560,6 +703,7 @@ async function submitAnswer() {
       const firstVisit = !progress.value.visitedIds.includes(destination.id);
       currentId.value = destination.id;
       viewedId.value = destination.id;
+      if (action.type !== 'stamp') arrivalAnnouncement(destination);
       if (!visited.value.includes(destination.id)) visited.value.push(destination.id);
       if (firstVisit) progress.value.visitedIds.push(destination.id);
       progress.value.lastStations = { ...progress.value.lastStations, [activeRegionKey.value]: destination.id };
@@ -597,6 +741,9 @@ function newGame() {
   if (!finished.value || saving.value) return;
   if (pendingRecord && !saved.value && !window.confirm('本局成績尚未儲存。確定放棄這筆紀錄並開始新旅程？')) return;
   resetRegionPosition();
+  stopAnnouncement();
+  announcement.value = null;
+  announcementStatus.value = '';
   visited.value = [];
   invested.value = [];
   coins.value = 100;
@@ -629,6 +776,7 @@ watch(selectedRegionId, () => {
 });
 
 onMounted(async () => {
+  primeEnglishVoices();
   if (typeof ResizeObserver !== 'undefined') {
     mapResizeObserver = new ResizeObserver(entries => {
       const { width, height } = entries[0]?.contentRect || {};
@@ -669,6 +817,7 @@ onMounted(async () => {
         <label v-if="selectedMapId === 'japan'">JR 分區 <select v-model="selectedCompanyId" :disabled="(started && !finished) || !committedRegionCompleted"><option v-for="company in japanIndex.regions" :key="company.id" :value="company.id">{{ company.name }} · {{ company.stationCount }} 站</option></select></label>
         <label v-if="selectedMapId === 'japan'">地圖大小 <select v-model="selectedScopeSize" :disabled="(started && !finished) || !committedRegionCompleted"><option value="line">小：支線</option><option value="prefecture">中：都道府縣</option><option value="all">大：整個 JR 分區</option></select></label>
         <label>旅程回合 <select v-model.number="maxTurns" :disabled="started"><option v-for="count in turnOptions" :key="count" :value="count">{{ count }} 回合</option></select></label>
+        <button type="button" :aria-pressed="announcementEnabled" @click="toggleAnnouncement">{{ announcementEnabled ? '🔊 到站播報開啟' : '🔇 到站播報關閉' }}</button>
         <button v-if="!started" type="button" :disabled="loading || !mapReady || words.length < 2 || !canChooseRegion(activeRegion)" @click="startGame">開始旅程</button>
         <button v-else-if="!finished" type="button" :disabled="!!question" @click="finishGame">提前結算</button>
         <button v-else type="button" :disabled="saving" @click="newGame">再玩一次</button>
@@ -698,6 +847,12 @@ onMounted(async () => {
     </section>
 
     <p class="notice" role="status" aria-live="polite">{{ message }} <small v-if="progressStatus">{{ progressStatus }}</small></p>
+    <section v-if="announcement" class="announcement-panel" aria-label="到站播報">
+      <div><strong>📢 {{ announcement.station.name }}站快到了 · {{ announcement.side === 'right' ? '右側' : '左側' }}出口</strong><small>出口側為遊戲模擬，並非實際月台資訊。</small></div>
+      <p role="status" aria-live="polite">{{ announcementStatus }}</p>
+      <details><summary>播報文字</summary><ol><li v-for="line in announcement.lines" :key="line.lang"><strong>{{ line.label }}：</strong>{{ line.text || '正在查詢英文站名…' }}</li></ol></details>
+      <button type="button" @click="playAnnouncement">🔁 重播</button>
+    </section>
     <div v-if="mapReady" class="rail-layout">
       <section class="map-card" :aria-label="activeMap.name + '鐵路旅遊地圖'">
         <div class="map-title"><strong>{{ activeMap.flag }} {{ activeRegion.name }} · {{ regionStations.length }} 站</strong><div class="map-controls"><button type="button" :class="{ active: mapMode === 'nearby' }" :aria-pressed="mapMode === 'nearby'" @click="mapMode = 'nearby'">🔍 附近放大</button><div class="zoom-controls" aria-label="附近地圖縮放"><button type="button" aria-label="附近地圖縮小" :disabled="nearbyZoom <= -1" @click="adjustNearbyZoom(-1)">－</button><span>{{ Math.round(100 * 1.5 ** nearbyZoom) }}%</span><button type="button" aria-label="附近地圖放大" :disabled="nearbyZoom >= 3" @click="adjustNearbyZoom(1)">＋</button></div><button type="button" :class="{ active: mapMode === 'overview' }" :aria-pressed="mapMode === 'overview'" @click="mapMode = 'overview'">🗺️ 全區總覽</button><button type="button" :class="{ active: mapMode === 'country' }" :aria-pressed="mapMode === 'country'" @click="mapMode = 'country'">🌏 全國輪廓</button></div></div>
@@ -786,6 +941,8 @@ onMounted(async () => {
 .japan-scope{display:flex;align-items:center;gap:12px;margin-top:9px;padding:7px 10px;border:2px solid #8badb7;border-radius:10px;background:#f9fdff}.japan-scope label{display:flex;align-items:center;gap:8px;font-weight:850;white-space:nowrap}.japan-scope select{max-width:min(520px,55vw);padding:6px;border:1px solid #6294a4;border-radius:6px;background:#fff}.japan-scope small{font-size:.72rem;color:#49616a}
 .rail-status{display:grid;grid-template-columns:repeat(6,minmax(0,1fr)) auto auto;gap:7px;margin:12px 0}.rail-status>div,.rail-status>a{display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:0;padding:7px 9px;border:2px solid #98bdc8;border-radius:11px;background:#fff;box-shadow:0 3px #aecbd3}.rail-status span{font-size:.72rem}.rail-status strong{font-size:1rem}.rail-status>a{color:#125777;text-align:center;text-decoration:none;font-weight:900;font-size:.82rem}
 .notice{margin:0 0 10px;padding:9px 13px;border-left:5px solid #21829f;border-radius:7px;background:#effafe;font-weight:750}.notice small{display:block;font-size:.7rem}.rail-layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(270px,.65fr) minmax(300px,.7fr);gap:12px;align-items:stretch}
+.announcement-panel{display:flex;align-items:center;gap:12px;margin:0 0 9px;padding:7px 11px;border:1px solid #85adb5;border-radius:9px;background:#fff9e8}.announcement-panel div{display:grid;gap:2px}.announcement-panel small{font-size:.68rem;color:#5c6470}.announcement-panel p{flex:1;margin:0;font-size:.75rem;color:#21586b}.announcement-panel button{padding:6px 10px;border:1px solid #6b9aa5;border-radius:7px;background:#fff;color:#205062;font-size:.75rem;font-weight:800}
+.announcement-panel details{position:relative;font-size:.72rem}.announcement-panel summary{cursor:pointer;white-space:nowrap}.announcement-panel ol{position:absolute;right:0;z-index:5;width:max-content;max-width:min(560px,85vw);max-height:230px;overflow:auto;margin:4px 0 0;padding:10px 10px 10px 30px;border:1px solid #85adb5;border-radius:7px;background:#fff}.announcement-panel li{margin:4px 0}
 .map-card,.station-card,.trip-card{min-width:0;border:2px solid #7aa8b3;border-radius:17px;background:#f9fdff;box-shadow:0 5px 0 #b4cbd0;overflow:hidden}.map-card{display:flex;flex-direction:column;background:#d3e8e8}.map-title{display:flex;justify-content:space-between;gap:9px;padding:10px 13px;background:#e9f6f3}.map-title span{font-size:.73rem}.rail-map{width:100%;height:0;flex:1;min-height:340px}.island{fill:#d8dfb6;stroke:#517e70;stroke-width:1}.rail-line{stroke:#856942;stroke-width:1.2;stroke-linecap:round}.rail-line.reachable{stroke:#e68a19;stroke-width:2}.station-marker{cursor:pointer}.station-marker circle{fill:#f5f2e3;stroke:#345969;stroke-width:1}.station-marker .hit-area{fill:transparent;stroke:none}.station-marker.stamped circle:not(.hit-area){fill:#65c18b}.station-marker.reachable circle:not(.hit-area){fill:#ffd56f;stroke:#965300;stroke-width:1.5}.station-marker.current circle:not(.hit-area){fill:#dc6f53;stroke:#832d19;stroke-width:1.5}.station-marker.viewed circle:not(.hit-area){stroke-width:2}.station-marker text{font-size:5.5px;font-weight:900;paint-order:stroke;stroke:#eef7ea;stroke-width:1.2;fill:#163c43}.station-marker:focus{outline:none}.station-marker:focus circle:not(.hit-area){stroke:#202d9a;stroke-width:2}.train-token{font-size:10px;pointer-events:none;transition:transform .65s ease-in-out}.map-caption{margin:0;padding:8px 11px;background:#eff6ed;font-size:.69rem;line-height:1.4}.map-caption a{color:#126481}
 .station-card{display:flex;flex-direction:column}.station-photo{height:43%;min-height:180px;background:#c8dbde}.station-photo img{display:block;width:100%;height:100%;object-fit:cover}.photo-fallback{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:3rem}.photo-fallback span{font-size:.9rem;text-align:center}.station-info{padding:14px;overflow:auto}.eyebrow{margin:0 0 5px;color:#497783;font-size:.75rem;font-weight:900;letter-spacing:.04em}.station-info h2{margin:0 0 9px;color:#164758;font-size:1.28rem}.station-info h2 small{display:block;font-size:.72rem;color:#5b7780;font-weight:650}.station-info h2 span{font-size:.72rem;color:#328257}.station-info>p:not(.eyebrow){margin:0;line-height:1.6;font-size:.9rem}.source-links{display:grid;gap:6px;margin-top:14px;font-size:.72rem;overflow-wrap:anywhere}.source-links a{color:#155f79}
 .trip-card{padding:14px;display:flex;flex-direction:column;gap:9px}.trip-card h2,.trip-card h3{margin:0}.trip-card h2{font-size:1.2rem}.trip-card h3{font-size:.9rem}.turn-indicator{margin:0;font-weight:900;color:#b4571b}.mission{display:grid;gap:3px;padding:9px;border:1px solid #e2b970;border-radius:9px;background:#fff4d5}.mission small{color:#72582e}.destinations{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.destinations button{display:grid;gap:4px;text-align:left;padding:10px;border:2px solid #6fa0b2;border-radius:10px;background:#ecf8fb;color:#16475a}.destinations button:hover:not(:disabled){background:#d9f0f7}.destinations small{font-size:.7rem}.invest-button{padding:10px;border:2px solid #8c742a;border-radius:10px;background:#ffedaa;color:#514014;font-weight:900}.rules,.score-rules{margin:0;line-height:1.45;font-size:.73rem}.score-rules{color:#5d6d73}.finished-box{margin-top:auto;padding:10px;border-radius:10px;background:#e1f4e5}.finished-box p{font-size:.77rem}.finished-box button{border:1px solid #3d8272;border-radius:7px;background:#fff;padding:6px}
@@ -797,9 +954,10 @@ onMounted(async () => {
 .station-label{pointer-events:none}.station-label line{stroke:#6b7c75;stroke-width:1;vector-effect:non-scaling-stroke}.station-label rect{fill:#fbfffc;fill-opacity:.9;stroke:#809e9a;stroke-width:.8;vector-effect:non-scaling-stroke}.station-label.current rect{fill:#fff0b4;stroke:#b57624}.station-label text{fill:#174658;font-weight:850}.station-label text[lang=ja]{fill:#526773;font-weight:650}
 .branch-stations{flex:0 1 auto;min-height:0;padding:7px 11px;background:#f3faf9;border-top:1px solid #a5c4c7}.branch-stations-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.78rem}.branch-stations-heading label{display:flex;align-items:center;gap:5px;white-space:nowrap}.branch-stations-heading input{width:125px;min-width:0;padding:4px 6px;border:1px solid #8fafb6;border-radius:6px}.branch-stations ol{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px 7px;max-height:150px;overflow-y:auto;list-style:none;margin:6px 0 0;padding:0}.branch-stations li{min-width:0}.branch-stations li button{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;min-height:42px;padding:5px 24px 5px 7px;border:1px solid #b6cfd0;border-radius:5px;background:#fff;text-align:left;color:#173e4c;font-size:.72rem}.branch-stations li button.current{background:#ffedb4;border-color:#b9872f}.branch-stations li button.viewed{outline:2px solid #388fa1}.branch-stations li button small{position:absolute;right:5px;top:5px}.branch-zh,.branch-ja{overflow-wrap:anywhere}.branch-zh{font-weight:850}.branch-ja{color:#58717b}.branch-stations p{margin:4px 0;font-size:.75rem}
 .island,.rail-line,.station-marker circle:not(.hit-area),.station-marker text{vector-effect:non-scaling-stroke}.rail-line{stroke-width:1.5}.rail-line.reachable{stroke-width:3}.station-marker circle:not(.hit-area){stroke-width:1.5}.station-marker.reachable circle:not(.hit-area),.station-marker.current circle:not(.hit-area){stroke-width:2}.station-marker.viewed circle:not(.hit-area){stroke-width:2.5}.station-marker text{stroke-width:2}
-@media(min-width:1200px) and (min-height:720px){.rail-page{height:100dvh;overflow:hidden;display:flex;flex-direction:column}.rail-header,.rail-status,.notice,.region-picker{flex:none}.rail-layout{min-height:0;flex:1}.rail-map{min-height:0}.station-photo{min-height:0}}
+@media(min-width:1200px) and (min-height:720px){.rail-page{height:100dvh;overflow:hidden;display:flex;flex-direction:column}.rail-header,.rail-status,.notice,.announcement-panel,.region-picker{flex:none}.rail-layout{min-height:0;flex:1}.rail-map{min-height:0}.station-photo{min-height:0}}
 @media(max-width:1150px){.rail-status{grid-template-columns:repeat(4,minmax(0,1fr))}.rail-layout{grid-template-columns:minmax(0,1fr) minmax(270px,.8fr)}.trip-card{grid-column:1/-1}.station-photo{min-height:160px}.rail-map{min-height:450px}.region-picker{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:700px){.rail-header{align-items:flex-start;flex-direction:column}.setup{width:100%}.rail-status{grid-template-columns:repeat(2,minmax(0,1fr))}.rail-layout{grid-template-columns:1fr}.trip-card{grid-column:auto}.rail-map{height:470px;min-height:0;flex:none}.station-card{display:grid;grid-template-columns:38% 1fr}.station-photo{height:100%;min-height:185px}.station-info{padding:10px}.station-info h2{font-size:1rem}.station-info>p:not(.eyebrow){font-size:.78rem}.map-title{flex-direction:column}.choices{grid-template-columns:1fr}.region-picker{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){.announcement-panel{flex-wrap:wrap}.announcement-panel p{flex-basis:100%;order:3}}
 @media(max-width:700px){.japan-scope{display:grid}.japan-scope label{display:grid;white-space:normal}.japan-scope select{max-width:100%;width:100%}}
 @media(max-width:700px){.branch-stations ol{grid-template-columns:1fr;max-height:180px}.branch-stations-heading{align-items:flex-start;flex-direction:column}.branch-stations-heading input{width:160px}}
 @media(max-width:430px){.station-card{grid-template-columns:1fr}.station-photo{height:180px}.rail-map{height:420px}.rail-status>div,.rail-status>a{padding:6px;font-size:.77rem}.rail-status strong{font-size:.86rem}}
