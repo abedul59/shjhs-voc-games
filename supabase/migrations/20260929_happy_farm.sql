@@ -13,7 +13,8 @@ CREATE INDEX IF NOT EXISTS happy_farm_states_updated_at_idx ON public.happy_farm
 COMMENT ON TABLE public.happy_farm_states IS '單字開心農場個人進度；student_id 對應既有學生登入識別碼。';
 
 -- 現站學生以自訂 Cookie 登入、前端使用 anon key；權限模式與現有遊戲表一致。
--- 同學互訪上線前，需另行升級身分驗證與資料存取規則。
+-- 互訪操作由另一支 SQL 的函式限制；現有自訂 Cookie/anon key 架構不能驗證呼叫者身分，
+-- 若未來需要防止直接呼叫 API 改寫農場，必須另行升級全站身分驗證。
 ALTER TABLE public.happy_farm_states ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS happy_farm_states_app_access ON public.happy_farm_states;
 CREATE POLICY happy_farm_states_app_access ON public.happy_farm_states
