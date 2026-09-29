@@ -1,10 +1,10 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import {
-  FARM_CROPS, FARM_FERTILIZER_COST, FARM_GAME_TYPE, FARM_MAX_PLOTS,
-  applyFarmAction, cropById, farmActionError, freshFarm, withVillageLand, villagePrice, villagePlotCount
+  FARM_CROPS, FARM_DISTRICTS, FARM_FERTILIZER_COST, FARM_GAME_TYPE, FARM_MAX_PLOTS, XINHUA_VILLAGE_IDS,
+  applyFarmAction, cropById, farmActionError, freshFarm, withVillageLand, villagePrice, villagePlotCount,
+  villageById, neighborAccess, landSalePrice
 } from '~/lib/happy-farm';
-import xinhuaMap from '~/data/xinhua-villages.json';
 
 const db = useSupabaseClient();
 const route = useRoute();
@@ -20,12 +20,14 @@ const words = ref([]);
 const revision = ref(0);
 const selectedPlot = ref(0);
 const selectedVillage = ref('');
+const selectedDistrict = ref('新化區');
 const selectedCrop = ref('carrot');
 const activePanel = ref('tools');
 const classmates = ref([]);
 const chosenClassmateId = ref('');
 const visiting = ref(null), peerFarm = ref(null);
 const recentVisits = ref([]), dailySteals = ref(0);
+const lastAction = ref(null);
 const loadingPeer = ref(false);
 const socialError = ref('');
 const now = ref(Date.now());
@@ -36,15 +38,28 @@ let clock = null, lastWordId = null;
 
 const crop = id => cropById(id);
 const viewFarm = computed(() => visiting.value && peerFarm.value ? peerFarm.value : farm.value);
-const villages = xinhuaMap.villages;
-const villageName = id => villages.find(item => item.id === id)?.name || '未知里別';
+const currentMap = computed(() => FARM_DISTRICTS.find(item => item.name === selectedDistrict.value) || FARM_DISTRICTS[0]);
+const villages = computed(() => currentMap.value.villages);
+const villageName = id => villageById(id)?.name || '未知里別';
+const neighborOpen = computed(() => neighborAccess(viewFarm.value));
+const xinhuaOwned = computed(() => XINHUA_VILLAGE_IDS.filter(id => viewFarm.value.ownedVillages?.includes(id)).length);
 const ownedVillage = computed(() => viewFarm.value.ownedVillages?.includes(selectedVillage.value));
 const visiblePlots = computed(() => viewFarm.value.plots
   .map((plot, index) => ({ plot, index }))
   .filter(item => (viewFarm.value.plotVillages?.[item.index] || viewFarm.value.homeVillage) === selectedVillage.value));
 const villageCost = computed(() => villagePrice(farm.value));
+const villageRefund = computed(() => landSalePrice(farm.value, selectedVillage.value));
 const expansionCost = computed(() => 100 + villagePlotCount(farm.value, selectedVillage.value) * 30);
+function chooseDistrict(name) {
+  if (name !== '新化區' && !neighborOpen.value) return;
+  selectedDistrict.value = name;
+  const district = FARM_DISTRICTS.find(item => item.name === name);
+  chooseVillage(district.villages.find(item => viewFarm.value.ownedVillages.includes(item.id))?.id || district.villages[0].id);
+}
 function chooseVillage(id) {
+  const village = villageById(id);
+  if (!village || (village.district !== '新化區' && !neighborOpen.value)) return;
+  selectedDistrict.value = village.district;
   selectedVillage.value = id;
   selectedPlot.value = viewFarm.value.plotVillages?.findIndex(value => value === id) ?? -1;
 }
@@ -65,6 +80,16 @@ const plotStage = plot => {
 };
 const plotWeeds = plot => plot && now.value >= plot.weedAt && !plot.weedRemoved;
 const plotPests = plot => plot && now.value >= plot.pestAt && !plot.pestRemoved;
+const careStatus = plot => {
+  if (!plot) return [];
+  return [
+    { key: 'water', icon: '💧', text: plot.watered ? '已澆水' : '未澆水', state: plot.watered ? 'done' : 'pending' },
+    { key: 'fertilize', icon: '✨', text: plot.fertilized ? '已施肥' : '未施肥', state: plot.fertilized ? 'done' : 'pending' },
+    { key: 'weed', icon: '🌾', text: plot.weedRemoved ? '已除草' : plotWeeds(plot) ? '待除草' : '尚無雜草', state: plot.weedRemoved ? 'done' : plotWeeds(plot) ? 'urgent' : 'pending' },
+    { key: 'pest', icon: '🐛', text: plot.pestRemoved ? '已除蟲' : plotPests(plot) ? '待除蟲' : '尚無害蟲', state: plot.pestRemoved ? 'done' : plotPests(plot) ? 'urgent' : 'pending' }
+  ];
+};
+const pulseIcon = action => ({ water: '💧', fertilize: '✨', weed: '🌾', pest: '🛡️' })[action] || '';
 const can = (action, cropId = selectedCrop.value) =>
   ready.value && !visiting.value && !busy.value && !quiz.value && !farmActionError(farm.value, action, cropId, selectedPlot.value, now.value, selectedVillage.value);
 function visitProblem(action, plotIndex = selectedPlot.value) {
@@ -128,7 +153,7 @@ async function loadFarm() {
   const { data, error } = await db.from('happy_farm_states').select('farm,revision').eq('student_id', studentId.value).maybeSingle();
   if (error) throw error;
   if (data) {
-    const fallback = villages[Math.floor(Math.random() * villages.length)].id;
+    const fallback = FARM_DISTRICTS[0].villages[Math.floor(Math.random() * XINHUA_VILLAGE_IDS.length)].id;
     farm.value = withVillageLand(data.farm, fallback);
     revision.value = data.revision;
     if (JSON.stringify(farm.value) !== JSON.stringify(data.farm)) {
@@ -142,7 +167,7 @@ async function loadFarm() {
     if (!selectedVillage.value || !farm.value.ownedVillages.includes(selectedVillage.value)) chooseVillage(farm.value.homeVillage);
     return;
   }
-  const startVillage = villages[Math.floor(Math.random() * villages.length)].id;
+  const startVillage = FARM_DISTRICTS[0].villages[Math.floor(Math.random() * XINHUA_VILLAGE_IDS.length)].id;
   const { data: created, error: createError } = await db.from('happy_farm_states')
     .insert({ student_id: studentId.value, farm: freshFarm(startVillage) }).select('farm,revision').single();
   if (createError) throw createError;
@@ -198,7 +223,7 @@ async function openClassmate(person) {
       .eq('student_id', person.student_id).maybeSingle();
     if (error) throw error;
     if (!data) { notice.value = person.hidden_name + ' 還沒有開設農場。'; return; }
-    peerFarm.value = withVillageLand(data.farm, villages[0].id);
+    peerFarm.value = withVillageLand(data.farm, XINHUA_VILLAGE_IDS[0]);
     visiting.value = person;
     chooseVillage(peerFarm.value.homeVillage);
     activePanel.value = 'visitors';
@@ -216,7 +241,7 @@ async function refreshPeer() {
   if (!visiting.value) return;
   const { data, error } = await db.from('happy_farm_states').select('farm')
     .eq('student_id', visiting.value.student_id).maybeSingle();
-  if (!error && data) peerFarm.value = withVillageLand(data.farm, villages[0].id);
+  if (!error && data) peerFarm.value = withVillageLand(data.farm, XINHUA_VILLAGE_IDS[0]);
 }
 async function returnHomeFarm() {
   if (busy.value || quiz.value) return;
@@ -247,7 +272,7 @@ async function applyVisit(q) {
   }
   farm.value = withVillageLand(data.actor_farm, farm.value.homeVillage);
   revision.value = data.actor_revision;
-  peerFarm.value = withVillageLand(data.owner_farm, peerFarm.value?.homeVillage || villages[0].id);
+  peerFarm.value = withVillageLand(data.owner_farm, peerFarm.value?.homeVillage || XINHUA_VILLAGE_IDS[0]);
   dailySteals.value = data.daily_steals;
   return { detail: q.action === 'steal' ? '已摘取一份 ' + crop(q.cropId).name + '，主人至少保留一份。' : '已幫同學照料作物。' };
 }
@@ -282,9 +307,9 @@ function buildQuiz() {
 function actionLabel(action, cropId) {
   const name = crop(cropId)?.name || '';
   return {
-    buy: '買一包' + name + '種子', plant: '種下' + name, water: '澆水', fertilize: '施肥',
+    buy: '買一份' + name + '種苗', plant: '種下' + name, water: '澆水', fertilize: '施肥',
     weed: '除草', pest: '除蟲', harvest: '收成', sell: '賣出全部' + name, expand: '擴建田地',
-    steal: '摘取一份' + name, buyLand: '買下' + villageName(selectedVillage.value) + '農地'
+    steal: '摘取一份' + name, buyLand: '買下' + villageName(selectedVillage.value) + '農地', sellLand: '出售' + villageName(selectedVillage.value) + '農地'
   }[action] || action;
 }
 function beginAction(action, cropId = selectedCrop.value) {
@@ -318,8 +343,10 @@ async function submitAnswer() {
         result = applyFarmAction(farm.value, q.action, q.cropId, q.plotIndex, Date.now(), q.villageId);
         await saveFarm(result.farm);
         if (q.action === 'buyLand') chooseVillage(q.villageId);
+        if (q.action === 'sellLand') chooseVillage(q.villageId);
         if (q.action === 'expand') chooseVillage(q.villageId);
       }
+      if (pulseIcon(q.action)) lastAction.value = { plotIndex: q.plotIndex, action: q.action, at: Date.now() };
     }
     if (correct) session.value.correct.push(q.word.en_us);
     else session.value.wrong.push(q.word.en_us);
@@ -396,17 +423,20 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
           <div class="farm-barn">🏠 <span>{{ visiting ? visiting.hidden_name + ' 的農場' : '我的小農舍' }} · {{ villageName(selectedVillage) }}</span></div>
           <div class="land-layout">
             <div class="map-panel">
-              <div class="map-heading"><strong>臺南市新化區 · 16 里</strong><span>{{ visiting ? '同學已擁有 ' + viewFarm.ownedVillages.length + ' 里' : '已擁有 ' + farm.ownedVillages.length + ' 里' }}</span></div>
-              <svg class="village-map" :viewBox="xinhuaMap.viewBox" role="img" aria-label="新化區各里地圖；下方可點選里名">
+              <div class="map-heading"><strong>臺南市{{ selectedDistrict }} · {{ villages.length }} 里</strong><span>{{ visiting ? '同學已擁有 ' + viewFarm.ownedVillages.length + ' 里' : '已擁有 ' + farm.ownedVillages.length + ' 里' }}</span></div>
+              <div class="district-picker"><label for="district-select">區域地圖</label><select id="district-select" :value="selectedDistrict" @change="chooseDistrict($event.target.value)"><option v-for="district in FARM_DISTRICTS" :key="district.name" :value="district.name" :disabled="district.name !== '新化區' && !neighborOpen">{{ district.name }}{{ district.name !== '新化區' && !neighborOpen ? '（尚未解鎖）' : '' }}</option></select></div>
+              <p class="unlock-hint">{{ neighborOpen ? '✅ 已解鎖鄰區，可購買與出售各里的農地' : '🔒 買齊新化區 16 里後解鎖鄰區（' + xinhuaOwned + '/16）' }}</p>
+              <svg class="village-map" :viewBox="currentMap.viewBox" role="img" :aria-label="selectedDistrict + '各里地圖；下方可點選里名'">
                 <path v-for="item in villages" :key="item.id" :d="item.path" class="village-shape"
                   :class="{ owned: viewFarm.ownedVillages.includes(item.id), home: viewFarm.homeVillage === item.id, selected: selectedVillage === item.id }"
                   tabindex="0" role="button" :aria-label="item.name + (viewFarm.ownedVillages.includes(item.id) ? '，已擁有' : '，尚未購買')"
                   @click="chooseVillage(item.id)" @keydown.enter.prevent="chooseVillage(item.id)" @keydown.space.prevent="chooseVillage(item.id)"><title>{{ item.name }}</title></path>
-                <path :d="xinhuaMap.outline" class="district-outline" />
+                <path :d="currentMap.outline" class="district-outline" />
               </svg>
-              <div class="village-list" aria-label="選擇新化區的里">
+              <div v-if="selectedDistrict === '新化區'" class="village-list" aria-label="選擇新化區的里">
                 <button v-for="item in villages" :key="item.id" type="button" :class="{ owned: viewFarm.ownedVillages.includes(item.id), home: viewFarm.homeVillage === item.id, selected: selectedVillage === item.id }" :aria-pressed="selectedVillage === item.id" @click="chooseVillage(item.id)">{{ item.name }}</button>
               </div>
+              <select v-else class="neighbor-village-picker" :value="selectedVillage" :aria-label="'選擇' + selectedDistrict + '的里'" @change="chooseVillage($event.target.value)"><option v-for="item in villages" :key="item.id" :value="item.id">{{ item.name }}{{ viewFarm.ownedVillages.includes(item.id) ? ' · 已擁有' : '' }}</option></select>
               <a class="map-source" href="https://maps.nlsc.gov.tw/pro/download.jsp" target="_blank" rel="noopener">村里界資料：國土測繪中心（2026）</a>
             </div>
             <div class="village-field">
@@ -419,7 +449,9 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
                   <span class="plot-number">{{ localIndex + 1 }}</span><FarmCrop class="plot-plant" :crop="entry.plot?.crop || ''" :stage="plotStage(entry.plot)" />
                   <span class="plot-name">{{ entry.plot ? crop(entry.plot.crop)?.name : '空地' }}</span>
                   <span class="plot-progress">{{ entry.plot ? timeLabel(entry.plot) : '可播種' }}</span>
-                  <span class="plot-alert">{{ plotWeeds(entry.plot) ? '🌾' : '' }}{{ plotPests(entry.plot) ? '🐛' : '' }}{{ entry.plot?.stolen ? '🧺' : '' }}</span>
+                  <span v-if="entry.plot" class="plot-care" aria-hidden="true"><span v-for="status in careStatus(entry.plot)" :key="status.key" :class="status.state" :title="status.text">{{ status.icon }}{{ status.state === 'done' ? '✓' : status.state === 'urgent' ? '!' : '·' }}</span></span>
+                  <span class="plot-alert">{{ entry.plot?.stolen ? '🧺' : '' }}</span>
+                  <span v-if="lastAction?.plotIndex === entry.index && now - lastAction.at < 1800" class="action-pop" aria-hidden="true">{{ pulseIcon(lastAction.action) }}</span>
                 </button>
                 <div v-for="n in FARM_MAX_PLOTS - visiblePlots.length" :key="'locked-' + n" class="plot locked"><span>🔒</span><small>待擴建</small></div>
               </div>
@@ -429,6 +461,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
         </section>
         <aside class="farm-controls">
           <div v-if="!ownedVillage && !visiting" class="land-buy-card"><strong>🏡 {{ villageName(selectedVillage) }}</strong><span>購地 {{ villageCost }} 金幣 · 獲得 4 塊田</span><button type="button" :disabled="!can('buyLand')" @click="beginAction('buyLand')">答題購買此里農地</button></div>
+          <div v-if="ownedVillage && !visiting && selectedVillage !== farm.homeVillage" class="land-buy-card"><strong>🏡 {{ villageName(selectedVillage) }}</strong><span>收成此里作物後，可售地獲得 {{ villageRefund }} 金幣</span><button type="button" :disabled="!can('sellLand')" @click="beginAction('sellLand')">答題出售農地</button></div>
           <nav class="panel-tabs" aria-label="農場操作">
             <button type="button" :class="{ active: activePanel === 'tools' }" :disabled="!!visiting" @click="activePanel = 'tools'">🧤 農具</button>
             <button type="button" :class="{ active: activePanel === 'shop' }" :disabled="!!visiting" @click="activePanel = 'shop'">🛒 商店</button>
@@ -436,8 +469,9 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
           </nav>
           <section v-if="activePanel === 'tools' && !visiting && ownedVillage" class="tool-card">
             <h2>🧤 {{ villageName(selectedVillage) }} · 第 {{ visiblePlots.findIndex(item => item.index === selectedPlot) + 1 }} 塊田</h2>
-            <p>{{ selected ? crop(selected.crop)?.name + ' · ' + plotStage(selected) : '空地 · 選擇種子後即可播種' }}</p>
-            <label for="crop-select">目前種子</label>
+            <p>{{ selected ? crop(selected.crop)?.name + ' · ' + plotStage(selected) : '空地 · 選擇種苗後即可播種' }}</p>
+            <div v-if="selected" class="care-detail" aria-label="這塊田的照料狀態"><span v-for="status in careStatus(selected)" :key="status.key" :class="status.state">{{ status.icon }} {{ status.text }}</span></div>
+            <label for="crop-select">目前種苗</label>
             <select id="crop-select" v-model="selectedCrop"><option v-for="item in FARM_CROPS" :key="item.id" :value="item.id">{{ item.icon }} {{ item.name }}（剩 {{ farm.seeds[item.id] || 0 }}）</option></select>
             <div class="tool-grid">
               <button type="button" :disabled="!can('plant')" @click="beginAction('plant')">🌱 播種</button>
@@ -450,11 +484,11 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
             <p class="help">澆水、施肥可加快成熟；清除雜草與害蟲能保住收成。作物會在離線時繼續生長。</p>
           </section>
           <section v-if="activePanel === 'shop' && !visiting" class="shop-card">
-            <h2>🛒 種子店與倉庫</h2>
-            <div v-for="item in FARM_CROPS" :key="item.id" class="shop-row">
-              <div><strong>{{ item.icon }} {{ item.name }}</strong><small>{{ item.growMinutes }} 分鐘成熟 · 種子 {{ item.seed }} 金幣 · 售價 {{ item.sale }} 金幣/個</small><small>種子 {{ farm.seeds[item.id] || 0 }} · 庫存 {{ farm.produce[item.id] || 0 }}</small></div>
-              <div><button type="button" :disabled="!can('buy', item.id)" @click="beginAction('buy', item.id)">買種子</button><button type="button" :disabled="!can('sell', item.id)" @click="beginAction('sell', item.id)">賣作物</button></div>
-            </div>
+            <h2>🛒 種苗店與倉庫 <small>新化五寶：鳳梨、麻竹筍、地瓜、橄欖、胡麻</small></h2>
+            <div class="shop-list"><div v-for="item in FARM_CROPS" :key="item.id" class="shop-row">
+              <div><strong>{{ item.icon }} {{ item.name }}</strong><small>{{ item.growMinutes }} 分鐘成熟 · 種苗 {{ item.seed }} 金幣 · 售價 {{ item.sale }} 金幣/個</small><small>種苗 {{ farm.seeds[item.id] || 0 }} · 庫存 {{ farm.produce[item.id] || 0 }}</small></div>
+              <div><button type="button" :disabled="!can('buy', item.id)" @click="beginAction('buy', item.id)">買種苗</button><button type="button" :disabled="!can('sell', item.id)" @click="beginAction('sell', item.id)">賣作物</button></div>
+            </div></div>
             <button v-if="ownedVillage" class="expand" type="button" :disabled="!can('expand')" @click="beginAction('expand')">🪵 擴建 {{ villageName(selectedVillage) }} 一塊田 · {{ expansionCost }} 金幣</button>
           </section>
           <section v-if="activePanel === 'visitors'" class="visit-card">
@@ -473,6 +507,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
               <template v-if="visiting">
                 <div class="visit-heading"><strong>正在拜訪：{{ visiting.hidden_name }}</strong><button type="button" @click="returnHomeFarm" :disabled="busy || !!quiz">回我的農場</button></div>
                 <p class="visit-target">第 {{ selectedPlot + 1 }} 塊田：{{ selected ? crop(selected.crop)?.name + ' · ' + plotStage(selected) : '空地' }}</p>
+                <div v-if="selected" class="care-detail" aria-label="同學田地的照料狀態"><span v-for="status in careStatus(selected)" :key="status.key" :class="status.state">{{ status.icon }} {{ status.text }}</span></div>
                 <div class="visit-actions">
                   <button type="button" :disabled="!canVisit('water')" @click="beginAction('water')">💧 幫忙澆水</button>
                   <button type="button" :disabled="!canVisit('weed')" @click="beginAction('weed')">🌾 幫忙除草</button>
@@ -641,6 +676,27 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
 .village-field .plot{min-height:64px;max-height:80px;padding:3px 1px;box-sizing:border-box}
 .village-field .plot-plant{flex:none}
 .village-field .plot-name,.village-field .plot-progress{line-height:1.1}
+.plot-care{position:absolute;bottom:2px;left:2px;right:2px;display:flex;justify-content:center;gap:2px;line-height:1}
+.plot-care span{padding:1px;border-radius:3px;background:#fffaf0d9;color:#526759;font-size:.56rem;text-shadow:none}
+.plot-care span.done{background:#b9f2bd;color:#174a27}.plot-care span.urgent{background:#ffdda0;color:#8b311a;font-weight:900}
+.village-field .plot-progress{padding-bottom:11px}
+.action-pop{position:absolute;inset:10% 0;display:grid;place-items:center;font-size:2rem;pointer-events:none;animation:action-pop 1.6s ease-out both;text-shadow:0 2px #fff}
+@keyframes action-pop{from{opacity:0;transform:translateY(12px) scale(.6)}25%{opacity:1;transform:translateY(-5px) scale(1.2)}to{opacity:0;transform:translateY(-24px) scale(1)}}
+.care-detail{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:5px 0}
+.care-detail span{display:block;border:1px solid #bacbb0;border-radius:6px;background:#f3f2e5;padding:3px 5px;font-size:.72rem;font-weight:800;color:#597059}
+.care-detail span.done{background:#d9f2c9;color:#23603a}.care-detail span.urgent{background:#ffdfac;border-color:#cc8c4b;color:#8c391c}
+.district-picker{display:flex;align-items:center;gap:5px;margin:2px 0;font-size:.7rem;font-weight:800}
+.district-picker select,.neighbor-village-picker{min-width:0;flex:1;border:1px solid #618b5f;border-radius:6px;background:#fffdf0;color:#245338;padding:3px;font-size:.7rem}
+.unlock-hint{margin:2px 0;padding:3px 6px;border-radius:6px;background:#e9f4d0;color:#2f5a39;font-size:.67rem;font-weight:800;text-align:center}
+.neighbor-village-picker{flex:none;width:100%;margin-top:5px;font-size:.79rem;padding:6px}
+.shop-card{display:flex;flex-direction:column}
+.shop-card h2 small{display:block;font-size:.62rem;color:#50705a}
+.shop-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;min-height:0;flex:1;overflow:auto;align-content:start}
+.shop-list .shop-row{display:block;min-width:0;border:1px solid #b6cba6;border-radius:7px;padding:3px 5px;background:#fbffe9}
+.shop-list .shop-row>div:first-child{gap:0}.shop-list .shop-row>div:last-child{flex-direction:row;gap:3px;margin-top:2px}
+.shop-list .shop-row small{font-size:.59rem;white-space:nowrap}
+.shop-list .shop-row button{flex:1;padding:2px;font-size:.62rem}
+.shop-card .expand{flex:none;padding:5px;margin-top:5px;font-size:.75rem}
 .unowned-land{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;background:#fff5da;border:2px dashed #a8814e;border-radius:12px;padding:15px;color:#654a2a}
 .unowned-land span{font-size:2rem}.unowned-land p{max-width:260px;font-size:.8rem}
 .land-buy-card{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 8px;border:2px solid #8eb471;border-radius:10px;background:#fff5d2;font-size:.75rem}
@@ -659,6 +715,9 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
   .village-list button{font-size:.7rem;padding:5px 1px}
   .village-field .field-grid{max-width:400px;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:5px auto}
   .village-field .plot{min-height:78px;max-height:none}
+  .shop-list{grid-template-columns:1fr 1fr}
+  .shop-list .shop-row small{white-space:normal}
 }
 @media(max-width:360px){.village-list button{font-size:.62rem}}
+@media(prefers-reduced-motion:reduce){.action-pop{animation:none}}
 </style>
