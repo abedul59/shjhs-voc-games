@@ -1,4 +1,5 @@
 <script setup>
+import { prepareEnglishUtterance } from '~/utils/englishSpeech';
 import { ref, onMounted, computed, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 
@@ -86,7 +87,7 @@ const setTarget = (type, rawText, cleanText) => {
 const playTTS = (text) => {
   const msg = new SpeechSynthesisUtterance();
   msg.text = text; msg.lang = 'en-US'; msg.rate = 0.9;
-  window.speechSynthesis.speak(msg);
+  window.speechSynthesis.speak(prepareEnglishUtterance(msg));
 };
 
 // 語音辨識與評分

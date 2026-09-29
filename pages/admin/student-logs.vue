@@ -113,10 +113,14 @@ const pathNames = {
   '/game-cross': '🔠 單字填字FUN',
   '/game-review': '✍️ 單字複習趣',
   '/game-monopoly-dual': '🏘️ 單字大富翁（雙人）',
+  '/game-verb-monopoly': '🏘️ 動詞變化大富翁',
+  '/game-happy-farm': '🌻 單字開心農場',
+  '/game-pikavolley-dual': '⚡ 皮卡丘排球（雙人）',
   '/game-battle': '⚔️ 單字方塊陣',
   '/game-tetris': '🧱 單字俄羅斯方塊',
   '/game-pinball': '🎰 單字彈珠台',
-  '/game-angrybirds': '🐦 單字憤怒鳥'
+  '/game-angrybirds': '🐦 單字憤怒鳥',
+  '/game-angrybirds-dual': '🐦 單字憤怒鳥（雙人）'
 };
 
 const translatePath = (path) => {

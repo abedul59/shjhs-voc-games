@@ -8,6 +8,7 @@ const records = ref([]);
 const isLoading = ref(true);
 
 const selectedGameType = ref('單字方塊消消樂'); 
+const verbMonopolyTypes = ['動詞變化大富翁（八年級）', '動詞變化大富翁（九年級）'];
 const identityMode = ref('student'); 
 
 const showStudentModal = ref(false);
@@ -144,6 +145,8 @@ const exportToCSV = () => {
     <div class="filters-panel retro-element">
 <div class="game-type-tabs">
         <button class="type-btn" :class="{ active: selectedGameType === '單字大富翁' }" @click="selectedGameType = '單字大富翁'">🏘️ 大富翁</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字開心農場' }" @click="selectedGameType = '單字開心農場'">🌻 開心農場</button>
+        <button v-for="(type, index) in verbMonopolyTypes" :key="type" class="type-btn" :class="{ active: selectedGameType === type }" @click="selectedGameType = type">🏘️ 動詞大富翁（{{ index === 0 ? '八' : '九' }}）</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊消消樂' }" @click="selectedGameType = '單字方塊消消樂'">🟦 方塊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字神移動' }" @click="selectedGameType = '單字神移動'">🔠 移動</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字選選樂' }" @click="selectedGameType = '單字選選樂'">✅ 選擇</button>
@@ -172,8 +175,10 @@ const exportToCSV = () => {
         <button class="type-btn" :class="{ active: selectedGameType === '單字小精靈' }" @click="selectedGameType = '單字小精靈'">👻 小精靈</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字俄羅斯方塊' }" @click="selectedGameType = '單字俄羅斯方塊'">🧱 俄羅斯</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字皮卡丘排球' }" @click="selectedGameType = '單字皮卡丘排球'">🏐 皮卡排球</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字皮卡丘排球（雙人）' }" @click="selectedGameType = '單字皮卡丘排球（雙人）'">🏐 皮卡排球（雙人）</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字彈珠台' }" @click="selectedGameType = '單字彈珠台'">🎰 彈珠台</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字憤怒鳥' }" @click="selectedGameType = '單字憤怒鳥'">🐦 憤怒鳥</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字憤怒鳥（雙人）' }" @click="selectedGameType = '單字憤怒鳥（雙人）'">🐦 憤怒鳥（雙人）</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字看圖辨義' }" @click="selectedGameType = '單字看圖辨義'">🖼️ 看圖辨義</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字音節忍者' }" @click="selectedGameType = '單字音節忍者'">🥷 音節忍者</button>
         <button class="type-btn" :class="{ active: selectedGameType === '英語口說學霸' }" @click="selectedGameType = '英語口說學霸'">🗣️ 口說學霸-多元評量</button>
@@ -198,7 +203,11 @@ const exportToCSV = () => {
     </div>
 
     <p v-if="selectedGameType === '單字大富翁（雙人）'">🏘️ 每位學生各有一筆紀錄：結算現金、勝敗／平手／離場與個人對錯單字。可點姓名查看明細或匯出 CSV。</p>
+    <p v-if="selectedGameType === '單字皮卡丘排球（雙人）'">🏐 每位學生各有一筆紀錄：勝敗／平手／離場、排球比分與個人對錯單字。可點姓名查看明細或匯出 CSV。</p>
+    <p v-if="selectedGameType === '單字憤怒鳥（雙人）'">🐦 每位學生各有一筆紀錄：勝敗／平手／離場、完成字數、分數與個人對錯單字。可點姓名查看明細或匯出 CSV。</p>
     <p v-if="selectedGameType === '單字大富翁'">🏘️ 分數為本局結算現金；點學生姓名可查看每局對錯單字，也可使用「匯出CSV」下載完整紀錄。</p>
+    <p v-if="selectedGameType === '單字開心農場'">🌻 每次學習逐題儲存，答對一題得 10 分；點學生姓名可查看對錯單字，亦可匯出 CSV。</p>
+    <p v-if="verbMonopolyTypes.includes(selectedGameType)">🏘️ 分數為本局結算現金；點學生姓名可查看每局對錯動詞，也可匯出 CSV。</p>
     <div class="table-container retro-element">
       <p v-if="isLoading" class="loading-msg">⏳ 讀取中...</p>
       <table v-else class="retro-table">
@@ -210,7 +219,7 @@ const exportToCSV = () => {
             <td>{{ record.class_name }}</td>
             <td><button class="student-name-link" @click="openStudentHistory(record.student_id)">🔍 <strong>{{ record.real_name }}</strong></button></td>
             <td>
-              <span class="tag">{{ record.version }}</span>
+              <span v-if="record.version" class="tag">{{ record.version }}</span>
               <span class="tag volume-tag" v-if="record.volume">{{ record.volume }}</span>
               <br><strong>{{ record.unit_played }}</strong>
             </td>
@@ -230,7 +239,7 @@ const exportToCSV = () => {
           <div class="history-list">
             <div class="history-item" v-for="item in selectedStudent.history" :key="item.id">
               <div class="hi-header">
-                <strong>{{ item.version }} - {{ item.volume || '未記錄冊數' }} - {{ item.unit_played }}</strong>
+                <strong>{{ verbMonopolyTypes.includes(item.game_type) ? item.unit_played : `${item.version} - ${item.volume || '未記錄冊數'} - ${item.unit_played}` }}</strong>
                 <span>{{ item.formatted_datetime }}</span>
               </div>
               <div class="hi-body"><span class="hi-score">{{ item.score }} 分</span><span class="hi-details">花費 {{ item.time_taken_seconds }} 秒 | 錯 {{ item.mistakes }} 次</span></div>
