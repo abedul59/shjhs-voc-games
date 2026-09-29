@@ -2,10 +2,13 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import maps from '~/data/monopoly-maps.json';
 import { monopolyEvents } from '~/data/monopoly-events';
+import starterVerbs from '~/data/verb-monopoly-starter.json';
 import MonopolyCityCard from '~/components/MonopolyCityCard.vue';
 
 const db = useSupabaseClient(), student = useCookie('currentStudent');
 const words = ref([]), boardWords = ref([]), owned = ref({});
+const databaseWords = ref([]), usingStarter = ref(false), databaseUnavailable = ref(false);
+const builtInWords = starterVerbs.map((verb, index) => ({ ...verb, id: `starter-${index}`, en_us: verb.base_form, zh_tw: verb.chinese }));
 const newPlayers = () => [{ name: '你', cash: 1500, pos: 0, direction: 1, shields: 0 }, { name: '電腦', cash: 1500, pos: 0, direction: 1, shields: 0 }];
 const players = ref(newPlayers());
 const turn = ref(0), round = ref(1), die = ref('—'), dice = ref([1, 1]), rolling = ref(false), done = ref(false);
@@ -35,7 +38,11 @@ const shuffle = items => {
   return result;
 };
 function chooseBoard() {
-  const pool = words.value.filter(word => selectedGrade.value !== 9 || canonical(word.past_participle));
+  const eligible = list => list.filter(word => selectedGrade.value !== 9 || canonical(word.past_participle));
+  const databasePool = eligible(databaseWords.value);
+  usingStarter.value = databasePool.length < 2;
+  words.value = usingStarter.value ? builtInWords : databaseWords.value;
+  const pool = usingStarter.value ? eligible(builtInWords) : databasePool;
   boardWords.value = shuffle(pool).slice(0, 12);
   viewedCity.value = 0;
   message.value = boardWords.value.length >= 2
@@ -278,11 +285,10 @@ onMounted(async () => {
     const { data, error } = await db.from('irregular_verbs').select('id,base_form,past_tense,past_participle,chinese').limit(500);
     if (disposed) return;
     if (error) throw error;
-    words.value = (data || []).filter(verb => String(verb.base_form || '').trim() && canonical(verb.past_tense) && String(verb.chinese || '').trim())
+    databaseWords.value = (data || []).filter(verb => String(verb.base_form || '').trim() && canonical(verb.past_tense) && String(verb.chinese || '').trim())
       .map(verb => ({ ...verb, en_us: verb.base_form.trim(), zh_tw: verb.chinese.trim() }));
-    chooseBoard();
-  } catch (error) { if (!disposed) message.value = '題庫載入失敗：' + error.message; }
-  finally { if (!disposed) loading.value = false; }
+  } catch { databaseUnavailable.value = true; }
+  finally { if (!disposed) { chooseBoard(); loading.value = false; } }
 });
 onBeforeUnmount(() => {
   disposed = true;
@@ -355,7 +361,7 @@ onBeforeUnmount(() => {
   </aside>
  </section>
  <section v-else class="empty-board">{{ loading ? '正在準備城市旅行…' : '動詞題庫不足' }}</section>
- <p class="message" role="status" aria-live="polite">{{ message }}</p>
+ <p class="message" role="status" aria-live="polite"><span>{{ message }}</span><span v-if="usingStarter && !loading" class="bank-note">{{ databaseUnavailable ? '後台題庫暫時無法讀取；本局使用內建動詞題庫，成績儲存需資料庫連線。' : '目前使用內建 81 筆動詞題庫；後台有足夠題目時會優先使用後台資料。' }}</span></p>
  <div v-if="question" class="overlay"><section class="modal verb-modal" role="dialog" aria-modal="true" aria-label="動詞變化購地問答">
   <template v-if="turn === 1"><p class="modal-turn">🤖 電腦回合 · 正在思考答案</p><h2>{{ question.word.en_us }}（{{ question.word.zh_tw }}）</h2><p>電腦正在回答{{ gameGrade === 9 ? '過去式與過去分詞' : '過去式' }}…</p><div class="thinking-dots" aria-label="電腦思考中"><i></i><i></i><i></i></div><p>請稍候看電腦的作答結果。</p></template>
   <form v-else @submit.prevent="submit">
@@ -404,7 +410,7 @@ onBeforeUnmount(() => {
 .city-marker{cursor:pointer;outline:none}.property-dot{fill:#fff;stroke:#485f4b;stroke-width:2;vector-effect:non-scaling-stroke}.property-dot.start{fill:#ffe8a9;stroke:#9c6512}.property-dot.chance{fill:#ffe3a6}.property-dot.fate{fill:#e4d8ff}.city-marker.owned-you .property-dot{fill:#1d4ed8;stroke:#172e7b}.city-marker.owned-cpu .property-dot{fill:#c2410c;stroke:#79290c}.selection-ring{fill:none;stroke:#273547;stroke-width:2;stroke-dasharray:3 3;opacity:0;vector-effect:non-scaling-stroke;pointer-events:none}.selection-ring.visible,.city-marker:focus-visible .selection-ring{opacity:1}.city-number{fill:#26392b;text-anchor:middle;font-size:18px;font-weight:900;pointer-events:none}.owned-you .city-number,.owned-cpu .city-number{fill:#fff}.player-token{font-size:23px;text-anchor:middle;paint-order:stroke;stroke:#fff;stroke-width:2px;stroke-linejoin:round;pointer-events:none}.map-caption{position:absolute;right:8px;bottom:6px;max-width:calc(100% - 16px);padding:3px 7px;border-radius:12px;background:#fffffff0;color:#4d5e4e;font-size:.6rem}.map-caption a{color:inherit}
 .route-panel{display:flex;min-height:0;min-width:0;flex-direction:column;overflow:hidden;border:1px solid #bdcdb3;border-radius:15px;background:#fff}.route-panel>header{display:flex;align-items:baseline;justify-content:space-between;padding:7px 10px;gap:8px}.route-panel>header strong{font-size:.95rem}.route-panel>header span{font-size:.65rem;color:#667366}.ownership-legend{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;padding:4px 6px;background:#fff;font-size:.66rem;font-weight:700}.ownership-legend>span{display:flex;align-items:center;gap:4px}.swatch{width:12px;height:12px;border-radius:3px;border:1px solid #879286;display:inline-block}.swatch.you{background:#1d4ed8;border-color:#172e7b}.swatch.cpu{background:#c2410c;border-color:#79290c}.swatch.vacant{background:#fff}.route-legend{display:flex;justify-content:space-between;gap:4px;margin:0;padding:4px 8px;background:#f7f1e3;font-size:.6rem}.route-panel ol{display:flex;min-height:0;flex:1;flex-direction:column;gap:3px;overflow:hidden;margin:0;padding:5px;list-style:none}.route-panel li{display:flex;flex:1;min-height:0}.route-panel li>button{position:relative;display:flex;width:100%;min-height:0;min-width:0;align-items:center;gap:6px;padding:2px 5px;border:1px solid #e2e8df;border-left:5px solid #cbd2c8;border-radius:7px;background:#f7f9f5;text-align:left;font:inherit;color:inherit;cursor:pointer}
 .route-panel button.owned-you{background:#dbeafe;border-color:#93b4fb;border-left-color:#1d4ed8}.route-panel button.owned-cpu{background:#ffedd5;border-color:#f5b28b;border-left-color:#c2410c}.route-panel button.viewed{box-shadow:inset 0 0 0 2px #334155}.route-panel button.current-stop .route-number{outline:2px dashed #334155;outline-offset:1px}.route-number{display:grid;width:22px;height:22px;flex:none;place-items:center;border-radius:50%;background:#fff;color:#344538;font-size:.7rem;font-weight:900}.stop-copy{display:flex;min-width:0;flex:1;flex-direction:column;line-height:1.1}.stop-copy b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.75rem}.stop-copy i{font-style:normal}.stop-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.6rem;color:#52604e}.stop-copy>span{overflow:hidden;color:#314738;font-size:.7rem;text-overflow:ellipsis;white-space:nowrap}.stop-side{display:flex;align-items:flex-end;flex-direction:column;gap:2px}.stop-owner{padding:2px 4px;border-radius:4px;background:#fff;color:#52604e;font-size:.6rem;font-weight:800;white-space:nowrap}.owned-you .stop-owner{background:#1d4ed8;color:#fff}.owned-cpu .stop-owner{background:#c2410c;color:#fff}.stop-token{font-size:.85rem;white-space:nowrap}.ai-status{margin:0;padding:7px 9px;border-top:1px solid #d8e2f5;background:#edf2ff;color:#283c77;font-size:.7rem;font-weight:800}.route-hint{margin:0;padding:5px;text-align:center;font-size:.6rem;color:#607163}
-.event-card{display:flex;align-items:center;gap:12px;min-height:112px;border:2px solid #ddad51;border-radius:14px;padding:12px;background:#fff5d9}.event-card.fate{border-color:#a98dce;background:#f2eaff}.event-icon{font-size:2.6rem}.event-copy{flex:1;min-width:0}.event-copy h2{margin:3px 0;font-size:1.1rem}.event-copy p{margin:3px 0;font-size:.75rem}.event-copy strong{font-size:.8rem;color:#5a3d12}.event-card button{font-size:.78rem;white-space:nowrap}.event-wait{font-size:.7rem}.message{min-height:26px;display:flex;align-items:center;padding:4px 10px;border-radius:8px;background:#fff;font-size:.78rem;overflow-wrap:anywhere}.empty-board{display:grid;place-items:center}
+.event-card{display:flex;align-items:center;gap:12px;min-height:112px;border:2px solid #ddad51;border-radius:14px;padding:12px;background:#fff5d9}.event-card.fate{border-color:#a98dce;background:#f2eaff}.event-icon{font-size:2.6rem}.event-copy{flex:1;min-width:0}.event-copy h2{margin:3px 0;font-size:1.1rem}.event-copy p{margin:3px 0;font-size:.75rem}.event-copy strong{font-size:.8rem;color:#5a3d12}.event-card button{font-size:.78rem;white-space:nowrap}.event-wait{font-size:.7rem}.message{min-height:26px;display:flex;align-items:center;flex-wrap:wrap;gap:2px 8px;padding:4px 10px;border-radius:8px;background:#fff;font-size:.78rem;overflow-wrap:anywhere}.bank-note{font-size:.7rem;color:#805a18}.empty-board{display:grid;place-items:center}
 .overlay{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:18px;background:#142117bb;overflow:auto}.modal{width:min(440px,100%);max-height:calc(100dvh - 36px);overflow:auto;padding:23px;border-radius:18px;background:#fff;color:#233;text-align:center;box-shadow:0 16px 60px #0005}.modal h2{font-size:1.25rem}.modal-turn{margin-top:0;color:#46704e;font-weight:800;line-height:1.6;overflow-wrap:anywhere}.answers,.modal form{display:grid;gap:9px}.modal input{width:100%;border-color:#d3d9d0;background:#fff;text-align:center;letter-spacing:.25em;font-size:16px}.letter-label{font-size:.8rem}.masked-word{margin:10px 0;color:#243c2a;font-family:monospace;font-size:1.8rem;font-weight:900;letter-spacing:.24em;overflow-wrap:anywhere}.thinking-dots{display:flex;justify-content:center;gap:7px;margin:16px 0}.thinking-dots i{width:11px;height:11px;border-radius:50%;background:#547dbe;animation:think 1s infinite ease-in-out}.thinking-dots i:nth-child(2){animation-delay:.15s}.thinking-dots i:nth-child(3){animation-delay:.3s}@keyframes think{0%,60%,100%{opacity:.35;transform:translateY(0)}30%{opacity:1;transform:translateY(-7px)}}
 .verb-modal{width:min(520px,100%)}.verb-modal .verb-field{display:grid;gap:7px;padding:10px;border:1px solid #d9e5d9;border-radius:10px}.verb-field h3,.verb-field p{margin:0}.verb-field h3{font-size:1rem}.verb-field label{font-size:.82rem}.verb-field .answers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.verb-field .answers button{overflow-wrap:anywhere;background:#f5fbf3}.verb-field .answers button.selected{background:#72c984;box-shadow:inset 0 0 0 2px #174d25}.verb-field .masked-word{font-size:1.4rem}
 .result-words{text-align:left;line-height:1.5;overflow-wrap:anywhere}.result-words summary{cursor:pointer;font-weight:700}.result-links{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}.save-error{color:#a12222;font-size:.8rem}
