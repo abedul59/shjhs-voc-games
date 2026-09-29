@@ -1,0 +1,488 @@
+[
+  {
+    "base_form": "be",
+    "past_tense": "was/were",
+    "past_participle": "been",
+    "chinese": "是"
+  },
+  {
+    "base_form": "become",
+    "past_tense": "became",
+    "past_participle": "become",
+    "chinese": "變成"
+  },
+  {
+    "base_form": "begin",
+    "past_tense": "began",
+    "past_participle": "begun",
+    "chinese": "開始"
+  },
+  {
+    "base_form": "bite",
+    "past_tense": "bit",
+    "past_participle": "bitten",
+    "chinese": "咬"
+  },
+  {
+    "base_form": "blow",
+    "past_tense": "blew",
+    "past_participle": "blown",
+    "chinese": "吹"
+  },
+  {
+    "base_form": "break",
+    "past_tense": "broke",
+    "past_participle": "broken",
+    "chinese": "打破"
+  },
+  {
+    "base_form": "bring",
+    "past_tense": "brought",
+    "past_participle": "brought",
+    "chinese": "帶來"
+  },
+  {
+    "base_form": "build",
+    "past_tense": "built",
+    "past_participle": "built",
+    "chinese": "建立"
+  },
+  {
+    "base_form": "buy",
+    "past_tense": "bought",
+    "past_participle": "bought",
+    "chinese": "買"
+  },
+  {
+    "base_form": "catch",
+    "past_tense": "caught",
+    "past_participle": "caught",
+    "chinese": "接住/捕捉"
+  },
+  {
+    "base_form": "choose",
+    "past_tense": "chose",
+    "past_participle": "chosen",
+    "chinese": "選擇"
+  },
+  {
+    "base_form": "come",
+    "past_tense": "came",
+    "past_participle": "come",
+    "chinese": "來"
+  },
+  {
+    "base_form": "cost",
+    "past_tense": "cost",
+    "past_participle": "cost",
+    "chinese": "花費"
+  },
+  {
+    "base_form": "cut",
+    "past_tense": "cut",
+    "past_participle": "cut",
+    "chinese": "切/割"
+  },
+  {
+    "base_form": "do",
+    "past_tense": "did",
+    "past_participle": "done",
+    "chinese": "做"
+  },
+  {
+    "base_form": "draw",
+    "past_tense": "drew",
+    "past_participle": "drawn",
+    "chinese": "畫"
+  },
+  {
+    "base_form": "dream",
+    "past_tense": "dreamt",
+    "past_participle": "dreamt",
+    "chinese": "作夢"
+  },
+  {
+    "base_form": "drink",
+    "past_tense": "drank",
+    "past_participle": "drunk",
+    "chinese": "喝"
+  },
+  {
+    "base_form": "drive",
+    "past_tense": "drove",
+    "past_participle": "driven",
+    "chinese": "駕駛"
+  },
+  {
+    "base_form": "eat",
+    "past_tense": "ate",
+    "past_participle": "eaten",
+    "chinese": "吃"
+  },
+  {
+    "base_form": "fall",
+    "past_tense": "fell",
+    "past_participle": "fallen",
+    "chinese": "掉落"
+  },
+  {
+    "base_form": "feel",
+    "past_tense": "felt",
+    "past_participle": "felt",
+    "chinese": "感覺"
+  },
+  {
+    "base_form": "fight",
+    "past_tense": "fought",
+    "past_participle": "fought",
+    "chinese": "打架/戰鬥"
+  },
+  {
+    "base_form": "find",
+    "past_tense": "found",
+    "past_participle": "found",
+    "chinese": "尋找"
+  },
+  {
+    "base_form": "fly",
+    "past_tense": "flew",
+    "past_participle": "flown",
+    "chinese": "飛"
+  },
+  {
+    "base_form": "forget",
+    "past_tense": "forgot",
+    "past_participle": "forgotten",
+    "chinese": "忘記"
+  },
+  {
+    "base_form": "get",
+    "past_tense": "got",
+    "past_participle": "gotten",
+    "chinese": "得到"
+  },
+  {
+    "base_form": "give",
+    "past_tense": "gave",
+    "past_participle": "given",
+    "chinese": "給"
+  },
+  {
+    "base_form": "go",
+    "past_tense": "went",
+    "past_participle": "gone",
+    "chinese": "去"
+  },
+  {
+    "base_form": "grow",
+    "past_tense": "grew",
+    "past_participle": "grown",
+    "chinese": "成長/種植"
+  },
+  {
+    "base_form": "have",
+    "past_tense": "had",
+    "past_participle": "had",
+    "chinese": "有"
+  },
+  {
+    "base_form": "hear",
+    "past_tense": "heard",
+    "past_participle": "heard",
+    "chinese": "聽見"
+  },
+  {
+    "base_form": "hide",
+    "past_tense": "hid",
+    "past_participle": "hidden",
+    "chinese": "隱藏"
+  },
+  {
+    "base_form": "hit",
+    "past_tense": "hit",
+    "past_participle": "hit",
+    "chinese": "打擊"
+  },
+  {
+    "base_form": "hold",
+    "past_tense": "held",
+    "past_participle": "held",
+    "chinese": "握住/擁有"
+  },
+  {
+    "base_form": "hurt",
+    "past_tense": "hurt",
+    "past_participle": "hurt",
+    "chinese": "傷害"
+  },
+  {
+    "base_form": "keep",
+    "past_tense": "kept",
+    "past_participle": "kept",
+    "chinese": "保持"
+  },
+  {
+    "base_form": "know",
+    "past_tense": "knew",
+    "past_participle": "known",
+    "chinese": "知道"
+  },
+  {
+    "base_form": "leave",
+    "past_tense": "left",
+    "past_participle": "left",
+    "chinese": "離開"
+  },
+  {
+    "base_form": "lend",
+    "past_tense": "lent",
+    "past_participle": "lent",
+    "chinese": "借出"
+  },
+  {
+    "base_form": "let",
+    "past_tense": "let",
+    "past_participle": "let",
+    "chinese": "讓/允許"
+  },
+  {
+    "base_form": "lose",
+    "past_tense": "lost",
+    "past_participle": "lost",
+    "chinese": "失去"
+  },
+  {
+    "base_form": "make",
+    "past_tense": "made",
+    "past_participle": "made",
+    "chinese": "製造"
+  },
+  {
+    "base_form": "mean",
+    "past_tense": "meant",
+    "past_participle": "meant",
+    "chinese": "意指"
+  },
+  {
+    "base_form": "meet",
+    "past_tense": "met",
+    "past_participle": "met",
+    "chinese": "遇見"
+  },
+  {
+    "base_form": "pay",
+    "past_tense": "paid",
+    "past_participle": "paid",
+    "chinese": "付錢"
+  },
+  {
+    "base_form": "put",
+    "past_tense": "put",
+    "past_participle": "put",
+    "chinese": "放置"
+  },
+  {
+    "base_form": "read",
+    "past_tense": "read",
+    "past_participle": "read",
+    "chinese": "閱讀"
+  },
+  {
+    "base_form": "ride",
+    "past_tense": "rode",
+    "past_participle": "ridden",
+    "chinese": "騎"
+  },
+  {
+    "base_form": "ring",
+    "past_tense": "rang",
+    "past_participle": "rung",
+    "chinese": "響/按鈴"
+  },
+  {
+    "base_form": "run",
+    "past_tense": "ran",
+    "past_participle": "run",
+    "chinese": "跑"
+  },
+  {
+    "base_form": "say",
+    "past_tense": "said",
+    "past_participle": "said",
+    "chinese": "說"
+  },
+  {
+    "base_form": "see",
+    "past_tense": "saw",
+    "past_participle": "seen",
+    "chinese": "看見"
+  },
+  {
+    "base_form": "sell",
+    "past_tense": "sold",
+    "past_participle": "sold",
+    "chinese": "賣"
+  },
+  {
+    "base_form": "send",
+    "past_tense": "sent",
+    "past_participle": "sent",
+    "chinese": "寄/送"
+  },
+  {
+    "base_form": "set",
+    "past_tense": "set",
+    "past_participle": "set",
+    "chinese": "設定"
+  },
+  {
+    "base_form": "shake",
+    "past_tense": "shook",
+    "past_participle": "shaken",
+    "chinese": "搖動"
+  },
+  {
+    "base_form": "shine",
+    "past_tense": "shone",
+    "past_participle": "shone",
+    "chinese": "發光/照耀"
+  },
+  {
+    "base_form": "shoot",
+    "past_tense": "shot",
+    "past_participle": "shot",
+    "chinese": "射擊"
+  },
+  {
+    "base_form": "show",
+    "past_tense": "showed",
+    "past_participle": "shown",
+    "chinese": "展示"
+  },
+  {
+    "base_form": "sing",
+    "past_tense": "sang",
+    "past_participle": "sung",
+    "chinese": "唱歌"
+  },
+  {
+    "base_form": "sink",
+    "past_tense": "sank",
+    "past_participle": "sunk",
+    "chinese": "下沉"
+  },
+  {
+    "base_form": "sit",
+    "past_tense": "sat",
+    "past_participle": "sat",
+    "chinese": "坐"
+  },
+  {
+    "base_form": "sleep",
+    "past_tense": "slept",
+    "past_participle": "slept",
+    "chinese": "睡覺"
+  },
+  {
+    "base_form": "speak",
+    "past_tense": "spoke",
+    "past_participle": "spoken",
+    "chinese": "說話"
+  },
+  {
+    "base_form": "spend",
+    "past_tense": "spent",
+    "past_participle": "spent",
+    "chinese": "花費"
+  },
+  {
+    "base_form": "stand",
+    "past_tense": "stood",
+    "past_participle": "stood",
+    "chinese": "站立"
+  },
+  {
+    "base_form": "steal",
+    "past_tense": "stole",
+    "past_participle": "stolen",
+    "chinese": "偷竊"
+  },
+  {
+    "base_form": "sweep",
+    "past_tense": "swept",
+    "past_participle": "swept",
+    "chinese": "掃"
+  },
+  {
+    "base_form": "swim",
+    "past_tense": "swam",
+    "past_participle": "swum",
+    "chinese": "游泳"
+  },
+  {
+    "base_form": "take",
+    "past_tense": "took",
+    "past_participle": "taken",
+    "chinese": "拿/帶走"
+  },
+  {
+    "base_form": "teach",
+    "past_tense": "taught",
+    "past_participle": "taught",
+    "chinese": "教導"
+  },
+  {
+    "base_form": "tear",
+    "past_tense": "tore",
+    "past_participle": "torn",
+    "chinese": "撕裂"
+  },
+  {
+    "base_form": "tell",
+    "past_tense": "told",
+    "past_participle": "told",
+    "chinese": "告訴"
+  },
+  {
+    "base_form": "think",
+    "past_tense": "thought",
+    "past_participle": "thought",
+    "chinese": "想/認為"
+  },
+  {
+    "base_form": "throw",
+    "past_tense": "threw",
+    "past_participle": "thrown",
+    "chinese": "丟/拋"
+  },
+  {
+    "base_form": "understand",
+    "past_tense": "understood",
+    "past_participle": "understood",
+    "chinese": "了解"
+  },
+  {
+    "base_form": "wake",
+    "past_tense": "woke",
+    "past_participle": "woken",
+    "chinese": "醒來"
+  },
+  {
+    "base_form": "wear",
+    "past_tense": "wore",
+    "past_participle": "worn",
+    "chinese": "穿著"
+  },
+  {
+    "base_form": "win",
+    "past_tense": "won",
+    "past_participle": "won",
+    "chinese": "贏"
+  },
+  {
+    "base_form": "write",
+    "past_tense": "wrote",
+    "past_participle": "written",
+    "chinese": "寫"
+  }
+]
