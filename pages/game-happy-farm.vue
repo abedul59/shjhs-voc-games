@@ -719,5 +719,62 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
   .shop-list .shop-row small{white-space:normal}
 }
 @media(max-width:360px){.village-list button{font-size:.62rem}}
+@media(min-width:1500px) and (min-height:850px){
+  .farm-page{padding:14px clamp(22px,2vw,40px) 18px}
+  .farm-header,.feedback,.status-bar,.farm-layout{max-width:none}
+  .farm-header h1{font-size:2rem}
+  .farm-header p{font-size:.9rem}
+  .farm-header .eyebrow{font-size:.72rem}
+  .feedback{margin:8px auto}
+  .feedback .notice,.feedback .save-notice{padding:9px 13px;font-size:.9rem}
+  .status-bar{gap:10px;margin-bottom:12px}
+  .status-bar>div,.status-bar>a{padding:9px 11px;font-size:.88rem}
+  .farm-layout{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:18px}
+  .scene-sky{height:45px;font-size:1.75rem}
+  .farm-barn{margin:8px auto;padding:7px 16px;font-size:1.4rem}
+  .farm-barn span{font-size:1rem}
+  .land-layout{gap:16px;padding:8px 16px 16px}
+  .map-heading,.village-heading{padding:8px 10px;font-size:1rem}
+  .village-heading strong{font-size:1.1rem}
+  .map-heading span,.village-heading span{font-size:.86rem}
+  .district-picker{gap:9px;margin:6px 0;font-size:.9rem}
+  .district-picker select,.neighbor-village-picker{padding:7px;font-size:.9rem}
+  .unlock-hint{margin:4px 0;padding:7px;font-size:.82rem}
+  .village-list{gap:6px;margin-top:8px}
+  .village-list button{padding:7px 3px;font-size:.88rem}
+  .map-source{margin-top:7px;font-size:.75rem}
+  .village-field{padding:10px}
+  .village-field .field-grid{max-width:560px;gap:9px;padding:4px}
+  .village-field .plot{padding:8px 4px;border-width:3px}
+  .village-field .plot-plant{width:clamp(44px,6vh,64px);height:clamp(44px,6vh,64px)}
+  .plot-number{font-size:.84rem}
+  .village-field .plot-name{font-size:1.05rem;line-height:1.25}
+  .village-field .plot-progress{font-size:.86rem;line-height:1.2;padding-bottom:17px}
+  .plot-care{bottom:5px;gap:4px}
+  .plot-care span{padding:2px 3px;font-size:.75rem}
+  .plot-alert{font-size:1.25rem}
+  .farm-controls{gap:12px}
+  .panel-tabs button{padding:9px 5px;font-size:.95rem}
+  .tool-card,.shop-card,.visit-card{padding:18px}
+  .tool-card h2,.shop-card h2,.visit-card h2{font-size:1.2rem}
+  .tool-card p,.visit-card p{font-size:.95rem}
+  .tool-card label{font-size:.9rem}
+  .tool-card select{padding:9px;font-size:.95rem}
+  .tool-grid{gap:9px;margin:14px 0}
+  .tool-grid button{padding:11px 5px;font-size:.95rem}
+  .tool-card .help,.visit-card .help{font-size:.86rem}
+  .care-detail span{padding:6px 8px;font-size:.85rem}
+  .shop-card h2 small{font-size:.85rem}
+  .shop-list{gap:9px}
+  .shop-list .shop-row{padding:8px}
+  .shop-list .shop-row strong{font-size:.98rem}
+  .shop-list .shop-row small{font-size:.78rem;white-space:normal}
+  .shop-list .shop-row button{padding:7px 4px;font-size:.84rem}
+  .shop-card .expand{padding:9px;font-size:.9rem}
+  .land-buy-card{padding:10px;font-size:.9rem}
+  .land-buy-card button{padding:8px;font-size:.88rem}
+  .visit-actions button,.friend-picker button{font-size:.9rem}
+  .visit-log{font-size:.85rem}
+}
 @media(prefers-reduced-motion:reduce){.action-pop{animation:none}}
 </style>
