@@ -1,0 +1,437 @@
+{
+  "id": "taiwan",
+  "name": "臺灣",
+  "viewBox": "475 20 340 630",
+  "stations": [
+    {
+      "id": "keelung",
+      "name": "基隆",
+      "en": "Keelung",
+      "x": 771,
+      "y": 62,
+      "line": "縱貫線",
+      "wiki": "基隆車站",
+      "summary": "基隆車站位於臺灣基隆市中山區（原位於仁愛區），為台鐵縱貫線、基隆捷運（規劃中）的鐵路車站，是縱貫鐵路及台鐵西部幹線的起點站，設立於1891年，與初代縱貫線同時啓用；站體經過四次改建，現今專供客運使用的半地下化車站則於2015年6月29日啟用，設有南站、北站等2座地上站體。 由於基隆位在基隆北海岸的中心位置，基隆車站也因此成為基隆市及附近北海岸地區的交通樞紐。",
+      "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/98/TRA_Keelung_Station_South_20190406.jpg/960px-TRA_Keelung_Station_South_20190406.jpg?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:TRA_Keelung_Station_South_20190406.jpg",
+      "imageAuthor": "Solomon203",
+      "imageLicense": "CC BY-SA 4.0"
+    },
+    {
+      "id": "taipei",
+      "name": "臺北",
+      "en": "Taipei",
+      "x": 742,
+      "y": 79,
+      "line": "縱貫線",
+      "wiki": "臺北車站",
+      "summary": "臺北車站位於臺灣臺北市中正區，為臺鐵、台灣高鐵、台北捷運的地下化鐵路車站，周邊有臺北轉運站等公路客運及市區公車站點，並可經由連通道轉乘機場捷運台北車站。其肩負臺北都市中央車站的功能，並與板橋車站、南港車站並列為臺北都會區三大交通樞紐，也是全台運量最大的鐵路車站。",
+      "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bb/TRA_Taipei_Station_and_Zhongxiao_West_Road_at_night_20210115.jpg/960px-TRA_Taipei_Station_and_Zhongxiao_West_Road_at_night_20210115.jpg?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:TRA_Taipei_Station_and_Zhongxiao_West_Road_at_night_20210115.jpg",
+      "imageAuthor": "Alexwikix",
+      "imageLicense": "CC BY-SA 4.0"
+    },
+    {
+      "id": "banqiao",
+      "name": "板橋",
+      "en": "Banqiao",
+      "x": 722,
+      "y": 94,
+      "line": "縱貫線",
+      "wiki": "板橋車站 (臺灣)",
+      "summary": "板橋車站位於臺灣新北市板橋區，為臺鐵縱貫線、台灣高鐵、臺北捷運板南線、新北捷運環狀線的鐵路車站。舊址位於府中路，曾為臺鐵中和線（已廢止）的端點站，後成為捷運府中站所在地；現址坐落於新板橋車站特定專用區之內，曾為板橋客車場所在地，主要採地下化設計，僅環狀線站區為高架化車站。",
+      "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ae/Banciao_Station_01.jpg/960px-Banciao_Station_01.jpg?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:Banciao_Station_01.jpg",
+      "imageAuthor": "Jimmy Yao",
+      "imageLicense": "CC BY-SA 2.0"
+    },
+    {
+      "id": "taoyuan",
+      "name": "桃園",
+      "en": "Taoyuan",
+      "x": 698,
+      "y": 102,
+      "line": "縱貫線",
+      "wiki": "桃園車站 (桃園市)",
+      "summary": "桃園車站是一個位在臺灣桃園市桃園區、屬於臺灣鐵路縱貫線的鐵路車站。該車站距離縱貫線位在基隆車站的起點約57.503公里。",
+      "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6f/%E8%87%BA%E9%90%B5%E6%A1%83%E5%9C%92%E8%87%A8%E6%99%82%E8%BB%8A%E7%AB%99%EF%BC%88%E5%BE%8C%E7%AB%99%E5%87%BA%E5%8F%A3%EF%BC%89.jpg/960px-%E8%87%BA%E9%90%B5%E6%A1%83%E5%9C%92%E8%87%A8%E6%99%82%E8%BB%8A%E7%AB%99%EF%BC%88%E5%BE%8C%E7%AB%99%E5%87%BA%E5%8F%A3%EF%BC%89.jpg?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:%E8%87%BA%E9%90%B5%E6%A1%83%E5%9C%92%E8%87%A8%E6%99%82%E8%BB%8A%E7%AB%99%EF%BC%88%E5%BE%8C%E7%AB%99%E5%87%BA%E5%8F%A3%EF%BC%89.jpg",
+      "imageAuthor": "寺人孟子",
+      "imageLicense": "CC BY-SA 4.0"
+    },
+    {
+      "id": "hsinchu",
+      "name": "新竹",
+      "en": "Hsinchu",
+      "x": 643,
+      "y": 119,
+      "line": "縱貫線",
+      "wiki": "新竹車站",
+      "summary": "新竹車站位於臺灣新竹市東區。為臺灣鐵路縱貫線及內灣線的鐵路車站，此外內灣線及六家線以此站為折返點。",
+      "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d9/%E6%96%B0%E7%AB%B9%E7%81%AB%E8%BB%8A%E7%AB%99%28%E5%B7%B4%E6%B4%9B%E5%85%8B%E9%A2%A8%E6%A0%BC%29.jpg/960px-%E6%96%B0%E7%AB%B9%E7%81%AB%E8%BB%8A%E7%AB%99%28%E5%B7%B4%E6%B4%9B%E5%85%8B%E9%A2%A8%E6%A0%BC%29.jpg?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:%E6%96%B0%E7%AB%B9%E7%81%AB%E8%BB%8A%E7%AB%99(%E5%B7%B4%E6%B4%9B%E5%85%8B%E9%A2%A8%E6%A0%BC).jpg",
+      "imageAuthor": "曾傳富",
+      "imageLicense": "CC BY-SA 4.0"
+    },
+    {
+      "id": "miaoli",
+      "name": "苗栗",
+      "en": "Miaoli",
+      "x": 618,
+      "y": 175,
+      "line": "山線",
+      "wiki": "苗栗車站",
+      "summary": "苗栗市的臺鐵車站，位於縱貫線山線。",
+      "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/58/Miaoli_Station_east_20150426.jpg/960px-Miaoli_Station_east_20150426.jpg?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:Miaoli_Station_east_20150426.jpg",
+      "imageAuthor": "Rsa",
+      "imageLicense": "CC BY-SA 3.0"
+    },
+    {
+      "id": "taichung",
+      "name": "臺中",
+      "en": "Taichung",
+      "x": 594,
+      "y": 240,
+      "line": "山線",
+      "wiki": "臺中車站",
+      "summary": "臺中車站為臺灣鐵路臺中線的鐵路車站，站體座落於臺中市東區新庄里、唯地址仍登錄舊站之中區綠川里，附近有多家公路客運、國道客運業者設站，多數市區公車路線亦於此處停靠，是臺中都會區重要的交通轉運樞紐。現今站房屋頂構造採用太陽能板，外型貌似蝴蝶展翅，頂樓高37公尺，約12層樓高。",
+      "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2b/%E8%87%BA%E4%B8%AD%E8%BB%8A%E7%AB%9901.jpg/960px-%E8%87%BA%E4%B8%AD%E8%BB%8A%E7%AB%9901.jpg?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:%E8%87%BA%E4%B8%AD%E8%BB%8A%E7%AB%9901.jpg",
+      "imageAuthor": "Fcuk1203",
+      "imageLicense": "CC BY-SA 4.0"
+    },
+    {
+      "id": "changhua",
+      "name": "彰化",
+      "en": "Changhua",
+      "x": 571,
+      "y": 254,
+      "line": "縱貫線",
+      "wiki": "彰化車站",
+      "summary": "彰化車站位於臺灣彰化縣彰化市，為臺灣鐵路西部幹線的鐵路車站，也是縱貫線南段、海線、山線的交會及旅客轉乘車站（但不同於竹南在逆行出站時已經明確分離山線和海線的路軌，彰化順行出站後山線和海線會先共用路軌，直至實際分歧點——位於本站以北約3公里的大肚溪南號誌站）。本站為配合臺鐵捷運化政策，2011年9月26日跨站人行天橋正式啟用。",
+      "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9b/20210405_TRA_Changhua_station.jpg/960px-20210405_TRA_Changhua_station.jpg?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:20210405_TRA_Changhua_station.jpg",
+      "imageAuthor": "鐵路1",
+      "imageLicense": "CC BY-SA 4.0"
+    },
+    {
+      "id": "douliu",
+      "name": "斗六",
+      "en": "Douliu",
+      "x": 565,
+      "y": 319,
+      "line": "縱貫線",
+      "wiki": "斗六車站",
+      "summary": "斗六車站位於臺灣雲林縣斗六市，當地縣治中心，為臺灣鐵路縱貫線的鐵路車站。至於高鐵雲林站則是位於虎尾鎮，之間由高鐵快捷公車接駁。",
+      "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6e/People_in_front_of_the_Douliu_Station_building_in_Yunlin_County.jpg/960px-People_in_front_of_the_Douliu_Station_building_in_Yunlin_County.jpg?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:People_in_front_of_the_Douliu_Station_building_in_Yunlin_County.jpg",
+      "imageAuthor": "Bevis Chen",
+      "imageLicense": "CC BY-SA 2.0"
+    },
+    {
+      "id": "chiayi",
+      "name": "嘉義",
+      "en": "Chiayi",
+      "x": 557,
+      "y": 362,
+      "line": "縱貫線",
+      "wiki": "嘉義車站",
+      "summary": "嘉義車站位於臺灣嘉義市西區，為臺灣鐵路縱貫線南段、阿里山林業鐵路阿里山線的鐵路車站及往高鐵嘉義站的嘉義BRT車站，早期亦為臺灣糖業鐵路北港線（原稱嘉義線）、朴子線的嘉義站，為台灣第一座三鐵共構的車站，但目前糖業鐵路皆已廢止，後站連結先期交通轉運中心，可轉乘客運及公車。",
+      "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cb/Chiayi_Railway_Station_front_station.jpg/960px-Chiayi_Railway_Station_front_station.jpg?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:Chiayi_Railway_Station_front_station.jpg",
+      "imageAuthor": "嘉義市政府交通處",
+      "imageLicense": "Attribution"
+    },
+    {
+      "id": "tainan",
+      "name": "臺南",
+      "en": "Tainan",
+      "x": 520,
+      "y": 449,
+      "line": "縱貫線",
+      "wiki": "臺南車站",
+      "summary": "臺南車站（亦稱臺南火車站）為臺灣鐵路縱貫線的一等站，亦是臺灣最西端鐵路車站。站體座落於臺灣臺南市東區，是南臺灣的交通轉運樞紐之一。",
+      "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/87/%E8%87%BA%E9%90%B5%E5%85%AC%E5%8F%B8%E7%A9%8D%E6%A5%B5%E6%8E%A8%E5%8B%95%E8%87%BA%E5%8D%97%E8%BB%8A%E7%AB%99_%E5%8F%A4%E8%B9%9F%E4%BF%AE%E5%BE%A9%E5%8F%8A%E8%BB%8A%E7%AB%99%E7%BE%8E%E5%8C%96%E5%B7%A5%E7%A8%8B_%E6%96%B0%E8%81%9E%E7%A8%BF%E7%85%A7%E7%89%87_01.jpg/960px-%E8%87%BA%E9%90%B5%E5%85%AC%E5%8F%B8%E7%A9%8D%E6%A5%B5%E6%8E%A8%E5%8B%95%E8%87%BA%E5%8D%97%E8%BB%8A%E7%AB%99_%E5%8F%A4%E8%B9%9F%E4%BF%AE%E5%BE%A9%E5%8F%8A%E8%BB%8A%E7%AB%99%E7%BE%8E%E5%8C%96%E5%B7%A5%E7%A8%8B_%E6%96%B0%E8%81%9E%E7%A8%BF%E7%85%A7%E7%89%87_01.jpg?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:%E8%87%BA%E9%90%B5%E5%85%AC%E5%8F%B8%E7%A9%8D%E6%A5%B5%E6%8E%A8%E5%8B%95%E8%87%BA%E5%8D%97%E8%BB%8A%E7%AB%99_%E5%8F%A4%E8%B9%9F%E4%BF%AE%E5%BE%A9%E5%8F%8A%E8%BB%8A%E7%AB%99%E7%BE%8E%E5%8C%96%E5%B7%A5%E7%A8%8B_%E6%96%B0%E8%81%9E%E7%A8%BF%E7%85%A7%E7%89%87_01.jpg",
+      "imageAuthor": "​臺灣鐵路公司工務處",
+      "imageLicense": "Attribution"
+    },
+    {
+      "id": "kaohsiung",
+      "name": "高雄",
+      "en": "Kaohsiung",
+      "x": 532,
+      "y": 517,
+      "line": "縱貫線／屏東線",
+      "wiki": "高雄車站",
+      "summary": "高雄市區的鐵路樞紐，連接臺鐵與高雄捷運。",
+      "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c6/TRA_Kaohsiung_Station.jpg/960px-TRA_Kaohsiung_Station.jpg?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:TRA_Kaohsiung_Station.jpg",
+      "imageAuthor": "Allervous",
+      "imageLicense": "CC BY-SA 4.0"
+    },
+    {
+      "id": "pingtung",
+      "name": "屏東",
+      "en": "Pingtung",
+      "x": 563,
+      "y": 531,
+      "line": "屏東線",
+      "wiki": "屏東車站",
+      "summary": "屏東車站位於屏東縣屏東市，為臺灣鐵路屏東線的鐵路車站，為屏東縣境內的第一大站。",
+      "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/be/June_2023_TRA_Pingtung_Station.jpg/960px-June_2023_TRA_Pingtung_Station.jpg?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:June_2023_TRA_Pingtung_Station.jpg",
+      "imageAuthor": "Tze Chiang Hao",
+      "imageLicense": "CC BY-SA 4.0"
+    },
+    {
+      "id": "nanzhou",
+      "name": "南州",
+      "en": "Nanzhou",
+      "x": 583,
+      "y": 559,
+      "line": "屏東線",
+      "wiki": "南州車站",
+      "summary": "南州車站位於台灣屏東縣南州鄉，為臺灣鐵路屏東線的鐵路車站。",
+      "image": "https://upload.wikimedia.org/wikipedia/commons/9/93/Nanzhou_Station.JPG?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail_unscaled",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:Nanzhou_Station.JPG",
+      "imageAuthor": "SSR2000",
+      "imageLicense": "CC BY-SA 3.0"
+    },
+    {
+      "id": "fangliao",
+      "name": "枋寮",
+      "en": "Fangliao",
+      "x": 611,
+      "y": 589,
+      "line": "屏東線／南迴線",
+      "wiki": "枋寮車站",
+      "summary": "枋寮車站位於屏東縣枋寮鄉，在東海站和加祿站之間，為臺灣鐵路屏東線、南迴線的鐵路車站，是屏東縣境內的第三大站。",
+      "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4d/Fangliao201601.jpg/960px-Fangliao201601.jpg?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:Fangliao201601.jpg",
+      "imageAuthor": "Billy1125",
+      "imageLicense": "CC BY-SA 4.0"
+    },
+    {
+      "id": "taitung",
+      "name": "臺東",
+      "en": "Taitung",
+      "x": 672,
+      "y": 493,
+      "line": "南迴線／臺東線",
+      "wiki": "臺東車站",
+      "summary": "臺東車站位於臺東縣臺東市，為臺灣鐵路臺東線、南迴線的鐵路車站。",
+      "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f0/TRA_Taitung_Station_20180502.jpg/960px-TRA_Taitung_Station_20180502.jpg?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:TRA_Taitung_Station_20180502.jpg",
+      "imageAuthor": "Rsa",
+      "imageLicense": "CC BY-SA 3.0"
+    },
+    {
+      "id": "chishang",
+      "name": "池上",
+      "en": "Chishang",
+      "x": 697,
+      "y": 442,
+      "line": "臺東線",
+      "wiki": "池上車站 (臺灣)",
+      "summary": "池上車站位於臺東縣池上鄉，為臺灣鐵路臺東線的鐵路車站。",
+      "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/99/Chishang_Station-20230504.jpg/960px-Chishang_Station-20230504.jpg?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:Chishang_Station-20230504.jpg",
+      "imageAuthor": "Rsa",
+      "imageLicense": "CC BY-SA 3.0"
+    },
+    {
+      "id": "yuli",
+      "name": "玉里",
+      "en": "Yuli",
+      "x": 720,
+      "y": 384,
+      "line": "臺東線",
+      "wiki": "玉里車站",
+      "summary": "玉里車站位於花蓮縣玉里鎮，為臺灣鐵路臺東線的鐵路車站。本站站房已配合「花東新車站運動」計畫改建完工。",
+      "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/00/TRA_Yuli_Station-20230504.jpg/960px-TRA_Yuli_Station-20230504.jpg?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:TRA_Yuli_Station-20230504.jpg",
+      "imageAuthor": "Rsa",
+      "imageLicense": "CC BY-SA 3.0"
+    },
+    {
+      "id": "hualien",
+      "name": "花蓮",
+      "en": "Hualien",
+      "x": 749,
+      "y": 270,
+      "line": "臺東線／北迴線",
+      "wiki": "花蓮車站",
+      "summary": "花蓮車站位於花蓮縣花蓮市，為臺灣鐵路北迴線、臺東線的鐵路車站。",
+      "image": "https://upload.wikimedia.org/wikipedia/commons/2/2c/108-10-hualien02.jpg?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail_unscaled",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:108-10-hualien02.jpg",
+      "imageAuthor": "Mfpan9389115",
+      "imageLicense": "CC BY-SA 4.0"
+    },
+    {
+      "id": "luodong",
+      "name": "羅東",
+      "en": "Luodong",
+      "x": 780,
+      "y": 154,
+      "line": "宜蘭線",
+      "wiki": "羅東車站",
+      "summary": "羅東車站是一座位於宜蘭縣羅東鎮的鐵路車站，屬臺灣鐵路宜蘭線及林務局已廢止路線羅東森林鐵路。",
+      "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/00/Taiwan_LuoDong_Railway_Station.JPG/960px-Taiwan_LuoDong_Railway_Station.JPG?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:Taiwan_LuoDong_Railway_Station.JPG",
+      "imageAuthor": "vegafish",
+      "imageLicense": "CC BY-SA 2.5"
+    },
+    {
+      "id": "yilan",
+      "name": "宜蘭",
+      "en": "Yilan",
+      "x": 777,
+      "y": 125,
+      "line": "宜蘭線",
+      "wiki": "宜蘭車站",
+      "summary": "宜蘭車站位於宜蘭縣宜蘭市，為臺灣鐵路宜蘭線的鐵路車站。",
+      "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/20/Painted_on_the_building_of_TRA_Yilan_Station.jpg/960px-Painted_on_the_building_of_TRA_Yilan_Station.jpg?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:Painted_on_the_building_of_TRA_Yilan_Station.jpg",
+      "imageAuthor": "mk_is_here",
+      "imageLicense": "CC BY 2.0"
+    },
+    {
+      "id": "ruifang",
+      "name": "瑞芳",
+      "en": "Ruifang",
+      "x": 764,
+      "y": 91,
+      "line": "宜蘭線",
+      "wiki": "瑞芳車站",
+      "summary": "瑞芳車站位於新北市瑞芳區，為臺灣鐵路宜蘭線、深澳線的鐵路車站，目前車站等級為一等站。",
+      "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ef/West_Exit%2C_TRA_Ruifang_Station_20200820.jpg/960px-West_Exit%2C_TRA_Ruifang_Station_20200820.jpg?utm_source=zh.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "imagePage": "https://commons.wikimedia.org/wiki/File:West_Exit,_TRA_Ruifang_Station_20200820.jpg",
+      "imageAuthor": "John567852",
+      "imageLicense": "CC BY-SA 4.0"
+    }
+  ],
+  "links": [
+    [
+      "keelung",
+      "taipei",
+      "縱貫線"
+    ],
+    [
+      "taipei",
+      "banqiao",
+      "縱貫線"
+    ],
+    [
+      "banqiao",
+      "taoyuan",
+      "縱貫線"
+    ],
+    [
+      "taoyuan",
+      "hsinchu",
+      "縱貫線"
+    ],
+    [
+      "hsinchu",
+      "miaoli",
+      "縱貫線山線"
+    ],
+    [
+      "miaoli",
+      "taichung",
+      "縱貫線山線"
+    ],
+    [
+      "taichung",
+      "changhua",
+      "縱貫線山線"
+    ],
+    [
+      "changhua",
+      "douliu",
+      "縱貫線"
+    ],
+    [
+      "douliu",
+      "chiayi",
+      "縱貫線"
+    ],
+    [
+      "chiayi",
+      "tainan",
+      "縱貫線"
+    ],
+    [
+      "tainan",
+      "kaohsiung",
+      "縱貫線"
+    ],
+    [
+      "kaohsiung",
+      "pingtung",
+      "屏東線"
+    ],
+    [
+      "pingtung",
+      "nanzhou",
+      "屏東線"
+    ],
+    [
+      "nanzhou",
+      "fangliao",
+      "屏東線"
+    ],
+    [
+      "fangliao",
+      "taitung",
+      "南迴線"
+    ],
+    [
+      "taitung",
+      "chishang",
+      "臺東線"
+    ],
+    [
+      "chishang",
+      "yuli",
+      "臺東線"
+    ],
+    [
+      "yuli",
+      "hualien",
+      "臺東線"
+    ],
+    [
+      "hualien",
+      "luodong",
+      "北迴線／宜蘭線"
+    ],
+    [
+      "luodong",
+      "yilan",
+      "宜蘭線"
+    ],
+    [
+      "yilan",
+      "ruifang",
+      "宜蘭線"
+    ],
+    [
+      "ruifang",
+      "taipei",
+      "宜蘭線／縱貫線"
+    ]
+  ],
+  "flag": "🇹🇼",
+  "startId": "taipei",
+  "contractIds": [
+    "taichung",
+    "chiayi",
+    "kaohsiung",
+    "hualien",
+    "taitung",
+    "fangliao"
+  ]
+}
