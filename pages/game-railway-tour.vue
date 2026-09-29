@@ -29,8 +29,11 @@ const links = computed(() => activeMap.value.links.filter(([a, b]) => regionStat
   .map(([a, b, line]) => ({ a: stationById.value[a], b: stationById.value[b], line })));
 const regionCounts = computed(() => Object.fromEntries(activeMap.value.regions.map(region =>
   [region.id, region.stationIds.filter(id => progress.value.visitedIds.includes(id)).length])));
-const completedRegions = computed(() => activeMap.value.regions.filter(region => regionCounts.value[region.id] === region.stationIds.length));
-const canChooseRegion = region => region.id === 'north' || completedRegions.value.length > 0;
+const committedRegionId = computed(() => regionById.value[progress.value.lastStations._activeRegion]
+  ? progress.value.lastStations._activeRegion : '');
+const committedRegionCompleted = computed(() => !committedRegionId.value ||
+  regionCounts.value[committedRegionId.value] === regionById.value[committedRegionId.value].stationIds.length);
+const canChooseRegion = region => !committedRegionId.value || committedRegionCompleted.value || region.id === committedRegionId.value;
 const regionStampCount = computed(() => regionCounts.value[activeRegion.value.id] || 0);
 const atlasUnlocked = computed(() => regionStampCount.value >= ATLAS_STAMPS);
 const currentId = ref(taiwanRail.regions[0].startId);
@@ -59,6 +62,7 @@ const saving = ref(false);
 const saved = ref(false);
 const imageFailures = ref([]);
 const progressStatus = ref('');
+const mapMode = ref('nearby');
 let deck = [];
 let startedAt = 0;
 let pendingRecord = null;
@@ -69,7 +73,7 @@ const currentStation = computed(() => stationById.value[currentId.value]);
 const viewedStation = computed(() => stationById.value[viewedId.value] || currentStation.value);
 const viewedInAtlas = computed(() => atlasUnlocked.value && progress.value.visitedIds.includes(viewedStation.value.id));
 const viewedWiki = computed(() => viewedStation.value);
-const regionViewBox = computed(() => {
+const regionBounds = computed(() => {
   const points = regionStations.value;
   const minX = Math.min(...points.map(station => station.x));
   const maxX = Math.max(...points.map(station => station.x));
@@ -77,11 +81,53 @@ const regionViewBox = computed(() => {
   const maxY = Math.max(...points.map(station => station.y));
   const padX = Math.max(25, (maxX - minX) * .13);
   const padY = Math.max(25, (maxY - minY) * .13);
-  return `${minX - padX} ${minY - padY} ${maxX - minX + padX * 2} ${maxY - minY + padY * 2}`;
+  return { x: minX - padX, y: minY - padY, width: maxX - minX + padX * 2, height: maxY - minY + padY * 2 };
 });
 const adjacent = computed(() => links.value.filter(link => link.a.id === currentId.value || link.b.id === currentId.value)
   .map(link => ({ station: link.a.id === currentId.value ? link.b : link.a, line: link.line })));
 const adjacentIds = computed(() => adjacent.value.map(item => item.station.id));
+const nearbyIds = computed(() => {
+  const distance = { [currentId.value]: 0 };
+  const queue = [currentId.value];
+  for (const id of queue) {
+    if (distance[id] >= 2) continue;
+    for (const link of links.value) {
+      const neighbor = link.a.id === id ? link.b.id : link.b.id === id ? link.a.id : null;
+      if (neighbor && distance[neighbor] === undefined) {
+        distance[neighbor] = distance[id] + 1;
+        queue.push(neighbor);
+      }
+    }
+  }
+  return new Set(queue);
+});
+const mapBounds = computed(() => {
+  if (mapMode.value === 'overview') return regionBounds.value;
+  const near = regionStations.value.filter(station => nearbyIds.value.has(station.id));
+  const minX = Math.min(...near.map(station => station.x));
+  const maxX = Math.max(...near.map(station => station.x));
+  const minY = Math.min(...near.map(station => station.y));
+  const maxY = Math.max(...near.map(station => station.y));
+  const width = Math.max(38, maxX - minX + 24);
+  const height = Math.max(52, maxY - minY + 24);
+  return { x: (minX + maxX - width) / 2, y: (minY + maxY - height) / 2, width, height };
+});
+const mapViewBox = computed(() => {
+  const { x, y, width, height } = mapBounds.value;
+  return `${x} ${y} ${width} ${height}`;
+});
+const visibleStations = computed(() => regionStations.value.filter(station => {
+  const { x, y, width, height } = mapBounds.value;
+  return (mapMode.value === 'overview' || nearbyIds.value.has(station.id)) &&
+    station.x >= x && station.x <= x + width && station.y >= y && station.y <= y + height;
+}));
+const visibleLinks = computed(() => {
+  const shown = new Set(visibleStations.value.map(station => station.id));
+  return links.value.filter(link => shown.has(link.a.id) && shown.has(link.b.id));
+});
+const mapUnit = computed(() => Math.max(mapBounds.value.width / 650, mapBounds.value.height / 450));
+const markerRadius = computed(() => Math.max(.55, mapUnit.value * 5));
+const markerHitRadius = computed(() => Math.max(1.2, mapUnit.value * 12));
 const contractStation = computed(() => stationById.value[contractId.value]);
 const income = computed(() => invested.value.length * 12);
 const score = computed(() => Math.max(0, Math.round((coins.value + visited.value.length * 25
@@ -121,6 +167,25 @@ async function saveProgress() {
   progressStatus.value = error ? '雲端進度未儲存；本瀏覽器仍保留車站章。請執行鐵路進度 SQL。' : '車站章已同步至雲端。';
 }
 
+async function saveRegionChoice() {
+  progress.value.lastStations = { ...progress.value.lastStations, _activeRegion: selectedRegionId.value };
+  saveProgressLocally();
+  if (!student.value?.id) return;
+  const { data, error } = await db.rpc('railway_stamp_station', {
+    p_student_id: String(student.value.id), p_station_ids: progress.value.visitedIds,
+    p_station_id: selectedRegionId.value, p_region_id: '_activeRegion'
+  });
+  if (error) {
+    progressStatus.value = '區域選擇暫存於本瀏覽器；雲端進度同步失敗。';
+    return;
+  }
+  if (data?.[0]) {
+    progress.value.visitedIds = [...new Set([...progress.value.visitedIds, ...(data[0].visited_stations || [])])];
+    progress.value.lastStations = { ...progress.value.lastStations, ...(data[0].last_stations || {}) };
+    saveProgressLocally();
+  }
+}
+
 async function loadProgress() {
   let local = { visitedIds: [], lastStations: {} };
   try {
@@ -140,8 +205,14 @@ async function loadProgress() {
   progress.value = {
     visitedIds: local.visitedIds.filter(id => known.has(id)),
     lastStations: Object.fromEntries(Object.entries(local.lastStations).filter(([regionId, stationId]) =>
-      regionById.value[regionId]?.stationIds.includes(stationId)))
+      regionId === '_activeRegion' ? !!regionById.value[stationId] : regionById.value[regionId]?.stationIds.includes(stationId)))
   };
+  if (!committedRegionId.value) {
+    const unfinished = activeMap.value.regions.find(region =>
+      regionCounts.value[region.id] > 0 && regionCounts.value[region.id] < region.stationIds.length);
+    if (unfinished) progress.value.lastStations = { ...progress.value.lastStations, _activeRegion: unfinished.id };
+  }
+  if (committedRegionId.value) selectedRegionId.value = committedRegionId.value;
   saveProgressLocally();
   resetRegionPosition();
 }
@@ -177,8 +248,8 @@ function nextWord() {
   return deck.pop();
 }
 
-function startGame() {
-  if (loading.value || words.value.length < 2 || started.value) return;
+async function startGame() {
+  if (loading.value || words.value.length < 2 || started.value || !canChooseRegion(activeRegion.value)) return;
   started.value = true;
   finished.value = false;
   startedAt = Date.now();
@@ -187,6 +258,7 @@ function startGame() {
   maxTurns.value = turnOptions.includes(Number(maxTurns.value)) ? Number(maxTurns.value) : 18;
   chooseContract();
   message.value = `從${currentStation.value.name}探索${activeRegion.value.name}！答對英文單字即可搭車集章。`;
+  await saveRegionChoice();
 }
 
 function beginAction(type, targetId = '') {
@@ -361,7 +433,7 @@ onMounted(async () => {
     if (error) throw error;
     words.value = (data || []).filter(word => word.en_us?.trim() && word.zh_tw?.trim());
     message.value = words.value.length >= 2
-      ? '先踏破北部，再選擇其他區域。每區累積 3 站章後，已到訪車站會收入圖鑑。'
+      ? '第一次可自由選擇探索區域；選定後踏破該區，再選下一區。每區累積 3 站章後開啟已到訪車站圖鑑。'
       : '本單元至少需要兩筆有效單字，請返回首頁改選單元。';
   } catch (error) {
     message.value = '載入單字失敗：' + (error?.message || '請稍後重試。');
@@ -378,7 +450,7 @@ onMounted(async () => {
       <div class="setup">
         <label>鐵路地圖 <select v-model="selectedMapId" :disabled="started && !finished"><option v-for="map in railwayMaps" :key="map.id" :value="map.id">{{ map.name }}</option></select></label>
         <label>旅程回合 <select v-model.number="maxTurns" :disabled="started"><option v-for="count in turnOptions" :key="count" :value="count">{{ count }} 回合</option></select></label>
-        <button v-if="!started" type="button" :disabled="loading || words.length < 2" @click="startGame">開始旅程</button>
+        <button v-if="!started" type="button" :disabled="loading || words.length < 2 || !canChooseRegion(activeRegion)" @click="startGame">開始旅程</button>
         <button v-else-if="!finished" type="button" :disabled="!!question" @click="finishGame">提前結算</button>
         <button v-else type="button" :disabled="saving" @click="newGame">再玩一次</button>
       </div>
@@ -407,19 +479,19 @@ onMounted(async () => {
     <p class="notice" role="status" aria-live="polite">{{ message }} <small v-if="progressStatus">{{ progressStatus }}</small></p>
     <div class="rail-layout">
       <section class="map-card" aria-label="臺灣鐵路旅遊地圖">
-        <div class="map-title"><strong>{{ activeMap.flag }} {{ activeRegion.name }} · {{ regionStations.length }} 站</strong><span>點車站看收集狀態 · 亮色車站可選為下一站</span></div>
-        <svg :viewBox="regionViewBox" class="rail-map" role="group" :aria-label="activeRegion.name + '地圖與臺鐵車站路線'">
+        <div class="map-title"><strong>{{ activeMap.flag }} {{ activeRegion.name }} · {{ regionStations.length }} 站</strong><div class="map-controls"><button type="button" :class="{ active: mapMode === 'nearby' }" :aria-pressed="mapMode === 'nearby'" @click="mapMode = 'nearby'">🔍 附近放大</button><button type="button" :class="{ active: mapMode === 'overview' }" :aria-pressed="mapMode === 'overview'" @click="mapMode = 'overview'">🗺️ 全區總覽</button></div></div>
+        <svg :viewBox="mapViewBox" class="rail-map" role="group" :aria-label="activeRegion.name + (mapMode === 'nearby' ? '目前車站附近路線' : '全區路線')">
           <path :d="islandOutline" class="island"/>
-          <line v-for="link in links" :key="link.a.id + link.b.id" :x1="link.a.x" :y1="link.a.y" :x2="link.b.x" :y2="link.b.y" class="rail-line" :class="{ reachable: adjacentIds.includes(link.a.id) && link.b.id === currentId || adjacentIds.includes(link.b.id) && link.a.id === currentId }"/>
-          <g v-for="station in regionStations" :key="station.id" class="station-marker" :class="{ current: currentId === station.id, reachable: adjacentIds.includes(station.id) && started && !finished, stamped: progress.visitedIds.includes(station.id), viewed: viewedId === station.id }" role="button" tabindex="0" :aria-label="station.name + '車站，' + (progress.visitedIds.includes(station.id) ? '已集章' : '未集章') + '，查看收集狀態'" @click="viewedId = station.id" @keydown.enter.prevent="viewedId = station.id" @keydown.space.prevent="viewedId = station.id">
+          <line v-for="link in visibleLinks" :key="link.a.id + link.b.id" :x1="link.a.x" :y1="link.a.y" :x2="link.b.x" :y2="link.b.y" class="rail-line" :class="{ reachable: adjacentIds.includes(link.a.id) && link.b.id === currentId || adjacentIds.includes(link.b.id) && link.a.id === currentId }"/>
+          <g v-for="station in visibleStations" :key="station.id" class="station-marker" :class="{ current: currentId === station.id, reachable: adjacentIds.includes(station.id) && started && !finished, stamped: progress.visitedIds.includes(station.id), viewed: viewedId === station.id }" role="button" tabindex="0" :aria-label="station.name + '車站，' + (progress.visitedIds.includes(station.id) ? '已集章' : '未集章') + '，查看收集狀態'" @click="viewedId = station.id" @keydown.enter.prevent="viewedId = station.id" @keydown.space.prevent="viewedId = station.id">
             <title>{{ station.name }}車站 · {{ station.line }}</title>
-            <circle class="hit-area" :cx="station.x" :cy="station.y" r="8"/>
-            <circle :cx="station.x" :cy="station.y" r="3.5"/>
-            <text v-if="currentId === station.id || viewedId === station.id" :x="station.x + 6" :y="station.y - 4">{{ station.name }}</text>
+            <circle class="hit-area" :cx="station.x" :cy="station.y" :r="markerHitRadius"/>
+            <circle :cx="station.x" :cy="station.y" :r="markerRadius"/>
+            <text v-if="currentId === station.id || viewedId === station.id" :x="station.x + markerRadius + mapUnit * 3" :y="station.y - markerRadius" :style="{ fontSize: mapUnit * 12 + 'px' }">{{ station.name }}</text>
           </g>
-          <g class="train-token" :style="{ transform: 'translate(' + currentStation.x + 'px,' + currentStation.y + 'px)' }"><text x="-5" y="-6">🚂</text></g>
+          <g class="train-token" :style="{ transform: 'translate(' + currentStation.x + 'px,' + currentStation.y + 'px)' }"><text :x="-mapUnit * 5" :y="-mapUnit * 8" :style="{ fontSize: mapUnit * 16 + 'px' }">🚂</text></g>
         </svg>
-        <p class="map-caption">臺灣 {{ activeMap.stations.length }} 座臺鐵客運車站分五區；依相鄰車站路線探索，非即時時刻或票價圖。資料：<a href="https://data.gov.tw/dataset/33425" target="_blank" rel="noopener noreferrer">臺鐵車站基本資料 ↗</a>、<a href="https://www.railway.gov.tw/tra-tip-web/tip/tip001/tip111/view?code=E040" target="_blank" rel="noopener noreferrer">官方路線順序 ↗</a>；輪廓沿用<a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener noreferrer">原有臺灣地圖資料 ↗</a>。</p>
+        <p class="map-caption">附近放大會跟隨目前車站，只顯示兩站距離內的路線；全區總覽可查看本站區全部車站。搭車請使用右側「可搭往」按鈕。資料：<a href="https://data.gov.tw/dataset/33425" target="_blank" rel="noopener noreferrer">臺鐵車站 ↗</a>、<a href="https://www.railway.gov.tw/tra-tip-web/tip/tip001/tip111/view?code=E040" target="_blank" rel="noopener noreferrer">路線順序 ↗</a>；輪廓沿用<a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener noreferrer">原有臺灣地圖 ↗</a>。</p>
       </section>
 
       <section class="station-card" aria-label="車站小百科">
@@ -485,6 +557,9 @@ onMounted(async () => {
 .trip-card{padding:14px;display:flex;flex-direction:column;gap:9px}.trip-card h2,.trip-card h3{margin:0}.trip-card h2{font-size:1.2rem}.trip-card h3{font-size:.9rem}.turn-indicator{margin:0;font-weight:900;color:#b4571b}.mission{display:grid;gap:3px;padding:9px;border:1px solid #e2b970;border-radius:9px;background:#fff4d5}.mission small{color:#72582e}.destinations{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.destinations button{display:grid;gap:4px;text-align:left;padding:10px;border:2px solid #6fa0b2;border-radius:10px;background:#ecf8fb;color:#16475a}.destinations button:hover:not(:disabled){background:#d9f0f7}.destinations small{font-size:.7rem}.invest-button{padding:10px;border:2px solid #8c742a;border-radius:10px;background:#ffedaa;color:#514014;font-weight:900}.rules,.score-rules{margin:0;line-height:1.45;font-size:.73rem}.score-rules{color:#5d6d73}.finished-box{margin-top:auto;padding:10px;border-radius:10px;background:#e1f4e5}.finished-box p{font-size:.77rem}.finished-box button{border:1px solid #3d8272;border-radius:7px;background:#fff;padding:6px}
 .question-shade{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:12px;background:#102e3bc9}.question-card{box-sizing:border-box;width:min(100%,520px);max-height:calc(100dvh - 24px);overflow:auto;padding:22px;border:4px solid #69a5b7;border-radius:18px;background:#faffff;box-shadow:0 12px #315565}.question-card h2{margin:4px 0 18px}.choices{display:grid;grid-template-columns:1fr 1fr;gap:8px}.choices button{padding:12px;border:2px solid #9cb9c2;border-radius:9px;background:#fff;color:#234457;font-weight:850}.choices button.selected{background:#ffeda6;border-color:#c17d20}.masked{font-size:1.65rem;font-weight:900;letter-spacing:.12em}.question-card label{display:block;margin-bottom:6px}.question-card input{width:100%;box-sizing:border-box;padding:11px;border:2px solid #83a5ae;border-radius:8px}.question-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.question-actions button{padding:9px 14px;border:2px solid #42859a;border-radius:9px;background:#c8ecf3;font-weight:850}.question-actions .cancel{background:#fff}
 .trip-card{overflow:auto}.station-atlas{border:1px solid #b7d0d5;border-radius:8px;background:#f1f8f7;padding:5px 8px}.station-atlas summary{cursor:pointer;font-size:.8rem;font-weight:850}.station-atlas>div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;max-height:170px;overflow:auto;margin-top:7px}.station-atlas p{margin:6px 0;font-size:.7rem}.station-atlas button{border:1px solid #aac4c9;border-radius:6px;background:#fff;padding:5px 2px;color:#1f5965;font-size:.72rem}.station-atlas button.viewed{background:#ffedaf;border-color:#be8c3c}
+.rail-layout{grid-template-columns:minmax(0,1.7fr) minmax(260px,.55fr) minmax(300px,.7fr)}
+.map-title{align-items:center;flex-wrap:wrap}.map-controls{display:flex;gap:5px}.map-controls button{border:1px solid #6b9aa5;border-radius:7px;background:#fff;color:#205062;padding:5px 8px;font-size:.74rem;font-weight:800}.map-controls button.active{background:#ffe3a3;border-color:#b77b22}
+.island,.rail-line,.station-marker circle:not(.hit-area),.station-marker text{vector-effect:non-scaling-stroke}.rail-line{stroke-width:1.5}.rail-line.reachable{stroke-width:3}.station-marker circle:not(.hit-area){stroke-width:1.5}.station-marker.reachable circle:not(.hit-area),.station-marker.current circle:not(.hit-area){stroke-width:2}.station-marker.viewed circle:not(.hit-area){stroke-width:2.5}.station-marker text{stroke-width:2}
 @media(min-width:1200px) and (min-height:720px){.rail-page{height:100dvh;overflow:hidden;display:flex;flex-direction:column}.rail-header,.rail-status,.notice,.region-picker{flex:none}.rail-layout{min-height:0;flex:1}.rail-map{min-height:0}.station-photo{min-height:0}}
 @media(max-width:1150px){.rail-status{grid-template-columns:repeat(4,minmax(0,1fr))}.rail-layout{grid-template-columns:minmax(0,1fr) minmax(270px,.8fr)}.trip-card{grid-column:1/-1}.station-photo{min-height:160px}.rail-map{min-height:450px}.region-picker{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:700px){.rail-header{align-items:flex-start;flex-direction:column}.setup{width:100%}.rail-status{grid-template-columns:repeat(2,minmax(0,1fr))}.rail-layout{grid-template-columns:1fr}.trip-card{grid-column:auto}.rail-map{height:470px;min-height:0;flex:none}.station-card{display:grid;grid-template-columns:38% 1fr}.station-photo{height:100%;min-height:185px}.station-info{padding:10px}.station-info h2{font-size:1rem}.station-info>p:not(.eyebrow){font-size:.78rem}.map-title{flex-direction:column}.choices{grid-template-columns:1fr}.region-picker{grid-template-columns:repeat(2,minmax(0,1fr))}}
