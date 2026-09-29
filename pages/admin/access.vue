@@ -21,6 +21,7 @@ const vocabMenu = ref([]);
 const selVer = ref(''); const selVol = ref(''); const selUnit = ref('');
 
 const gamesList = [
+  { id: 'happyFarm', name: '🌻 單字開心農場' },
   { id: 'monopolyDual', name: '🏘️ 單字大富翁（雙人）' },
   { id: 'pikavolleyDual', name: '⚡ 皮卡丘排球（雙人）' },
   { id: 'angrybirdsDual', name: '🐦 單字憤怒鳥（雙人）' },
