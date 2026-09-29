@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import taiwanRail from '~/data/railway-taiwan.json';
 import japanIndex from '~/data/railway-japan-index.json';
 import outlines from '~/data/railway-outlines.json';
@@ -102,6 +102,17 @@ const saved = ref(false);
 const imageFailures = ref([]);
 const progressStatus = ref('');
 const mapMode = ref('nearby');
+const nearbyZoom = ref(0);
+const mapSvg = ref(null);
+const mapPixelSize = ref({ width: 650, height: 450 });
+const mapAspect = computed(() => mapPixelSize.value.width / mapPixelSize.value.height);
+let mapResizeObserver;
+watch(mapSvg, (element, previous) => {
+  if (!mapResizeObserver) return;
+  if (previous) mapResizeObserver.unobserve(previous);
+  if (element) mapResizeObserver.observe(element);
+}, { flush: 'post' });
+onUnmounted(() => mapResizeObserver?.disconnect());
 let deck = [];
 let startedAt = 0;
 let pendingRecord = null;
@@ -179,32 +190,25 @@ const regionBounds = computed(() => {
 const adjacent = computed(() => links.value.filter(link => link.a.id === currentId.value || link.b.id === currentId.value)
   .map(link => ({ station: link.a.id === currentId.value ? link.b : link.a, line: link.line })));
 const adjacentIds = computed(() => adjacent.value.map(item => item.station.id));
-const nearbyIds = computed(() => {
-  const distance = { [currentId.value]: 0 };
-  const queue = [currentId.value];
-  for (const id of queue) {
-    if (distance[id] >= 2) continue;
-    for (const link of links.value) {
-      const neighbor = link.a.id === id ? link.b.id : link.b.id === id ? link.a.id : null;
-      if (neighbor && distance[neighbor] === undefined) {
-        distance[neighbor] = distance[id] + 1;
-        queue.push(neighbor);
-      }
-    }
-  }
-  return new Set(queue);
-});
+function fitMapAspect(bounds) {
+  const width = Math.max(bounds.width, bounds.height * mapAspect.value);
+  const height = width / mapAspect.value;
+  return { x: bounds.x + (bounds.width - width) / 2,
+    y: bounds.y + (bounds.height - height) / 2, width, height };
+}
 const mapBounds = computed(() => {
-  if (mapMode.value === 'country') return outlines[selectedMapId.value].bounds;
-  if (mapMode.value === 'overview') return regionBounds.value;
-  const near = regionStations.value.filter(station => nearbyIds.value.has(station.id));
-  const minX = Math.min(...near.map(station => station.x));
-  const maxX = Math.max(...near.map(station => station.x));
-  const minY = Math.min(...near.map(station => station.y));
-  const maxY = Math.max(...near.map(station => station.y));
-  const width = Math.max(38, maxX - minX + 24);
-  const height = Math.max(52, maxY - minY + 24);
-  return { x: (minX + maxX - width) / 2, y: (minY + maxY - height) / 2, width, height };
+  if (mapMode.value === 'country') return fitMapAspect(outlines[selectedMapId.value].bounds);
+  const overview = fitMapAspect(regionBounds.value);
+  if (mapMode.value === 'overview') return overview;
+  const station = currentStation.value;
+  const distances = adjacent.value.map(item => Math.hypot(item.station.x - station.x, item.station.y - station.y))
+    .sort((a, b) => a - b);
+  const referenceDistance = distances[Math.min(2, distances.length - 1)] || 6;
+  const baseWidth = Math.max(6, Math.min(90, referenceDistance * 4));
+  // Keep the local scale closer than the fitted region view, even for one-station scopes.
+  const width = Math.min(baseWidth / (1.5 ** nearbyZoom.value), overview.width * .72);
+  const height = width / mapAspect.value;
+  return { x: station.x - width / 2, y: station.y - height / 2, width, height };
 });
 const mapViewBox = computed(() => {
   const { x, y, width, height } = mapBounds.value;
@@ -212,16 +216,19 @@ const mapViewBox = computed(() => {
 });
 const visibleStations = computed(() => regionStations.value.filter(station => {
   const { x, y, width, height } = mapBounds.value;
-  return (mapMode.value !== 'nearby' || nearbyIds.value.has(station.id)) &&
-    station.x >= x && station.x <= x + width && station.y >= y && station.y <= y + height;
+  return station.x >= x && station.x <= x + width && station.y >= y && station.y <= y + height;
 }));
 const visibleLinks = computed(() => {
   const shown = new Set(visibleStations.value.map(station => station.id));
   return links.value.filter(link => shown.has(link.a.id) && shown.has(link.b.id));
 });
-const mapUnit = computed(() => Math.max(mapBounds.value.width / 650, mapBounds.value.height / 450));
-const markerRadius = computed(() => Math.min(2.5, Math.max(.55, mapUnit.value * 4)));
-const markerHitRadius = computed(() => Math.min(5, Math.max(1.2, mapUnit.value * 12)));
+const mapUnit = computed(() => mapBounds.value.width / mapPixelSize.value.width);
+const markerRadius = computed(() => mapUnit.value * 5);
+const markerHitRadius = computed(() => mapUnit.value * 14);
+function adjustNearbyZoom(change) {
+  nearbyZoom.value = Math.max(-1, Math.min(3, nearbyZoom.value + change));
+  mapMode.value = 'nearby';
+}
 const transferSearch = ref('');
 const transferOptions = computed(() => {
   const unvisited = regionStations.value.filter(station => station.id !== currentId.value &&
@@ -571,6 +578,13 @@ watch(selectedRegionId, () => {
 });
 
 onMounted(async () => {
+  if (typeof ResizeObserver !== 'undefined') {
+    mapResizeObserver = new ResizeObserver(entries => {
+      const { width, height } = entries[0]?.contentRect || {};
+      if (width > 0 && height > 0) mapPixelSize.value = { width, height };
+    });
+    if (mapSvg.value) mapResizeObserver.observe(mapSvg.value);
+  }
   restoringProgress = true;
   await loadProgress();
   restoringProgress = false;
@@ -635,8 +649,8 @@ onMounted(async () => {
     <p class="notice" role="status" aria-live="polite">{{ message }} <small v-if="progressStatus">{{ progressStatus }}</small></p>
     <div v-if="mapReady" class="rail-layout">
       <section class="map-card" :aria-label="activeMap.name + '鐵路旅遊地圖'">
-        <div class="map-title"><strong>{{ activeMap.flag }} {{ activeRegion.name }} · {{ regionStations.length }} 站</strong><div class="map-controls"><button type="button" :class="{ active: mapMode === 'nearby' }" :aria-pressed="mapMode === 'nearby'" @click="mapMode = 'nearby'">🔍 附近放大</button><button type="button" :class="{ active: mapMode === 'overview' }" :aria-pressed="mapMode === 'overview'" @click="mapMode = 'overview'">🗺️ 全區總覽</button><button type="button" :class="{ active: mapMode === 'country' }" :aria-pressed="mapMode === 'country'" @click="mapMode = 'country'">🌏 全國輪廓</button></div></div>
-        <svg :viewBox="mapViewBox" class="rail-map" role="group" :aria-label="activeRegion.name + (mapMode === 'nearby' ? '目前車站附近路線' : '全區路線')">
+        <div class="map-title"><strong>{{ activeMap.flag }} {{ activeRegion.name }} · {{ regionStations.length }} 站</strong><div class="map-controls"><button type="button" :class="{ active: mapMode === 'nearby' }" :aria-pressed="mapMode === 'nearby'" @click="mapMode = 'nearby'">🔍 附近放大</button><div class="zoom-controls" aria-label="附近地圖縮放"><button type="button" aria-label="附近地圖縮小" :disabled="nearbyZoom <= -1" @click="adjustNearbyZoom(-1)">－</button><span>{{ Math.round(100 * 1.5 ** nearbyZoom) }}%</span><button type="button" aria-label="附近地圖放大" :disabled="nearbyZoom >= 3" @click="adjustNearbyZoom(1)">＋</button></div><button type="button" :class="{ active: mapMode === 'overview' }" :aria-pressed="mapMode === 'overview'" @click="mapMode = 'overview'">🗺️ 全區總覽</button><button type="button" :class="{ active: mapMode === 'country' }" :aria-pressed="mapMode === 'country'" @click="mapMode = 'country'">🌏 全國輪廓</button></div></div>
+        <svg ref="mapSvg" :viewBox="mapViewBox" class="rail-map" role="group" :aria-label="activeRegion.name + (mapMode === 'nearby' ? '目前車站附近路線' : '全區路線')">
           <path :d="islandOutline" class="island"/>
           <line v-for="link in visibleLinks" :key="link.a.id + link.b.id" :x1="link.a.x" :y1="link.a.y" :x2="link.b.x" :y2="link.b.y" class="rail-line" :class="{ reachable: adjacentIds.includes(link.a.id) && link.b.id === currentId || adjacentIds.includes(link.b.id) && link.a.id === currentId }"/>
           <g v-for="station in visibleStations" :key="station.id" class="station-marker" :class="{ current: currentId === station.id, reachable: adjacentIds.includes(station.id) && started && !finished, stamped: progress.visitedIds.includes(station.id), viewed: viewedId === station.id }" role="button" tabindex="0" :aria-label="station.name + '車站，' + (progress.visitedIds.includes(station.id) ? '已集章' : '未集章') + '，查看收集狀態'" @click="viewedId = station.id" @keydown.enter.prevent="viewedId = station.id" @keydown.space.prevent="viewedId = station.id">
@@ -647,7 +661,7 @@ onMounted(async () => {
           </g>
           <g class="train-token" :style="{ transform: 'translate(' + currentStation.x + 'px,' + currentStation.y + 'px)' }"><text :x="-mapUnit * 5" :y="-mapUnit * 8" :style="{ fontSize: mapUnit * 16 + 'px' }">🚂</text></g>
         </svg>
-        <p class="map-caption">附近放大會跟隨目前車站，全區總覽顯示所選範圍，全國輪廓可查看真實海岸形狀；線路擁擠時可搜尋轉乘至未到站。資料：<a v-if="selectedMapId === 'taiwan'" href="https://data.gov.tw/dataset/33425" target="_blank" rel="noopener noreferrer">臺鐵車站 ↗</a><a v-else href="https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N02-2025.html" target="_blank" rel="noopener noreferrer">日本國土交通省 2025 鐵道資料（CC BY 4.0）↗</a>；真實海岸輪廓：<a href="https://www.naturalearthdata.com/downloads/10m-cultural-vectors/" target="_blank" rel="noopener noreferrer">Natural Earth 1:10m ↗</a>。</p>
+        <p class="map-caption">附近地圖以目前車站為中心，顯示視野內所有路線與車站；可用 ＋／－ 調整倍率。全區總覽顯示所選範圍，全國輪廓可查看海岸形狀。資料：<a v-if="selectedMapId === 'taiwan'" href="https://data.gov.tw/dataset/33425" target="_blank" rel="noopener noreferrer">臺鐵車站 ↗</a><a v-else href="https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N02-2025.html" target="_blank" rel="noopener noreferrer">日本國土交通省 2025 鐵道資料（CC BY 4.0）↗</a>；海岸輪廓：<a href="https://www.naturalearthdata.com/downloads/10m-cultural-vectors/" target="_blank" rel="noopener noreferrer">Natural Earth 1:10m ↗</a>。</p>
       </section>
 
       <section class="station-card" aria-label="車站小百科">
@@ -718,7 +732,7 @@ onMounted(async () => {
 .question-shade{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:12px;background:#102e3bc9}.question-card{box-sizing:border-box;width:min(100%,520px);max-height:calc(100dvh - 24px);overflow:auto;padding:22px;border:4px solid #69a5b7;border-radius:18px;background:#faffff;box-shadow:0 12px #315565}.question-card h2{margin:4px 0 18px}.choices{display:grid;grid-template-columns:1fr 1fr;gap:8px}.choices button{padding:12px;border:2px solid #9cb9c2;border-radius:9px;background:#fff;color:#234457;font-weight:850}.choices button.selected{background:#ffeda6;border-color:#c17d20}.masked{font-size:1.65rem;font-weight:900;letter-spacing:.12em}.question-card label{display:block;margin-bottom:6px}.question-card input{width:100%;box-sizing:border-box;padding:11px;border:2px solid #83a5ae;border-radius:8px}.question-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.question-actions button{padding:9px 14px;border:2px solid #42859a;border-radius:9px;background:#c8ecf3;font-weight:850}.question-actions .cancel{background:#fff}
 .trip-card{overflow:auto}.station-atlas{border:1px solid #b7d0d5;border-radius:8px;background:#f1f8f7;padding:5px 8px}.station-atlas summary{cursor:pointer;font-size:.8rem;font-weight:850}.station-atlas>div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;max-height:170px;overflow:auto;margin-top:7px}.station-atlas p{margin:6px 0;font-size:.7rem}.station-atlas button{border:1px solid #aac4c9;border-radius:6px;background:#fff;padding:5px 2px;color:#1f5965;font-size:.72rem}.station-atlas button.viewed{background:#ffedaf;border-color:#be8c3c}
 .rail-layout{grid-template-columns:minmax(0,1.7fr) minmax(260px,.55fr) minmax(300px,.7fr)}
-.map-title{align-items:center;flex-wrap:wrap}.map-controls{display:flex;gap:5px}.map-controls button{border:1px solid #6b9aa5;border-radius:7px;background:#fff;color:#205062;padding:5px 8px;font-size:.74rem;font-weight:800}.map-controls button.active{background:#ffe3a3;border-color:#b77b22}
+.map-title{align-items:center;flex-wrap:wrap}.map-controls{display:flex;align-items:center;flex-wrap:wrap;gap:5px}.map-controls button{border:1px solid #6b9aa5;border-radius:7px;background:#fff;color:#205062;padding:5px 8px;font-size:.74rem;font-weight:800}.map-controls button.active{background:#ffe3a3;border-color:#b77b22}.zoom-controls{display:flex;align-items:center;gap:2px;border:1px solid #6b9aa5;border-radius:7px;background:#fff}.zoom-controls button{border:0;padding:5px 7px;font-size:1rem;line-height:1}.zoom-controls span{min-width:36px;text-align:center;font-size:.72rem;font-weight:850}
 .island,.rail-line,.station-marker circle:not(.hit-area),.station-marker text{vector-effect:non-scaling-stroke}.rail-line{stroke-width:1.5}.rail-line.reachable{stroke-width:3}.station-marker circle:not(.hit-area){stroke-width:1.5}.station-marker.reachable circle:not(.hit-area),.station-marker.current circle:not(.hit-area){stroke-width:2}.station-marker.viewed circle:not(.hit-area){stroke-width:2.5}.station-marker text{stroke-width:2}
 @media(min-width:1200px) and (min-height:720px){.rail-page{height:100dvh;overflow:hidden;display:flex;flex-direction:column}.rail-header,.rail-status,.notice,.region-picker{flex:none}.rail-layout{min-height:0;flex:1}.rail-map{min-height:0}.station-photo{min-height:0}}
 @media(max-width:1150px){.rail-status{grid-template-columns:repeat(4,minmax(0,1fr))}.rail-layout{grid-template-columns:minmax(0,1fr) minmax(270px,.8fr)}.trip-card{grid-column:1/-1}.station-photo{min-height:160px}.rail-map{min-height:450px}.region-picker{grid-template-columns:repeat(3,minmax(0,1fr))}}
