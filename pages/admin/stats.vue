@@ -148,6 +148,7 @@ const fetchStats = async () => {
       <div class="game-type-tabs">
         <button class="type-btn" :class="{ active: selectedGameType === '單字大富翁' }" @click="selectedGameType = '單字大富翁'; fetchStats()">🏘️ 大富翁</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字開心農場' }" @click="selectedGameType = '單字開心農場'; fetchStats()">🌻 開心農場</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字鐵路旅遊高手' }" @click="selectedGameType = '單字鐵路旅遊高手'; fetchStats()">🚂 鐵路旅遊</button>
         <button v-for="(type, index) in verbMonopolyTypes" :key="type" class="type-btn" :class="{ active: selectedGameType === type }" @click="selectedGameType = type; fetchStats()">🏘️ 動詞大富翁（{{ index === 0 ? '八' : '九' }}）</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊消消樂' }" @click="selectedGameType = '單字方塊消消樂'; fetchStats()">🟦 方塊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字神移動' }" @click="selectedGameType = '單字神移動'; fetchStats()">🔠 移動</button>
@@ -215,6 +216,7 @@ const fetchStats = async () => {
     <p v-if="selectedGameType === '單字皮卡丘排球（雙人）'">🏐 分別統計兩位學生各自的作答；勝敗、平手、離場與排球比分不計為單字。</p>
     <p v-if="selectedGameType === '單字憤怒鳥（雙人）'">🐦 分別統計兩位學生各自的作答；勝敗、平手、離場與完成字數不計為單字。</p>
     <p v-if="selectedGameType === '單字大富翁'">🏘️ 僅統計學生本人的作答；同一單字重複作答會逐次計入，電腦作答不列入分析。</p>
+    <p v-if="selectedGameType === '單字鐵路旅遊高手'">🚂 逐題統計搭車與車站升級時的對錯單字；重複作答會逐次計入。</p>
     <p v-if="verbMonopolyTypes.includes(selectedGameType)">🏘️ 僅統計學生本人的動詞作答；同一動詞重複作答會逐次計入，電腦作答不列入分析。</p>
     <div v-if="isSpecialGame" class="special-msg-box retro-element">
       <div class="icon-big">ℹ️</div>
