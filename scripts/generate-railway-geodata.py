@@ -25,7 +25,7 @@ def rings(geom):
  elif geom.geom_type=='MultiPolygon':
   for poly in geom.geoms:yield from rings(poly)
 outlines={}
-for key,name,tol in [('taiwan','Taiwan',.002),('japan','Japan',.006)]:
+for key,name,tol in [('taiwan','Taiwan',.0005),('japan','Japan',.0005)]:
  geom=shape(selected[name]['geometry']).simplify(tol,preserve_topology=True)
  pieces=[]
  for ring in rings(geom):
