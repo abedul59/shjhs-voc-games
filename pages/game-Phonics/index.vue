@@ -1,4 +1,5 @@
 <script setup>
+import { prepareEnglishUtterance } from '~/utils/englishSpeech';
 import { ref, onMounted, computed, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 
@@ -67,7 +68,7 @@ const playAudio = async () => {
     const msg = new SpeechSynthesisUtterance(word);
     msg.lang = 'en-US';
     msg.rate = 0.85; // 稍微放慢速度
-    window.speechSynthesis.speak(msg);
+    window.speechSynthesis.speak(prepareEnglishUtterance(msg));
     await new Promise(resolve => {
         msg.onend = () => setTimeout(resolve, 500); // 單字間停頓 0.5 秒
     });

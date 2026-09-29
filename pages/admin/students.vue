@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
 import Papa from 'papaparse';
+import SpecialClassManager from '~/components/admin/SpecialClassManager.vue';
 import { getStrokeArrayAsync } from '~/utils/strokeCounter';
 import { allThemes } from '~/utils/themes';
 
@@ -309,6 +310,7 @@ const deleteClass = async (className) => {
       <NuxtLink to="/admin" class="retro-btn back-btn">← 控制中心</NuxtLink>
       
       <div class="right-actions">
+        <a href="#special-classes" class="retro-btn">📚 學習扶助／特殊班級</a>
         <button class="retro-btn export-btn" @click="exportToCSV" :disabled="isLoading">📊 匯出名單</button>
         <input type="file" accept=".csv" id="student-csv" @change="handleImportCsv" style="display:none" :disabled="isUploading"/>
         <label for="student-csv" class="retro-btn csv-btn">{{ isUploading ? '計算筆畫中...' : '📁 匯入(CSV)' }}</label>
@@ -353,6 +355,8 @@ const deleteClass = async (className) => {
         </tbody>
       </table>
     </div>
+
+    <SpecialClassManager :allowed-classes="allowedClasses" :is-super-admin="isSuperAdmin" :teacher-name="authCookie?.name || ''" />
 
     <div v-if="showStudentHistoryModal" class="modal-overlay">
       <div class="modal-box retro-element dashboard-modal">

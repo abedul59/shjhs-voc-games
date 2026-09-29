@@ -7,10 +7,11 @@ const historyRecords = ref([]);
 const isLoading = ref(true);
 
 const route = useRoute();
-const selectedGameType = ref(['單字大富翁', '單字大富翁（雙人）'].includes(route.query.game) ? route.query.game : '單字方塊消消樂');
+const verbMonopolyTypes = ['動詞變化大富翁（八年級）', '動詞變化大富翁（九年級）'];
+const selectedGameType = ref(['單字大富翁', '單字開心農場', '單字大富翁（雙人）', '單字皮卡丘排球（雙人）', '單字憤怒鳥（雙人）', ...verbMonopolyTypes].includes(route.query.game) ? route.query.game : '單字方塊消消樂');
 
 // 🌟 統一定義所有 PvP 對戰遊戲
-const pvpGames = ['單字大富翁（雙人）', '單字方塊陣', '單字吞食天地', '單字塔羅21點', '單字塔羅鍊金術', '單字塔羅UNO對決'];
+const pvpGames = ['單字大富翁（雙人）', '單字皮卡丘排球（雙人）', '單字憤怒鳥（雙人）', '單字方塊陣', '單字吞食天地', '單字塔羅21點', '單字塔羅鍊金術', '單字塔羅UNO對決'];
 
 const fetchHistory = async () => {
   if (!studentCookie.value) return;
@@ -56,7 +57,7 @@ const formatIntervals = (jsonObj) => {
 // 🌟 解析對戰結果
 const getBattleResult = (record) => {
   const cw = record.correct_words || '';
-  if (record.game_type === '單字大富翁（雙人）') return cw.match(/^【(勝|敗|逃|平)】/)?.[1] || '';
+  if (['單字大富翁（雙人）', '單字皮卡丘排球（雙人）', '單字憤怒鳥（雙人）'].includes(record.game_type)) return cw.match(/^【(勝|敗|逃|平)】/)?.[1] || '';
   if (cw.includes('【勝】') || cw.includes('結果: 勝')) return '勝';
   if (cw.includes('【敗】') || cw.includes('結果: 敗')) return '敗';
   if (cw.includes('【逃】') || cw.includes('逃跑') || cw.includes('逃走')) return '逃';
@@ -80,6 +81,8 @@ const pvpTotalEscapes = computed(() => historyRecords.value.filter(r => getBattl
     <div class="filter-box retro-element">
 <div class="game-type-tabs">
         <button class="type-btn" :class="{ active: selectedGameType === '單字大富翁' }" @click="selectedGameType = '單字大富翁'; fetchHistory()">🏘️ 大富翁</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字開心農場' }" @click="selectedGameType = '單字開心農場'; fetchHistory()">🌻 開心農場</button>
+        <button v-for="(type, index) in verbMonopolyTypes" :key="type" class="type-btn" :class="{ active: selectedGameType === type }" @click="selectedGameType = type; fetchHistory()">🏘️ 動詞大富翁（{{ index === 0 ? '八' : '九' }}）</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊消消樂' }" @click="selectedGameType = '單字方塊消消樂'; fetchHistory()">🟦 方塊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字神移動' }" @click="selectedGameType = '單字神移動'; fetchHistory()">🔠 移動</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字選選樂' }" @click="selectedGameType = '單字選選樂'; fetchHistory()">✅ 選擇</button>
@@ -99,6 +102,8 @@ const pvpTotalEscapes = computed(() => historyRecords.value.filter(r => getBattl
         <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅UNO(單人)' }" @click="selectedGameType = '單字塔羅UNO(單人)'; fetchHistory()">🃏 塔羅UNO(單)</button>
 
         <button class="type-btn" :class="{ active: selectedGameType === '單字大富翁（雙人）' }" @click="selectedGameType = '單字大富翁（雙人）'; fetchHistory()">🏘️ 大富翁（雙人）</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字皮卡丘排球（雙人）' }" @click="selectedGameType = '單字皮卡丘排球（雙人）'; fetchHistory()">🏐 皮卡排球（雙人）</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字憤怒鳥（雙人）' }" @click="selectedGameType = '單字憤怒鳥（雙人）'; fetchHistory()">🐦 憤怒鳥（雙人）</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊陣' }" @click="selectedGameType = '單字方塊陣'; fetchHistory()">⚔️ 對戰方塊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字吞食天地' }" @click="selectedGameType = '單字吞食天地'; fetchHistory()">🐎 吞食天地</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字塔羅21點' }" @click="selectedGameType = '單字塔羅21點'; fetchHistory()">🃏 塔羅21(雙)</button>
@@ -131,7 +136,7 @@ const pvpTotalEscapes = computed(() => historyRecords.value.filter(r => getBattl
       <div class="pvp-stats">
         <div class="p-stat win">🏆 {{ pvpTotalWins }} 勝</div>
         <div class="p-stat lose">💀 {{ pvpTotalLosses }} 敗</div>
-        <div v-if="selectedGameType === '單字大富翁（雙人）'" class="p-stat">🤝 {{ historyRecords.filter(r => getBattleResult(r) === '平').length }} 平</div>
+        <div v-if="['單字大富翁（雙人）', '單字皮卡丘排球（雙人）', '單字憤怒鳥（雙人）'].includes(selectedGameType)" class="p-stat">🤝 {{ historyRecords.filter(r => getBattleResult(r) === '平').length }} 平</div>
         <div class="p-stat escape">🏃 {{ pvpTotalEscapes }} 逃</div>
       </div>
     </div>
@@ -142,7 +147,7 @@ const pvpTotalEscapes = computed(() => historyRecords.value.filter(r => getBattl
     <div class="history-list" v-else>
       <div class="history-card retro-element" v-for="item in historyRecords" :key="item.id">
         <div class="card-header">
-          <span class="unit-badge">{{ item.version }} {{ item.volume }} - {{ item.unit_played }}</span>
+          <span class="unit-badge">{{ verbMonopolyTypes.includes(item.game_type) ? item.unit_played : `${item.version} ${item.volume} - ${item.unit_played}` }}</span>
           <span class="time-text">{{ formatDateTime(item.played_at) }}</span>
         </div>
         <div class="card-body">
@@ -162,7 +167,11 @@ const pvpTotalEscapes = computed(() => historyRecords.value.filter(r => getBattl
 
             <div class="stats-text">
               <p v-if="item.game_type === '單字大富翁'">🏘️ 分數＝結算現金 · 第 {{ item.attempt_number || 1 }} 次</p>
+              <p v-if="item.game_type === '單字開心農場'">🌻 每答對一題得 10 分 · 第 {{ item.attempt_number || 1 }} 次</p>
+              <p v-if="verbMonopolyTypes.includes(item.game_type)">🏘️ 動詞變化購地 · 分數＝結算現金 · 第 {{ item.attempt_number || 1 }} 次</p>
               <p v-if="item.game_type === '單字大富翁（雙人）'">🏘️ 結算現金：{{ item.score }} 分 · 第 {{ item.attempt_number || 1 }} 次 · ❌ {{ item.mistakes || 0 }} 次</p>
+              <p v-if="item.game_type === '單字皮卡丘排球（雙人）'">🏐 對戰與拼字：{{ item.score }} 分 · ❌ {{ item.mistakes || 0 }} 次</p>
+              <p v-if="item.game_type === '單字憤怒鳥（雙人）'">🐦 射擊與拼字：{{ item.score }} 分 · ❌ {{ item.mistakes || 0 }} 次</p>
               <p>⏱️ 花費時間：{{ item.time_taken_seconds ?? item.time_spent ?? 0 }} 秒</p>
               <p v-if="item.mistakes !== null && !pvpGames.includes(item.game_type)">❌ 錯誤次數：{{ item.mistakes }} 次</p>
             </div>
@@ -174,8 +183,8 @@ const pvpTotalEscapes = computed(() => historyRecords.value.filter(r => getBattl
             </div>
             
             <template v-else>
-              <div v-if="item.wrong_words" class="word-box wrong"><strong>⚠️ 待加強單字：</strong>{{ item.wrong_words }}</div>
-              <div v-if="item.correct_words" class="word-box correct"><strong>🌟 戰況與熟練單字：</strong>{{ item.correct_words }}</div>
+              <div v-if="item.wrong_words" class="word-box wrong"><strong>⚠️ {{ verbMonopolyTypes.includes(item.game_type) ? '待加強動詞' : '待加強單字' }}：</strong>{{ item.wrong_words }}</div>
+              <div v-if="item.correct_words" class="word-box correct"><strong>🌟 {{ verbMonopolyTypes.includes(item.game_type) ? '答對動詞' : '戰況與熟練單字' }}：</strong>{{ item.correct_words }}</div>
               <div v-if="item.word_intervals && Object.keys(item.word_intervals).length > 0" class="word-box intervals"><strong>⏱️ 各單字耗時：</strong>
                 <span v-for="i in formatIntervals(item.word_intervals)" :key="i.word" class="time-tag">{{ i.word }}({{ i.time }}s)</span>
               </div>

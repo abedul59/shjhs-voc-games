@@ -1,4 +1,5 @@
 <script setup>
+import { prepareEnglishUtterance } from '~/utils/englishSpeech';
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -63,7 +64,7 @@ const speakText = (text, lang) => {
     
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
-    utterance.rate = lang === 'en-US' ? 0.85 : 1.0; 
+    utterance.rate = lang === 'en-US' ? 0.85 : 1.0;
     
     // 防卡死計時器
     const timeout = setTimeout(() => {
@@ -79,7 +80,7 @@ const speakText = (text, lang) => {
          resolve();
     };
     
-    window.speechSynthesis.speak(utterance);
+    window.speechSynthesis.speak(prepareEnglishUtterance(utterance));
   });
 };
 

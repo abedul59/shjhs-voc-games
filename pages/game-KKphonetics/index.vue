@@ -1,4 +1,5 @@
 <script setup>
+import { prepareEnglishUtterance } from '~/utils/englishSpeech';
 import { ref, onMounted, computed, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 
@@ -72,7 +73,7 @@ const playAudio = () => {
   msg.text = selectedTarget.value.example;
   msg.lang = 'en-US';
   msg.rate = 0.8;
-  window.speechSynthesis.speak(msg);
+  window.speechSynthesis.speak(prepareEnglishUtterance(msg));
 };
 
 const playTone = (type) => {

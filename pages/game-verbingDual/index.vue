@@ -1,4 +1,5 @@
 <script setup>
+import { prepareEnglishUtterance } from '~/utils/englishSpeech';
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import confetti from 'canvas-confetti';
@@ -75,7 +76,7 @@ const playPronunciation = (word) => {
   audio.play().catch(() => {
     if (window.speechSynthesis) {
       const utterance = new SpeechSynthesisUtterance(cleanWord);
-      utterance.lang = 'en-US'; window.speechSynthesis.speak(utterance);
+      utterance.lang = 'en-US'; window.speechSynthesis.speak(prepareEnglishUtterance(utterance));
     }
   });
 };

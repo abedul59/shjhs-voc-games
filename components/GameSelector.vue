@@ -22,6 +22,8 @@ watch(selectedUnit, (val) => { if (typeof window !== 'undefined') localStorage.s
 const gameDict = {
   'match': { name: '🟦 方塊消消樂', path: '/game', class: '' },
   'monopoly': { name: '🏘️ 單字大富翁', path: '/game-monopoly', class: 'monopoly-btn' },
+  'happyFarm': { name: '🌻 單字開心農場', path: '/game-happy-farm', class: 'monopoly-btn' },
+  'verbMonopoly': { name: '🏘️ 動詞變化大富翁', path: '/game-verb-monopoly', class: 'monopoly-btn' },
   'move': { name: '🔠 單字神移動', path: '/game-move', class: '' },
   'choice': { name: '✅ 單字選選樂', path: '/game-choice', class: '' },
   'fill': { name: '⌨️ 單字填一填', path: '/game-fill', class: '' },
@@ -40,8 +42,10 @@ const gameDict = {
   'tetris': { name: '🧱 俄羅斯方塊', path: '/game-tetris', class: '' },
   'pinball': { name: '🎰 單字彈珠台', path: '/game-pinball', class: 'game-pinball' },
   'angrybirds': { name: '🐦 單字憤怒鳥', path: '/game-angrybirds', class: 'angrybirds-btn' },
+  'angrybirdsDual': { name: '🐦 單字憤怒鳥（雙人）', path: '/game-angrybirds-dual', class: 'angrybirds-btn full-width' },
   'solitaire': { name: '🃏 撲克牌接龍', path: '/game-solitaire', class: 'solitaire-btn' },
   'pikavolley': { name: '⚡ 皮卡丘排球', path: '/game-pikavolley', class: 'pika-btn' },
+  'pikavolleyDual': { name: '⚡ 皮卡丘排球（雙人）', path: '/game-pikavolley-dual', class: 'battle-btn full-width' },
   'pacman': { name: '👻 單字小精靈', path: '/game-pacman', class: 'pacman-btn' },
   'minesweeper': { name: '💣 單字踩地雷', path: '/game-minesweeper', class: 'minesweeper-btn' },
   'sudoku': { name: '🔢 單字9x9數獨', path: '/game-9x9sudoku', class: 'sudoku-btn' },
@@ -75,16 +79,16 @@ const gameDict = {
   'vocReviewing': { name: '📖 單字例句總複習', path: '/game-vocReviewing', class: 'picture2meaning-btn full-width' }
 };
 
-const noUnitGames = ['speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examRead1', 'examRead2', 'verbing', 'verbingDual', 'verbAmuPark'];
+const noUnitGames = ['speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examRead1', 'examRead2', 'verbing', 'verbingDual', 'verbAmuPark', 'verbMonopoly'];
 const isNoUnitGame = computed(() => noUnitGames.includes(selectedGameType.value));
 
 const defaultCategories = [
-  { id: 'c1', name: '🕹️ 經典單字遊戲', games: ['monopoly', 'match', 'move', 'choice', 'fill', 'sentence', 'listen', 'puzzle', 'cross', 'review', 'picture2meaning', 'ninja'] },
+  { id: 'c1', name: '🕹️ 經典單字遊戲', games: ['monopoly', 'happyFarm', 'match', 'move', 'choice', 'fill', 'sentence', 'listen', 'puzzle', 'cross', 'review', 'picture2meaning', 'ninja'] },
   { id: 'c2', name: '🏆 體感與趣味挑戰', games: ['shake2shuffle', 'tilt2sort', 'gravitymaze', 'swing2cast', 'ARsniper', 'GPSmap', 'vocshooting', 'noropejump'] },
   { id: 'c3', name: '👾 懷舊街機遊樂場', games: ['tetris', 'pinball', 'angrybirds', 'solitaire', 'pikavolley', 'pacman', 'minesweeper', 'sudoku'] },
-  { id: 'c4', name: '⚔️ 雙人對戰與領域牌組', games: ['monopolyDual', 'battle', 'tenchi', 'tarot21', 'tarotAlch', 'tarotUno', 'tarotUno1', 'tarot21solo', 'tarotAlch1'] },
+  { id: 'c4', name: '⚔️ 雙人對戰與領域牌組', games: ['monopolyDual', 'pikavolleyDual', 'angrybirdsDual', 'battle', 'tenchi', 'tarot21', 'tarotAlch', 'tarotUno', 'tarotUno1', 'tarot21solo', 'tarotAlch1'] },
   // 🌟 將總複習加入此分類
-  { id: 'c5', name: '🎓 考試與口說訓練', games: ['speak', 'speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examListen1', 'examRead1', 'examRead2', 'gramAmuPark', 'verbing', 'verbAmuPark', 'vocReviewing'] }
+  { id: 'c5', name: '🎓 考試與口說訓練', games: ['speak', 'speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examListen1', 'examRead1', 'examRead2', 'gramAmuPark', 'verbing', 'verbAmuPark', 'verbMonopoly', 'vocReviewing'] }
 ];
 
 const dynamicCategories = ref([...defaultCategories]);
@@ -133,7 +137,7 @@ onMounted(async () => {
         name: c.name || c.category_name || `分類 ${i+1}`,
         games: Array.isArray(c.games) ? [...c.games] : []
       }));
-      // 自訂分類以後台儲存內容為準，讓兩款大富翁可以自由移動或取消顯示。
+      // 已儲存的分類由後台決定；新遊戲可以自由安排或隱藏。
       const hasShooting = dynamicCategories.value.some(cat => cat.games.includes('vocshooting'));
       if (!hasShooting && dynamicCategories.value.length > 0) {
         dynamicCategories.value[0].games.push('vocshooting');

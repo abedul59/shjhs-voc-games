@@ -1,4 +1,5 @@
 <script setup>
+import { prepareEnglishUtterance } from '~/utils/englishSpeech';
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 
 useHead({
@@ -149,7 +150,7 @@ const speakWord = (text) => {
   if ('speechSynthesis' in window && text) {
     window.speechSynthesis.cancel(); 
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'en-US'; utterance.rate = 0.9; window.speechSynthesis.speak(utterance);
+    utterance.lang = 'en-US'; utterance.rate = 0.9; window.speechSynthesis.speak(prepareEnglishUtterance(utterance));
   }
 };
 

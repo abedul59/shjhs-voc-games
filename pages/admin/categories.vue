@@ -8,6 +8,7 @@ const categories = ref([]);
 const loadError = ref('');
 
 const allGames = [
+  { id: 'happyFarm', name: '🌻 單字開心農場' },
   { id: 'match', name: '🟦 方塊消消樂' },
   { id: 'move', name: '🔠 單字神移動' },
   { id: 'choice', name: '✅ 單字選選樂' },
@@ -30,8 +31,10 @@ const allGames = [
   { id: 'tetris', name: '🧱 俄羅斯方塊' },
   { id: 'pinball', name: '🎰 單字彈珠台' },
   { id: 'angrybirds', name: '🐦 單字憤怒鳥' },
+  { id: 'angrybirdsDual', name: '🐦 單字憤怒鳥（雙人）' },
   { id: 'solitaire', name: '🃏 撲克牌接龍' },
   { id: 'pikavolley', name: '⚡ 皮卡丘排球' },
+  { id: 'pikavolleyDual', name: '⚡ 皮卡丘排球（雙人）' },
   { id: 'pacman', name: '👻 單字小精靈' },
   { id: 'minesweeper', name: '💣 單字踩地雷' },
   { id: 'sudoku', name: '🔢 9x9數獨' },
@@ -49,6 +52,7 @@ const allGames = [
   { id: 'noropejump', name: '🏃‍♂️ 單字無繩式跳繩' },
   { id: 'verbing', name: '🌀 動詞變化大師' },
   { id: 'verbAmuPark', name: '🎢 動詞變化遊樂園' }, 
+  { id: 'verbMonopoly', name: '🏘️ 動詞變化大富翁' },
   { id: 'verbingDual', name: '⚔️ 動詞變化大師(對戰)' },
   { id: 'vocReviewing', name: '📖 單字例句總複習' }, // 🌟 補上新的總複習項目
   { id: 'monopoly', name: '🏘️ 單字大富翁（單人）' },

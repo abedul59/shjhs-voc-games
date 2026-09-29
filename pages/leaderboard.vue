@@ -8,7 +8,8 @@ const vocabMenu = ref([]);
 const studentsMap = ref({});
 
 const route = useRoute();
-const fromMonopoly = ['單字大富翁', '單字大富翁（雙人）'].includes(route.query.game);
+const verbMonopolyTypes = ['動詞變化大富翁（八年級）', '動詞變化大富翁（九年級）'];
+const fromMonopoly = ['單字大富翁', '單字開心農場', '單字大富翁（雙人）', '單字皮卡丘排球（雙人）', '單字憤怒鳥（雙人）', ...verbMonopolyTypes].includes(route.query.game);
 const selectedGameType = ref(fromMonopoly ? route.query.game : '單字方塊消消樂');
 const identityMode = ref('student'); 
 const selectedVersion = ref(fromMonopoly && typeof route.query.version === 'string' ? route.query.version : '');
@@ -20,7 +21,8 @@ const rankedList = ref([]);
 const pvpSortMode = ref('wins'); 
 const tetrisSortMode = ref('word'); 
 
-const pvpGames = ['單字大富翁（雙人）', '單字方塊陣', '單字吞食天地', '單字塔羅21點', '單字塔羅鍊金術', '單字塔羅UNO對決', '動詞對戰大師'];
+const pvpGames = ['單字大富翁（雙人）', '單字皮卡丘排球（雙人）', '單字憤怒鳥（雙人）', '單字方塊陣', '單字吞食天地', '單字塔羅21點', '單字塔羅鍊金術', '單字塔羅UNO對決', '動詞對戰大師'];
+const scoredWordDuels = ['單字皮卡丘排球（雙人）', '單字憤怒鳥（雙人）'];
 
 onMounted(async () => {
   const { data: sData } = await supabase.from('students').select('student_id, class_name, hidden_name').limit(10000);
@@ -32,7 +34,7 @@ onMounted(async () => {
     vData.forEach(item => { if (!uniqueMenu.find(u => u.version === item.version && u.volume === item.volume && u.unit === item.unit)) uniqueMenu.push(item); });
     vocabMenu.value = uniqueMenu;
   }
-  if (fromMonopoly && selectedUnit.value) await fetchLeaderboard();
+  if (fromMonopoly && (selectedUnit.value || verbMonopolyTypes.includes(selectedGameType.value))) await fetchLeaderboard();
 });
 
 const availableVersions = computed(() => [...new Set(vocabMenu.value.map(item => item.version))].filter(Boolean));
@@ -43,13 +45,13 @@ const onVersionChange = () => { selectedVolume.value = ''; selectedUnit.value = 
 const onVolumeChange = () => { selectedUnit.value = ''; rankedList.value = []; };
 
 const fetchLeaderboard = async () => {
-  const isVerbingGame = selectedGameType.value === '動詞變化大師' || selectedGameType.value === '動詞對戰大師';
-  if (!isVerbingGame && !selectedUnit.value) return;
+  const isNoUnitGame = ['動詞變化大師', '動詞對戰大師', ...verbMonopolyTypes].includes(selectedGameType.value);
+  if (!isNoUnitGame && !selectedUnit.value) return;
   isLoading.value = true;
 
   let query = supabase.from('game_records').select('*').limit(10000); 
 
-  if (isVerbingGame) {
+  if (isNoUnitGame) {
     query = query.eq('game_type', selectedGameType.value);
   } else {
     query = query
@@ -78,16 +80,22 @@ const fetchLeaderboard = async () => {
         const pvpRecords = {};
         filteredData.forEach(r => {
             if (!pvpRecords[r.student_id]) {
-                pvpRecords[r.student_id] = { student_id: r.student_id, wins: 0, losses: 0, escapes: 0 };
+                pvpRecords[r.student_id] = { student_id: r.student_id, wins: 0, losses: 0, escapes: 0, draws: 0 };
             }
             const cw = r.correct_words || '';
             if (cw.includes('【勝】') || cw.includes('結果: 勝')) pvpRecords[r.student_id].wins++;
             else if (cw.includes('【敗】') || cw.includes('結果: 敗')) pvpRecords[r.student_id].losses++;
             else if (cw.includes('【逃】') || cw.includes('逃跑') || cw.includes('逃走')) pvpRecords[r.student_id].escapes++;
+            else if (cw.startsWith('【平】')) pvpRecords[r.student_id].draws++;
+            if (scoredWordDuels.includes(selectedGameType.value) && (pvpRecords[r.student_id].score == null || r.score > pvpRecords[r.student_id].score)) {
+                Object.assign(pvpRecords[r.student_id], { score: r.score, correct_words: r.correct_words, wrong_words: r.wrong_words, mistakes: r.mistakes });
+            }
         });
         
         let pvpArray = Object.values(pvpRecords);
-        if (!['losses', 'escapes'].includes(pvpSortMode.value)) {
+        if (pvpSortMode.value === 'draws' && scoredWordDuels.includes(selectedGameType.value)) {
+            pvpArray = pvpArray.filter(r => r.draws > 0).sort((a, b) => b.draws - a.draws || b.wins - a.wins);
+        } else if (!['losses', 'escapes'].includes(pvpSortMode.value)) {
             pvpArray = pvpArray.filter(r => r.wins > 0).sort((a, b) => b.wins - a.wins || a.escapes - b.escapes || a.losses - b.losses);
         } else if (pvpSortMode.value === 'losses') {
             pvpArray = pvpArray.filter(r => r.losses > 0).sort((a, b) => b.losses - a.losses || b.wins - a.wins);
@@ -179,6 +187,8 @@ const getPlayerName = (id) => {
     <div class="filter-box retro-element">
       <div class="game-type-tabs">
         <button class="type-btn" :class="{ active: selectedGameType === '單字大富翁' }" @click="selectedGameType = '單字大富翁'; fetchLeaderboard()">🏘️ 大富翁</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字開心農場' }" @click="selectedGameType = '單字開心農場'; fetchLeaderboard()">🌻 開心農場</button>
+        <button v-for="(type, index) in verbMonopolyTypes" :key="type" class="type-btn" :class="{ active: selectedGameType === type }" @click="selectedGameType = type; fetchLeaderboard()">🏘️ 動詞大富翁（{{ index === 0 ? '八' : '九' }}）</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊消消樂' }" @click="selectedGameType = '單字方塊消消樂'; fetchLeaderboard()">🟦 方塊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字神移動' }" @click="selectedGameType = '單字神移動'; fetchLeaderboard()">🔠 移動</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字選選樂' }" @click="selectedGameType = '單字選選樂'; fetchLeaderboard()">✅ 選擇</button>
@@ -207,8 +217,10 @@ const getPlayerName = (id) => {
         <button class="type-btn" :class="{ active: selectedGameType === '單字小精靈' }" @click="selectedGameType = '單字小精靈'; fetchLeaderboard()">👻 小精靈</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字俄羅斯方塊' }" @click="selectedGameType = '單字俄羅斯方塊'; fetchLeaderboard()">🧱 俄羅斯</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字皮卡丘排球' }" @click="selectedGameType = '單字皮卡丘排球'; fetchLeaderboard()">🏐 皮卡排球</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字皮卡丘排球（雙人）' }" @click="selectedGameType = '單字皮卡丘排球（雙人）'; fetchLeaderboard()">🏐 皮卡排球（雙人）</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字彈珠台' }" @click="selectedGameType = '單字彈珠台'; fetchLeaderboard()">🎰 彈珠台</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字憤怒鳥' }" @click="selectedGameType = '單字憤怒鳥'; fetchLeaderboard()">🐦 憤怒鳥</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字憤怒鳥（雙人）' }" @click="selectedGameType = '單字憤怒鳥（雙人）'; fetchLeaderboard()">🐦 憤怒鳥（雙人）</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字看圖辨義' }" @click="selectedGameType = '單字看圖辨義'; fetchLeaderboard()">🖼️ 看圖辨義</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字音節忍者' }" @click="selectedGameType = '單字音節忍者'; fetchLeaderboard()">🥷 音節忍者</button>
         <button class="type-btn" :class="{ active: selectedGameType === '英語口說學霸' }" @click="selectedGameType = '英語口說學霸'; fetchLeaderboard()">🗣️ 口說學霸</button>
@@ -227,7 +239,7 @@ const getPlayerName = (id) => {
         <button class="sub-btn wins" :class="{ 'active': pvpSortMode === 'wins' }" @click="pvpSortMode = 'wins'; fetchLeaderboard()">🏆 勝利榜</button>
         <button class="sub-btn losses" :class="{ 'active': pvpSortMode === 'losses' }" @click="pvpSortMode = 'losses'; fetchLeaderboard()">💀 敗戰榜</button>
         <button class="sub-btn escapes" :class="{ 'active': pvpSortMode === 'escapes' }" @click="pvpSortMode = 'escapes'; fetchLeaderboard()">🏃 逃跑榜</button>
-        <button v-if="selectedGameType === '單字大富翁（雙人）'" class="sub-btn" :class="{ active: pvpSortMode === 'draws' }" @click="pvpSortMode = 'draws'; fetchLeaderboard()">🤝 平手榜</button>
+        <button v-if="['單字大富翁（雙人）', ...scoredWordDuels].includes(selectedGameType)" class="sub-btn" :class="{ active: pvpSortMode === 'draws' }" @click="pvpSortMode = 'draws'; fetchLeaderboard()">🤝 平手榜</button>
         <button v-if="selectedGameType === '單字大富翁（雙人）'" class="sub-btn" :class="{ active: pvpSortMode === 'score' }" @click="pvpSortMode = 'score'; fetchLeaderboard()">💰 現金分數榜</button>
       </div>
 
@@ -242,7 +254,7 @@ const getPlayerName = (id) => {
         <button class="id-btn" :class="{active: identityMode === 'anon'}" @click="identityMode = 'anon'; fetchLeaderboard()">🕵️ 匿名榜</button>
       </div>
       <div class="form-group" style="margin-top: 15px;">
-        <template v-if="!['動詞變化大師', '動詞對戰大師'].includes(selectedGameType)">
+        <template v-if="!['動詞變化大師', '動詞對戰大師', ...verbMonopolyTypes].includes(selectedGameType)">
           <select v-model="selectedVersion" @change="onVersionChange" class="retro-input"><option value="" disabled>版本...</option><option v-for="v in availableVersions" :key="v" :value="v">{{ v }}</option></select>
           <select v-model="selectedVolume" @change="onVolumeChange" class="retro-input" :disabled="!selectedVersion"><option value="" disabled>冊數...</option><option v-for="vol in availableVolumes" :key="vol" :value="vol">{{ vol }}</option></select>
           <select v-model="selectedUnit" @change="fetchLeaderboard" class="retro-input" :disabled="!selectedVolume"><option value="" disabled>單元...</option><option v-for="u in availableUnits" :key="u" :value="u">{{ u }}</option></select>
@@ -252,9 +264,11 @@ const getPlayerName = (id) => {
     </div>
 
     <p v-if="selectedGameType === '單字大富翁'" class="monopoly-note">🏘️ 分數為結束時的現金。每人取本單元最高分，同分以較短耗時優先；單字明細對應該筆最佳成績。</p>
+    <p v-if="selectedGameType === '單字開心農場'" class="monopoly-note">🌻 每答對一題得 10 分；每人取本單元單次學習最高分，對錯單字對應該次紀錄。</p>
+    <p v-if="verbMonopolyTypes.includes(selectedGameType)" class="monopoly-note">🏘️ 動詞變化大富翁以結束時現金計分；每人取該年級最佳分數，對錯動詞對應該筆成績。</p>
     <p v-if="selectedGameType === '單字大富翁（雙人）'" class="monopoly-note">🏘️ 可依勝、敗、逃、平或最高現金排名；單字明細對應該學生的最佳現金紀錄。</p>
     <p v-if="isLoading" class="loading-msg">⏳ 統計中...</p>
-    <div v-else-if="rankedList.length === 0 && selectedUnit" class="empty-msg retro-element">目前還沒有紀錄！</div>
+    <div v-else-if="rankedList.length === 0 && (selectedUnit || verbMonopolyTypes.includes(selectedGameType))" class="empty-msg retro-element">目前還沒有紀錄！</div>
 
     <div class="rank-list" v-if="rankedList.length > 0">
       <div class="rank-card retro-element" v-for="(record, index) in rankedList" :key="record.id" :class="{'top-1': index===0, 'top-2': index===1, 'top-3': index===2}">
@@ -263,9 +277,11 @@ const getPlayerName = (id) => {
         <!-- 🌟 名次區塊增加遊玩模式標示 -->
         <div class="rank-info">
           <div class="player-name">{{ getPlayerName(record.student_id) }}</div>
-          <details v-if="['單字大富翁', '單字大富翁（雙人）'].includes(selectedGameType)" class="monopoly-words">
-            <summary>查看最佳成績的對錯單字</summary>
+          <details v-if="['單字大富翁', '單字開心農場', '單字大富翁（雙人）', ...verbMonopolyTypes, ...scoredWordDuels].includes(selectedGameType)" class="monopoly-words">
+            <summary>查看最佳成績的對錯{{ verbMonopolyTypes.includes(selectedGameType) ? '動詞' : '單字' }}</summary>
             <p v-if="selectedGameType === '單字大富翁（雙人）'">最佳現金：{{ record.score }} 分 · {{ record.draws }} 平</p>
+            <p v-if="selectedGameType === '單字皮卡丘排球（雙人）'">最佳對戰與拼字：{{ record.score }} 分 · {{ record.draws }} 平</p>
+            <p v-if="selectedGameType === '單字憤怒鳥（雙人）'">最佳射擊與拼字：{{ record.score }} 分 · {{ record.draws }} 平</p>
             <p class="correct-words"><strong>答對：</strong>{{ record.correct_words || '無' }}</p>
             <p class="wrong-words"><strong>答錯：</strong>{{ record.wrong_words || '無' }}</p>
             <p>錯誤次數：{{ record.mistakes ?? 0 }} 次</p>
@@ -277,7 +293,7 @@ const getPlayerName = (id) => {
         </div>
         
         <div class="rank-score" v-if="pvpGames.includes(selectedGameType)">
-          <template v-if="pvpSortMode === 'wins' || (selectedGameType !== '單字大富翁（雙人）' && !['losses', 'escapes'].includes(pvpSortMode))">
+          <template v-if="pvpSortMode === 'wins' || (selectedGameType !== '單字大富翁（雙人）' && !['losses', 'escapes', 'draws'].includes(pvpSortMode))">
              <strong style="color: #4caf50;">{{ record.wins }} 勝</strong><br>
              <small><span style="color: #f44336;">{{ record.losses }} 敗</span> / <span style="color: #ff9800;">{{ record.escapes }} 逃</span></small>
           </template>
@@ -287,6 +303,7 @@ const getPlayerName = (id) => {
           </template>
           <template v-else-if="selectedGameType === '單字大富翁（雙人）' && pvpSortMode === 'score'"><strong>{{ record.score }}</strong> 分<br><small>{{ record.wins }} 勝 / {{ record.draws }} 平</small></template>
           <template v-else-if="selectedGameType === '單字大富翁（雙人）' && pvpSortMode === 'draws'"><strong>{{ record.draws }}</strong> 平<br><small>{{ record.wins }} 勝 / {{ record.losses }} 敗</small></template>
+          <template v-else-if="scoredWordDuels.includes(selectedGameType) && pvpSortMode === 'draws'"><strong>{{ record.draws }}</strong> 平<br><small>{{ record.wins }} 勝 / {{ record.losses }} 敗</small></template>
           <template v-else-if="pvpSortMode === 'escapes'">
              <strong style="color: #ff9800;">{{ record.escapes }} 逃</strong><br>
              <small><span style="color: #4caf50;">{{ record.wins }} 勝</span> / <span style="color: #f44336;">{{ record.losses }} 敗</span></small>
