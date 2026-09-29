@@ -84,7 +84,7 @@ const fetchLeaderboard = async () => {
   if (data) {
     const filteredData = data.filter(r => {
       const isAnonRecord = r.student_id.startsWith('anon_');
-      if (['單字大富翁', '單字大富翁（雙人）', ...verbMonopolyTypes, ...scoredWordDuels].includes(selectedGameType.value) && identityMode.value === 'student' && selectedClass.value !== 'ALL' && studentsMap.value[r.student_id]?.class_name !== selectedClass.value) return false;
+      if (['單字大富翁', '單字開心農場', '單字大富翁（雙人）', ...verbMonopolyTypes, ...scoredWordDuels].includes(selectedGameType.value) && identityMode.value === 'student' && selectedClass.value !== 'ALL' && studentsMap.value[r.student_id]?.class_name !== selectedClass.value) return false;
       return identityMode.value === 'student' ? !isAnonRecord : isAnonRecord;
     });
 
@@ -203,6 +203,7 @@ const getPlayerName = (id) => {
     <div class="filter-box retro-element">
       <div class="game-type-tabs">
         <button class="type-btn" :class="{ active: selectedGameType === '單字大富翁' }" @click="selectedGameType = '單字大富翁'; fetchLeaderboard()">🏘️ 大富翁</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字開心農場' }" @click="selectedGameType = '單字開心農場'; fetchLeaderboard()">🌻 開心農場</button>
         <button v-for="(type, index) in verbMonopolyTypes" :key="type" class="type-btn" :class="{ active: selectedGameType === type }" @click="selectedGameType = type; fetchLeaderboard()">🏘️ 動詞大富翁（{{ index === 0 ? '八' : '九' }}）</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊消消樂' }" @click="selectedGameType = '單字方塊消消樂'; fetchLeaderboard()">🟦 方塊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字神移動' }" @click="selectedGameType = '單字神移動'; fetchLeaderboard()">🔠 移動</button>
@@ -282,6 +283,7 @@ const getPlayerName = (id) => {
     </div>
 
     <p v-if="selectedGameType === '單字大富翁'" class="monopoly-note">🏘️ 分數為結束時的現金。每人取本單元最高分，同分以較短耗時優先；單字明細對應該筆最佳成績。</p>
+    <p v-if="selectedGameType === '單字開心農場'" class="monopoly-note">🌻 每答對一題得 10 分；每人取本單元單次學習最高分。</p>
     <p v-if="verbMonopolyTypes.includes(selectedGameType)" class="monopoly-note">🏘️ 動詞變化大富翁以結束時現金計分；每人取該年級最佳分數，對錯動詞對應該筆成績。</p>
     <p v-if="selectedGameType === '單字大富翁（雙人）'" class="monopoly-note">🏘️ 可依勝、敗、逃、平或最高現金排名；單字明細對應該學生的最佳現金紀錄。</p>
     <p v-if="isLoading" class="loading-msg">⏳ 統計中...</p>
@@ -294,7 +296,7 @@ const getPlayerName = (id) => {
         <!-- 🌟 名次區塊增加遊玩模式標示 -->
         <div class="rank-info">
           <div class="player-name">{{ getPlayerName(record.student_id) }}</div>
-          <details v-if="['單字大富翁', '單字大富翁（雙人）', ...verbMonopolyTypes, ...scoredWordDuels].includes(selectedGameType)" class="monopoly-words">
+          <details v-if="['單字大富翁', '單字開心農場', '單字大富翁（雙人）', ...verbMonopolyTypes, ...scoredWordDuels].includes(selectedGameType)" class="monopoly-words">
             <summary>查看最佳成績的對錯{{ verbMonopolyTypes.includes(selectedGameType) ? '動詞' : '單字' }}</summary>
             <p v-if="selectedGameType === '單字大富翁（雙人）'">最佳現金：{{ record.score }} 分 · {{ record.draws }} 平</p>
             <p v-if="selectedGameType === '單字皮卡丘排球（雙人）'">最佳對戰與拼字：{{ record.score }} 分 · {{ record.draws }} 平</p>

@@ -7,6 +7,7 @@ const isSaving = ref(false);
 const categories = ref([]);
 
 const allGames = [
+  { id: 'happyFarm', name: '🌻 單字開心農場' },
   { id: 'match', name: '🟦 方塊消消樂' },
   { id: 'move', name: '🔠 單字神移動' },
   { id: 'choice', name: '✅ 單字選選樂' },
