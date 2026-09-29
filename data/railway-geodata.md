@@ -9,3 +9,5 @@
 重建資料時，先下載上述 GeoJSON／Shapefile 及 N02 ZIP，安裝 `shapely` 與 `pyshp`，再執行 `python3 scripts/generate-railway-geodata.py --countries COUNTRIES.geojson --admin1 ADMIN1.shp --n02 N02-25_GML.zip`。腳本產生 `data/railway-outlines.json`、`data/railway-japan-index.json`、`public/railway/japan-*.json`，並依原有臺灣站點經緯度更新 `data/railway-taiwan.json`。日本的六個資料檔由前端按需載入。
 
 既有 Supabase 專案需執行 `supabase/migrations/20260929_railway_japan_progress_capacity.sql`，將車站章上限從 300 提升到 6,000；既有進度不會清除。
+
+日本車站圖鑑只在到站解鎖後查詢維基百科簡介（優先中文，找不到才查日文）。若文章有封面照片，另查 Wikimedia Commons 的作者、授權及圖片頁資訊後才顯示。站點資料本身不仰賴維基百科載入，維基百科暫時不可用時仍可遊玩。

@@ -111,7 +111,61 @@ let regionCompleteAtStart = false;
 const currentStation = computed(() => stationById.value[currentId.value] || regionStations.value[0] || { id: '', name: '載入中', x: 0, y: 0 });
 const viewedStation = computed(() => stationById.value[viewedId.value] || currentStation.value);
 const viewedInAtlas = computed(() => atlasUnlocked.value && progress.value.visitedIds.includes(viewedStation.value.id));
-const viewedWiki = computed(() => viewedStation.value);
+const stationWikiCache = ref({});
+const wikiPending = new Set();
+const viewedWiki = computed(() => ({ ...viewedStation.value, ...(stationWikiCache.value[viewedStation.value.id] || {}) }));
+watch([viewedId, selectedMapId, viewedInAtlas], async () => {
+  const station = viewedStation.value;
+  if (selectedMapId.value !== 'japan' || !viewedInAtlas.value || !station.id.startsWith('jp:') ||
+    stationWikiCache.value[station.id] || wikiPending.has(station.id)) return;
+  wikiPending.add(station.id);
+  try {
+    let page;
+    let wikiLanguage = 'ja';
+    for (const [language, suffix] of [['zh', '站'], ['zh', '車站'], ['ja', '駅']]) {
+      const response = await fetch(`https://${language}.wikipedia.org/api/rest_v1/page/summary/` + encodeURIComponent(station.name + suffix));
+      if (!response.ok) continue;
+      const candidate = await response.json();
+      if (candidate.type === 'disambiguation') continue;
+      page = candidate;
+      wikiLanguage = language;
+      break;
+    }
+    if (!page) throw new Error('Wikipedia summary unavailable');
+    const info = {
+      summary: page.extract?.slice(0, 220) || '',
+      wikiPage: page.content_urls?.desktop?.page || wikiUrl(station),
+      wikiLanguage
+    };
+    if (page.thumbnail?.source) {
+      try {
+        const match = new URL(page.thumbnail.source).pathname.match(/\/thumb\/[^/]+\/[^/]+\/([^/]+)\//);
+        if (match) {
+          const fileName = decodeURIComponent(match[1]);
+          const params = new URLSearchParams({ action: 'query', prop: 'imageinfo', iiprop: 'extmetadata|url',
+            titles: `File:${fileName}`, format: 'json', origin: '*' });
+          const imageResponse = await fetch('https://commons.wikimedia.org/w/api.php?' + params);
+          if (imageResponse.ok) {
+            const imageData = await imageResponse.json();
+            const imageInfo = Object.values(imageData.query?.pages || {})[0]?.imageinfo?.[0];
+            if (imageInfo?.descriptionurl && imageInfo?.extmetadata?.LicenseShortName?.value) {
+              info.image = page.thumbnail.source;
+              info.imagePage = imageInfo.descriptionurl;
+              info.imageAuthor = (imageInfo.extmetadata.Artist?.value || 'Wikimedia Commons')
+                .replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').slice(0, 100);
+              info.imageLicense = imageInfo.extmetadata.LicenseShortName.value;
+            }
+          }
+        }
+      } catch { /* The encyclopedia summary remains available without a licensed thumbnail. */ }
+    }
+    stationWikiCache.value = { ...stationWikiCache.value, [station.id]: info };
+  } catch {
+    stationWikiCache.value = { ...stationWikiCache.value, [station.id]: {} };
+  } finally {
+    wikiPending.delete(station.id);
+  }
+});
 const regionBounds = computed(() => {
   const points = regionStations.value;
   const minX = Math.min(...points.map(station => station.x));
@@ -605,7 +659,7 @@ onMounted(async () => {
           <p class="eyebrow">{{ viewedStation.line }} · {{ viewedStation.en || viewedStation.prefectureName || '' }}</p>
           <h2>{{ viewedStation.name }}車站 <span v-if="progress.visitedIds.includes(viewedStation.id)">📍 已集章</span></h2>
           <p>{{ viewedInAtlas ? (viewedWiki.summary || `${viewedStation.name}站位於${viewedStation.prefectureName || '日本'}，營運路線：${viewedStation.lines?.join('、') || viewedStation.line}。點選維基百科搜尋車站照片與詳細介紹。`) : `圖鑑尚未解鎖：先到達這座車站，並在${activeRegion.name}累積 ${atlasGoal} 座不同車站章。` }}</p>
-          <div v-if="viewedInAtlas" class="source-links"><a :href="wikiUrl(viewedStation)" target="_blank" rel="noopener noreferrer">{{ selectedMapId === 'japan' ? '維基百科搜尋 ↗' : '維基百科簡介 ↗' }}</a><a v-if="viewedWiki.imagePage" :href="viewedWiki.imagePage" target="_blank" rel="noopener noreferrer" :title="(viewedWiki.imageAuthor || 'Wikimedia Commons') + ' · ' + (viewedWiki.imageLicense || '請於圖片頁查看授權')">圖片：{{ viewedWiki.imageAuthor || 'Wikimedia Commons' }} · {{ viewedWiki.imageLicense || '授權資訊見圖片頁' }} ↗</a></div>
+          <div v-if="viewedInAtlas" class="source-links"><a :href="viewedWiki.wikiPage || wikiUrl(viewedStation)" target="_blank" rel="noopener noreferrer">{{ selectedMapId === 'japan' ? `維基百科${viewedWiki.wikiLanguage === 'zh' ? '中文' : '日文'}簡介（CC BY-SA）↗` : '維基百科簡介 ↗' }}</a><a v-if="viewedWiki.imagePage" :href="viewedWiki.imagePage" target="_blank" rel="noopener noreferrer" :title="(viewedWiki.imageAuthor || 'Wikimedia Commons') + ' · ' + (viewedWiki.imageLicense || '請於圖片頁查看授權')">圖片：{{ viewedWiki.imageAuthor || 'Wikimedia Commons' }} · {{ viewedWiki.imageLicense || '授權資訊見圖片頁' }} ↗</a></div>
         </div>
       </section>
 
