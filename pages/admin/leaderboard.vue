@@ -29,6 +29,7 @@ const tetrisSortMode = ref('word');
 
 const pvpGames = ['單字大富翁（雙人）', '單字皮卡丘排球（雙人）', '單字憤怒鳥（雙人）', '單字方塊陣', '單字吞食天地', '單字塔羅21點', '單字塔羅鍊金術', '單字塔羅UNO對決', '動詞對戰大師'];
 const scoredWordDuels = ['單字皮卡丘排球（雙人）', '單字憤怒鳥（雙人）'];
+const verbMonopolyTypes = ['動詞變化大富翁（八年級）', '動詞變化大富翁（九年級）'];
 
 onMounted(async () => {
   const { data: sData } = await supabase.from('students').select('student_id, class_name, hidden_name, real_name').limit(10000);
@@ -57,13 +58,13 @@ const onVersionChange = () => { selectedVolume.value = ''; selectedUnit.value = 
 const onVolumeChange = () => { selectedUnit.value = ''; rankedList.value = []; };
 
 const fetchLeaderboard = async () => {
-  const isVerbingGame = selectedGameType.value === '動詞變化大師' || selectedGameType.value === '動詞對戰大師';
-  if (!isVerbingGame && !selectedUnit.value) return;
+  const isNoUnitGame = ['動詞變化大師', '動詞對戰大師', ...verbMonopolyTypes].includes(selectedGameType.value);
+  if (!isNoUnitGame && !selectedUnit.value) return;
   isLoading.value = true;
 
   let query = supabase.from('game_records').select('*').limit(10000); 
 
-  if (isVerbingGame) {
+  if (isNoUnitGame) {
     query = query.eq('game_type', selectedGameType.value);
   } else {
     query = query
@@ -83,7 +84,7 @@ const fetchLeaderboard = async () => {
   if (data) {
     const filteredData = data.filter(r => {
       const isAnonRecord = r.student_id.startsWith('anon_');
-      if (['單字大富翁', '單字大富翁（雙人）', ...scoredWordDuels].includes(selectedGameType.value) && identityMode.value === 'student' && selectedClass.value !== 'ALL' && studentsMap.value[r.student_id]?.class_name !== selectedClass.value) return false;
+      if (['單字大富翁', '單字大富翁（雙人）', ...verbMonopolyTypes, ...scoredWordDuels].includes(selectedGameType.value) && identityMode.value === 'student' && selectedClass.value !== 'ALL' && studentsMap.value[r.student_id]?.class_name !== selectedClass.value) return false;
       return identityMode.value === 'student' ? !isAnonRecord : isAnonRecord;
     });
 
@@ -202,6 +203,7 @@ const getPlayerName = (id) => {
     <div class="filter-box retro-element">
       <div class="game-type-tabs">
         <button class="type-btn" :class="{ active: selectedGameType === '單字大富翁' }" @click="selectedGameType = '單字大富翁'; fetchLeaderboard()">🏘️ 大富翁</button>
+        <button v-for="(type, index) in verbMonopolyTypes" :key="type" class="type-btn" :class="{ active: selectedGameType === type }" @click="selectedGameType = type; fetchLeaderboard()">🏘️ 動詞大富翁（{{ index === 0 ? '八' : '九' }}）</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊消消樂' }" @click="selectedGameType = '單字方塊消消樂'; fetchLeaderboard()">🟦 方塊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字神移動' }" @click="selectedGameType = '單字神移動'; fetchLeaderboard()">🔠 移動</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字選選樂' }" @click="selectedGameType = '單字選選樂'; fetchLeaderboard()">✅ 選擇</button>
@@ -270,7 +272,7 @@ const getPlayerName = (id) => {
             <option value="ALL">🌟 全校排名</option>
             <option v-for="c in classesList" :key="c" :value="c">班級：{{ c }}</option>
         </select>
-        <template v-if="!['動詞變化大師', '動詞對戰大師'].includes(selectedGameType)">
+        <template v-if="!['動詞變化大師', '動詞對戰大師', ...verbMonopolyTypes].includes(selectedGameType)">
           <select v-model="selectedVersion" @change="onVersionChange" class="retro-input"><option value="" disabled>版本...</option><option v-for="v in availableVersions" :key="v" :value="v">{{ v }}</option></select>
           <select v-model="selectedVolume" @change="onVolumeChange" class="retro-input" :disabled="!selectedVersion"><option value="" disabled>冊數...</option><option v-for="vol in availableVolumes" :key="vol" :value="vol">{{ vol }}</option></select>
           <select v-model="selectedUnit" @change="fetchLeaderboard" class="retro-input" :disabled="!selectedVolume"><option value="" disabled>單元...</option><option v-for="u in availableUnits" :key="u" :value="u">{{ u }}</option></select>
@@ -280,9 +282,10 @@ const getPlayerName = (id) => {
     </div>
 
     <p v-if="selectedGameType === '單字大富翁'" class="monopoly-note">🏘️ 分數為結束時的現金。每人取本單元最高分，同分以較短耗時優先；單字明細對應該筆最佳成績。</p>
+    <p v-if="verbMonopolyTypes.includes(selectedGameType)" class="monopoly-note">🏘️ 動詞變化大富翁以結束時現金計分；每人取該年級最佳分數，對錯動詞對應該筆成績。</p>
     <p v-if="selectedGameType === '單字大富翁（雙人）'" class="monopoly-note">🏘️ 可依勝、敗、逃、平或最高現金排名；單字明細對應該學生的最佳現金紀錄。</p>
     <p v-if="isLoading" class="loading-msg">⏳ 統計中...</p>
-    <div v-else-if="rankedList.length === 0 && selectedUnit" class="empty-msg retro-element">目前還沒有紀錄！</div>
+    <div v-else-if="rankedList.length === 0 && (selectedUnit || verbMonopolyTypes.includes(selectedGameType))" class="empty-msg retro-element">目前還沒有紀錄！</div>
 
     <div class="rank-list" v-if="rankedList.length > 0">
       <div class="rank-card retro-element" v-for="(record, index) in rankedList" :key="record.id" :class="{'top-1': index===0, 'top-2': index===1, 'top-3': index===2}">
@@ -291,8 +294,8 @@ const getPlayerName = (id) => {
         <!-- 🌟 名次區塊增加遊玩模式標示 -->
         <div class="rank-info">
           <div class="player-name">{{ getPlayerName(record.student_id) }}</div>
-          <details v-if="['單字大富翁', '單字大富翁（雙人）', ...scoredWordDuels].includes(selectedGameType)" class="monopoly-words">
-            <summary>查看最佳成績的對錯單字</summary>
+          <details v-if="['單字大富翁', '單字大富翁（雙人）', ...verbMonopolyTypes, ...scoredWordDuels].includes(selectedGameType)" class="monopoly-words">
+            <summary>查看最佳成績的對錯{{ verbMonopolyTypes.includes(selectedGameType) ? '動詞' : '單字' }}</summary>
             <p v-if="selectedGameType === '單字大富翁（雙人）'">最佳現金：{{ record.score }} 分 · {{ record.draws }} 平</p>
             <p v-if="selectedGameType === '單字皮卡丘排球（雙人）'">最佳對戰與拼字：{{ record.score }} 分 · {{ record.draws }} 平</p>
             <p v-if="selectedGameType === '單字憤怒鳥（雙人）'">最佳射擊與拼字：{{ record.score }} 分 · {{ record.draws }} 平</p>

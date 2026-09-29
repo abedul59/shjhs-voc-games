@@ -50,6 +50,7 @@ const allGames = [
   { id: 'noropejump', name: '🏃‍♂️ 單字無繩式跳繩' },
   { id: 'verbing', name: '🌀 動詞變化大師' },
   { id: 'verbAmuPark', name: '🎢 動詞變化遊樂園' }, 
+  { id: 'verbMonopoly', name: '🏘️ 動詞變化大富翁' },
   { id: 'verbingDual', name: '⚔️ 動詞變化大師(對戰)' },
   { id: 'vocReviewing', name: '📖 單字例句總複習' }, // 🌟 補上新的總複習項目
   { id: 'monopolyDual', name: '🏘️ 單字大富翁（雙人）' },

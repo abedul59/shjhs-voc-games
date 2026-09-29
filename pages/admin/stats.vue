@@ -23,6 +23,7 @@ const isLoading = ref(false);
 
 const wordStats = ref([]);
 const isSpecialGame = ref(false); 
+const verbMonopolyTypes = ['動詞變化大富翁（八年級）', '動詞變化大富翁（九年級）'];
 
 onMounted(async () => {
   const { data: sData } = await supabase.from('students').select('student_id, class_name').limit(10000);
@@ -51,7 +52,7 @@ const onVersionChange = () => { selectedVolume.value = ''; selectedUnit.value = 
 const onVolumeChange = () => { selectedUnit.value = ''; wordStats.value = []; };
 
 const fetchStats = async () => {
-  if (!selectedUnit.value) return;
+  if (!selectedUnit.value && !verbMonopolyTypes.includes(selectedGameType.value)) return;
 
   // 🌟 對戰與俄羅斯方塊不分析單字，但塔羅牌系列與 6 款新遊戲「會」分析單字！
   if (selectedGameType.value === '單字方塊陣' || selectedGameType.value === '單字俄羅斯方塊' || selectedGameType.value === '單字吞食天地') {
@@ -63,11 +64,11 @@ const fetchStats = async () => {
   isSpecialGame.value = false;
   isLoading.value = true;
 
-  let query = supabase.from('game_records').select('*')
+  let query = supabase.from('game_records').select('*').limit(10000);
+  if (!verbMonopolyTypes.includes(selectedGameType.value)) query = query
     .eq('version', selectedVersion.value)
     .eq('volume', selectedVolume.value)
-    .eq('unit_played', selectedUnit.value)
-    .limit(10000);
+    .eq('unit_played', selectedUnit.value);
 
   if (selectedGameType.value === '單字方塊消消樂') {
     query = query.or('game_type.eq.單字方塊消消樂,game_type.is.null');
@@ -146,6 +147,7 @@ const fetchStats = async () => {
     <div class="filter-box retro-element">
       <div class="game-type-tabs">
         <button class="type-btn" :class="{ active: selectedGameType === '單字大富翁' }" @click="selectedGameType = '單字大富翁'; fetchStats()">🏘️ 大富翁</button>
+        <button v-for="(type, index) in verbMonopolyTypes" :key="type" class="type-btn" :class="{ active: selectedGameType === type }" @click="selectedGameType = type; fetchStats()">🏘️ 動詞大富翁（{{ index === 0 ? '八' : '九' }}）</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊消消樂' }" @click="selectedGameType = '單字方塊消消樂'; fetchStats()">🟦 方塊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字神移動' }" @click="selectedGameType = '單字神移動'; fetchStats()">🔠 移動</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字選選樂' }" @click="selectedGameType = '單字選選樂'; fetchStats()">✅ 選擇</button>
@@ -199,9 +201,12 @@ const fetchStats = async () => {
             <option value="ALL">🌟 全校資料 (實名)</option>
             <option v-for="c in classesList" :key="c" :value="c">班級：{{ c }}</option>
         </select>
-        <select v-model="selectedVersion" @change="onVersionChange" class="retro-input"><option value="" disabled>版本...</option><option v-for="v in availableVersions" :key="v" :value="v">{{ v }}</option></select>
-        <select v-model="selectedVolume" @change="onVolumeChange" class="retro-input" :disabled="!selectedVersion"><option value="" disabled>冊數...</option><option v-for="vol in availableVolumes" :key="vol" :value="vol">{{ vol }}</option></select>
-        <select v-model="selectedUnit" @change="fetchStats" class="retro-input" :disabled="!selectedVolume"><option value="" disabled>單元...</option><option v-for="u in availableUnits" :key="u" :value="u">{{ u }}</option></select>
+        <template v-if="!verbMonopolyTypes.includes(selectedGameType)">
+          <select v-model="selectedVersion" @change="onVersionChange" class="retro-input"><option value="" disabled>版本...</option><option v-for="v in availableVersions" :key="v" :value="v">{{ v }}</option></select>
+          <select v-model="selectedVolume" @change="onVolumeChange" class="retro-input" :disabled="!selectedVersion"><option value="" disabled>冊數...</option><option v-for="vol in availableVolumes" :key="vol" :value="vol">{{ vol }}</option></select>
+          <select v-model="selectedUnit" @change="fetchStats" class="retro-input" :disabled="!selectedVolume"><option value="" disabled>單元...</option><option v-for="u in availableUnits" :key="u" :value="u">{{ u }}</option></select>
+        </template>
+        <span v-else>動詞總表模式：無需選擇單元</span>
       </div>
     </div>
 
@@ -209,6 +214,7 @@ const fetchStats = async () => {
     <p v-if="selectedGameType === '單字皮卡丘排球（雙人）'">🏐 分別統計兩位學生各自的作答；勝敗、平手、離場與排球比分不計為單字。</p>
     <p v-if="selectedGameType === '單字憤怒鳥（雙人）'">🐦 分別統計兩位學生各自的作答；勝敗、平手、離場與完成字數不計為單字。</p>
     <p v-if="selectedGameType === '單字大富翁'">🏘️ 僅統計學生本人的作答；同一單字重複作答會逐次計入，電腦作答不列入分析。</p>
+    <p v-if="verbMonopolyTypes.includes(selectedGameType)">🏘️ 僅統計學生本人的動詞作答；同一動詞重複作答會逐次計入，電腦作答不列入分析。</p>
     <div v-if="isSpecialGame" class="special-msg-box retro-element">
       <div class="icon-big">ℹ️</div>
       <h3>此模式不支援單字對錯分析</h3>
@@ -217,13 +223,13 @@ const fetchStats = async () => {
 
     <div v-else>
       <p v-if="isLoading" class="loading-msg">⏳ 數據運算中...</p>
-      <div v-else-if="wordStats.length === 0 && selectedUnit" class="empty-msg retro-element">目前還沒有足以分析的紀錄！</div>
+      <div v-else-if="wordStats.length === 0 && (selectedUnit || verbMonopolyTypes.includes(selectedGameType))" class="empty-msg retro-element">目前還沒有足以分析的紀錄！</div>
       
       <div class="stats-table-wrapper retro-element" v-else-if="wordStats.length > 0">
         <table class="stats-table">
           <thead>
             <tr>
-              <th>單字</th>
+              <th>{{ verbMonopolyTypes.includes(selectedGameType) ? '動詞原形' : '單字' }}</th>
               <th>錯誤率</th>
               <th>對/錯次數</th>
               <th>平均耗時</th>

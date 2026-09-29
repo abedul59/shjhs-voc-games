@@ -22,6 +22,7 @@ watch(selectedUnit, (val) => { if (typeof window !== 'undefined') localStorage.s
 const gameDict = {
   'match': { name: '🟦 方塊消消樂', path: '/game', class: '' },
   'monopoly': { name: '🏘️ 單字大富翁', path: '/game-monopoly', class: 'monopoly-btn' },
+  'verbMonopoly': { name: '🏘️ 動詞變化大富翁', path: '/game-verb-monopoly', class: 'monopoly-btn' },
   'move': { name: '🔠 單字神移動', path: '/game-move', class: '' },
   'choice': { name: '✅ 單字選選樂', path: '/game-choice', class: '' },
   'fill': { name: '⌨️ 單字填一填', path: '/game-fill', class: '' },
@@ -77,7 +78,7 @@ const gameDict = {
   'vocReviewing': { name: '📖 單字例句總複習', path: '/game-vocReviewing', class: 'picture2meaning-btn full-width' }
 };
 
-const noUnitGames = ['speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examRead1', 'examRead2', 'verbing', 'verbingDual', 'verbAmuPark'];
+const noUnitGames = ['speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examRead1', 'examRead2', 'verbing', 'verbingDual', 'verbAmuPark', 'verbMonopoly'];
 const isNoUnitGame = computed(() => noUnitGames.includes(selectedGameType.value));
 
 const defaultCategories = [
@@ -86,7 +87,7 @@ const defaultCategories = [
   { id: 'c3', name: '👾 懷舊街機遊樂場', games: ['tetris', 'pinball', 'angrybirds', 'solitaire', 'pikavolley', 'pacman', 'minesweeper', 'sudoku'] },
   { id: 'c4', name: '⚔️ 雙人對戰與領域牌組', games: ['monopolyDual', 'pikavolleyDual', 'angrybirdsDual', 'battle', 'tenchi', 'tarot21', 'tarotAlch', 'tarotUno', 'tarotUno1', 'tarot21solo', 'tarotAlch1'] },
   // 🌟 將總複習加入此分類
-  { id: 'c5', name: '🎓 考試與口說訓練', games: ['speak', 'speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examListen1', 'examRead1', 'examRead2', 'gramAmuPark', 'verbing', 'verbAmuPark', 'vocReviewing'] }
+  { id: 'c5', name: '🎓 考試與口說訓練', games: ['speak', 'speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examListen1', 'examRead1', 'examRead2', 'gramAmuPark', 'verbing', 'verbAmuPark', 'verbMonopoly', 'vocReviewing'] }
 ];
 
 const dynamicCategories = ref([...defaultCategories]);
@@ -158,10 +159,12 @@ onMounted(async () => {
       }
       const hasVerbing = dynamicCategories.value.some(cat => cat.games.includes('verbing'));
       const hasVerbAmuPark = dynamicCategories.value.some(cat => cat.games.includes('verbAmuPark'));
+      const hasVerbMonopoly = dynamicCategories.value.some(cat => cat.games.includes('verbMonopoly'));
       const hasVocReviewing = dynamicCategories.value.some(cat => cat.games.includes('vocReviewing'));
       if (dynamicCategories.value.length > 0) {
         if (!hasVerbing) dynamicCategories.value[dynamicCategories.value.length - 1].games.push('verbing');
         if (!hasVerbAmuPark) dynamicCategories.value[dynamicCategories.value.length - 1].games.push('verbAmuPark');
+        if (!hasVerbMonopoly) dynamicCategories.value[dynamicCategories.value.length - 1].games.push('verbMonopoly');
         if (!hasVocReviewing) dynamicCategories.value[dynamicCategories.value.length - 1].games.push('vocReviewing');
       }
     }
