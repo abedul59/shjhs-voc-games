@@ -288,6 +288,8 @@ async function loadLoans(settleOverdue = false) {
   if (student.value?.isAnon) return;
   if (settleOverdue && settlingLoans.value) return;
   if (settleOverdue) settlingLoans.value = true;
+  const lockActions = settleOverdue && ready.value;
+  if (lockActions) busy.value = true;
   try {
     const { data, error } = await db.rpc('happy_farm_loan_list', { p_student_id: studentId.value });
     if (error) { loanError.value = '同學借款尚未啟用：請先執行本次新增的 SQL。'; return; }
@@ -303,7 +305,10 @@ async function loadLoans(settleOverdue = false) {
       if (overdue.length && !loanError.value) { await loadFarm(); await loadLoans(); }
     }
   } catch (error) { loanError.value = '借款資料更新失敗：' + error.message; }
-  finally { if (settleOverdue) settlingLoans.value = false; }
+  finally {
+    if (settleOverdue) settlingLoans.value = false;
+    if (lockActions) busy.value = false;
+  }
 }
 async function loadVisitActivity() {
   if (student.value?.isAnon) return;
@@ -360,10 +365,11 @@ async function returnHomeFarm() {
 async function refreshSocial() {
   if (busy.value || quiz.value) return;
   try {
+    const previousNotice = notice.value;
     if (visiting.value) await refreshPeer();
     else await loadFarm();
     await Promise.all([loadVisitActivity(), loadLoans(true)]);
-    notice.value = '農場與互訪紀錄已更新。';
+    if (notice.value === previousNotice) notice.value = '農場與互訪紀錄已更新。';
   } catch (error) { notice.value = '更新失敗：' + error.message; }
 }
 async function applyVisit(q) {
@@ -622,9 +628,10 @@ onMounted(async () => {
     if (words.value.length < 2) { notice.value = '這個單元需要至少兩筆中英對照單字，請改選其他單元。'; return; }
     await loadFarm();
     await loadSession();
+    const previousNotice = notice.value;
     await Promise.all([loadClassmates(), loadVisitActivity(), loadLoans(true)]);
     ready.value = true;
-    notice.value = '耕種、養殖、光電、加工與觀光操作都要先答對單字；「同學」分頁可拜訪同班農場。';
+    if (notice.value === previousNotice) notice.value = '耕種、養殖、光電、加工與觀光操作都要先答對單字；「同學」分頁可拜訪同班農場。';
   } catch (error) {
     notice.value = '農場無法載入：' + error.message + '。請確認新專案已執行開心農場 SQL。';
   } finally { loading.value = false; }
