@@ -5,6 +5,7 @@ import {
   applyFarmAction, cropById, farmActionError, freshFarm, withVillageLand, villagePrice, villagePlotCount,
   villageById, neighborAccess, landSalePrice
 } from '~/lib/happy-farm';
+import { FARM_ANIMALS, animalActionError, animalById, applyAnimalAction } from '~/lib/happy-farm-animals';
 
 const db = useSupabaseClient();
 const route = useRoute();
@@ -22,6 +23,7 @@ const selectedPlot = ref(0);
 const selectedVillage = ref('');
 const selectedDistrict = ref('新化區');
 const selectedCrop = ref('carrot');
+const selectedAnimalId = ref('chicken');
 const activePanel = ref('tools');
 const classmates = ref([]);
 const chosenClassmateId = ref('');
@@ -65,6 +67,17 @@ function chooseVillage(id) {
 }
 const selected = computed(() => viewFarm.value.plots[selectedPlot.value] || null);
 const totalProduce = computed(() => Object.values(farm.value.produce).reduce((sum, count) => sum + Number(count || 0), 0));
+const animal = id => animalById(id);
+const selectedAnimal = computed(() => animal(selectedAnimalId.value) || FARM_ANIMALS[0]);
+const selectedPen = computed(() => farm.value.animals?.[selectedAnimal.value.id] || null);
+const ownedAnimals = computed(() => FARM_ANIMALS.filter(item => farm.value.animals?.[item.id]).length);
+const totalAnimalProducts = computed(() => Object.values(farm.value.animalProducts || {}).reduce((sum, count) => sum + Number(count || 0), 0));
+const animalCareDone = (item, pen) => !!pen && item.care.every(task => pen.care?.[task.id]);
+const animalTimeLabel = pen => {
+  if (!pen) return '等待入住';
+  const seconds = Math.max(0, Math.ceil((pen.readyAt - now.value) / 1000));
+  return seconds ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : '已到採集時間';
+};
 const lessonLabel = computed(() => [lesson.version, lesson.volume, lesson.unit].join(' · '));
 const sessionKey = computed(() => 'shjhs_happy_farm_session:' + [studentId.value, lesson.version, lesson.volume, lesson.unit].join(':'));
 const secondsLeft = plot => Math.max(0, Math.ceil((plot.readyAt - now.value) / 1000));
@@ -92,6 +105,8 @@ const careStatus = plot => {
 const pulseIcon = action => ({ water: '💧', fertilize: '✨', weed: '🌾', pest: '🛡️' })[action] || '';
 const can = (action, cropId = selectedCrop.value) =>
   ready.value && !visiting.value && !busy.value && !quiz.value && !farmActionError(farm.value, action, cropId, selectedPlot.value, now.value, selectedVillage.value);
+const canAnimal = (action, animalId = selectedAnimal.value.id, careId = '') =>
+  ready.value && !visiting.value && !busy.value && !quiz.value && !animalActionError(farm.value, action, animalId, careId, now.value);
 function visitProblem(action, plotIndex = selectedPlot.value) {
   const plot = peerFarm.value?.plots?.[plotIndex];
   if (!plot) return '這塊田尚未播種。';
@@ -326,6 +341,23 @@ function beginAction(action, cropId = selectedCrop.value) {
   answer.value = '';
   quizError.value = '';
 }
+function beginAnimalAction(action, careId = '') {
+  if (!ready.value || visiting.value || busy.value || quiz.value) return;
+  const animalId = selectedAnimal.value.id;
+  const problem = animalActionError(farm.value, action, animalId, careId, Date.now());
+  if (problem) { notice.value = problem; return; }
+  const item = selectedAnimal.value;
+  const care = item.care.find(task => task.id === careId);
+  const actionText = {
+    buyAnimal: `讓${item.name}入住養殖區`,
+    careAnimal: `幫${item.name}${care?.label || '照護'}`,
+    collectAnimal: `採集${item.product}`,
+    sellAnimalProduct: `賣出全部${item.product}`
+  }[action];
+  quiz.value = { ...buildQuiz(), action, animalId, careId, actionText };
+  answer.value = '';
+  quizError.value = '';
+}
 async function submitAnswer() {
   if (!quiz.value || busy.value || !String(answer.value).trim()) return;
   busy.value = true;
@@ -334,11 +366,15 @@ async function submitAnswer() {
   try {
     let result = null;
     if (correct) {
-      const problem = q.ownerId
-        ? visitProblem(q.action, q.plotIndex)
-        : farmActionError(farm.value, q.action, q.cropId, q.plotIndex, Date.now(), q.villageId);
+      const problem = q.ownerId ? visitProblem(q.action, q.plotIndex)
+        : q.animalId ? animalActionError(farm.value, q.action, q.animalId, q.careId, Date.now())
+          : farmActionError(farm.value, q.action, q.cropId, q.plotIndex, Date.now(), q.villageId);
       if (problem) { notice.value = problem; quiz.value = null; return; }
       if (q.ownerId) result = await applyVisit(q);
+      else if (q.animalId) {
+        result = applyAnimalAction(farm.value, q.action, q.animalId, q.careId, Date.now());
+        await saveFarm(result.farm);
+      }
       else {
         result = applyFarmAction(farm.value, q.action, q.cropId, q.plotIndex, Date.now(), q.villageId);
         await saveFarm(result.farm);
@@ -353,7 +389,7 @@ async function submitAnswer() {
     rememberSession();
     await syncRecord();
     notice.value = correct
-      ? '答對 ' + q.word.en_us + '！已完成「' + q.actionText + '」' + (q.action === 'harvest' || q.ownerId ? '，' + result.detail : '') + '。'
+      ? '答對 ' + q.word.en_us + '！已完成「' + q.actionText + '」' + (q.action === 'harvest' || q.ownerId || q.animalId ? '，' + result.detail : '') + '。'
       : '答錯了：' + q.word.en_us + '＝' + q.word.zh_tw + '。這次沒有執行「' + q.actionText + '」。';
     quiz.value = null;
     now.value = Date.now();
@@ -390,7 +426,7 @@ onMounted(async () => {
     await loadSession();
     await Promise.all([loadClassmates(), loadVisitActivity()]);
     ready.value = true;
-    notice.value = '點田地後選操作，答對單字即可執行；「同學」分頁可拜訪同班農場。';
+    notice.value = '田地與養殖區的每項操作都要先答對單字；「同學」分頁可拜訪同班農場。';
   } catch (error) {
     notice.value = '農場無法載入：' + error.message + '。請確認新專案已執行開心農場 SQL。';
   } finally { loading.value = false; }
@@ -418,7 +454,23 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
         <NuxtLink :to="{ path: '/history', query: { game: '單字開心農場' } }">📊 學習紀錄</NuxtLink>
       </section>
       <div class="farm-layout">
-        <section class="farm-field" aria-label="我的農地">
+        <section v-if="activePanel === 'animals' && !visiting" class="animal-field" aria-label="我的養殖區">
+          <div class="animal-scene"><span>🌤️</span><strong>🐾 我的養殖區</strong><span>{{ ownedAnimals }}/{{ FARM_ANIMALS.length }} 種已入住</span></div>
+          <div class="animal-grid">
+            <button v-for="item in FARM_ANIMALS" :key="item.id" type="button" class="animal-pen"
+              :class="{ chosen: selectedAnimalId === item.id, owned: !!farm.animals?.[item.id], productive: animalCareDone(item, farm.animals?.[item.id]) && now >= farm.animals[item.id].readyAt }"
+              :aria-pressed="selectedAnimalId === item.id" :aria-label="item.name + (farm.animals?.[item.id] ? '，已入住，' + animalTimeLabel(farm.animals[item.id]) : '，尚未入住')"
+              @click="selectedAnimalId = item.id">
+              <span class="animal-sprite" aria-hidden="true">{{ item.icon }}</span>
+              <strong>{{ item.name }}</strong>
+              <small v-if="farm.animals?.[item.id]">{{ animalCareDone(item, farm.animals[item.id]) ? (now >= farm.animals[item.id].readyAt ? '✨ 可採集' : '照護完成 · ' + animalTimeLabel(farm.animals[item.id])) : '待照護 · ' + animalTimeLabel(farm.animals[item.id]) }}</small>
+              <small v-else>🪙 {{ item.price }} 金幣入住</small>
+              <span class="animal-pen-product">{{ item.productIcon }} {{ item.product }}</span>
+            </button>
+          </div>
+          <p class="animal-scene-note">每種動物有自己的照護任務；完成照護並等候產出，再答題採集。離線時倒數仍會繼續。</p>
+        </section>
+        <section v-else class="farm-field" aria-label="我的農地">
           <div class="scene-sky"><span>☀️</span><span>☁️</span><span>🐦</span></div>
           <div class="farm-barn">🏠 <span>{{ visiting ? visiting.hidden_name + ' 的農場' : '我的小農舍' }} · {{ villageName(selectedVillage) }}</span></div>
           <div class="land-layout">
@@ -460,11 +512,12 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
           </div>
         </section>
         <aside class="farm-controls">
-          <div v-if="!ownedVillage && !visiting" class="land-buy-card"><strong>🏡 {{ villageName(selectedVillage) }}</strong><span>購地 {{ villageCost }} 金幣 · 獲得 4 塊田</span><button type="button" :disabled="!can('buyLand')" @click="beginAction('buyLand')">答題購買此里農地</button></div>
-          <div v-if="ownedVillage && !visiting && selectedVillage !== farm.homeVillage" class="land-buy-card"><strong>🏡 {{ villageName(selectedVillage) }}</strong><span>收成此里作物後，可售地獲得 {{ villageRefund }} 金幣</span><button type="button" :disabled="!can('sellLand')" @click="beginAction('sellLand')">答題出售農地</button></div>
+          <div v-if="!ownedVillage && !visiting && activePanel !== 'animals'" class="land-buy-card"><strong>🏡 {{ villageName(selectedVillage) }}</strong><span>購地 {{ villageCost }} 金幣 · 獲得 4 塊田</span><button type="button" :disabled="!can('buyLand')" @click="beginAction('buyLand')">答題購買此里農地</button></div>
+          <div v-if="ownedVillage && !visiting && selectedVillage !== farm.homeVillage && activePanel !== 'animals'" class="land-buy-card"><strong>🏡 {{ villageName(selectedVillage) }}</strong><span>收成此里作物後，可售地獲得 {{ villageRefund }} 金幣</span><button type="button" :disabled="!can('sellLand')" @click="beginAction('sellLand')">答題出售農地</button></div>
           <nav class="panel-tabs" aria-label="農場操作">
             <button type="button" :class="{ active: activePanel === 'tools' }" :disabled="!!visiting" @click="activePanel = 'tools'">🧤 農具</button>
             <button type="button" :class="{ active: activePanel === 'shop' }" :disabled="!!visiting" @click="activePanel = 'shop'">🛒 商店</button>
+            <button type="button" :class="{ active: activePanel === 'animals' }" :disabled="!!visiting" @click="activePanel = 'animals'">🐾 動物</button>
             <button type="button" :class="{ active: activePanel === 'visitors' }" @click="activePanel = 'visitors'">🏘️ 同學</button>
           </nav>
           <section v-if="activePanel === 'tools' && !visiting && ownedVillage" class="tool-card">
@@ -490,6 +543,25 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
               <div><button type="button" :disabled="!can('buy', item.id)" @click="beginAction('buy', item.id)">買種苗</button><button type="button" :disabled="!can('sell', item.id)" @click="beginAction('sell', item.id)">賣作物</button></div>
             </div></div>
             <button v-if="ownedVillage" class="expand" type="button" :disabled="!can('expand')" @click="beginAction('expand')">🪵 擴建 {{ villageName(selectedVillage) }} 一塊田 · {{ expansionCost }} 金幣</button>
+          </section>
+          <section v-if="activePanel === 'animals' && !visiting" class="animal-card">
+            <h2>{{ selectedAnimal.icon }} {{ selectedAnimal.name }} <small>產品：{{ selectedAnimal.productIcon }} {{ selectedAnimal.product }}</small></h2>
+            <p class="animal-intro">{{ selectedPen ? '已入住 · 本輪產品倒數 ' + animalTimeLabel(selectedPen) : '尚未入住 · 購買後可開始照護' }}</p>
+            <p class="animal-economy">入住 {{ selectedAnimal.price }} 金幣 · 每 {{ selectedAnimal.minutes }} 分鐘產出 {{ selectedAnimal.yield }} 份 · 每份售價 {{ selectedAnimal.sale }} 金幣</p>
+            <button v-if="!selectedPen" type="button" class="animal-primary" :disabled="!canAnimal('buyAnimal')" @click="beginAnimalAction('buyAnimal')">答題讓 {{ selectedAnimal.name }} 入住</button>
+            <template v-else>
+              <div class="animal-care-list" aria-label="本輪照護任務">
+                <button v-for="task in selectedAnimal.care" :key="task.id" type="button" :class="{ done: selectedPen.care?.[task.id] }"
+                  :disabled="!canAnimal('careAnimal', selectedAnimal.id, task.id)" @click="beginAnimalAction('careAnimal', task.id)">
+                  <span>{{ task.icon }} {{ task.label }}</span><strong>{{ selectedPen.care?.[task.id] ? '✓ 已完成' : '答題照護' }}</strong>
+                </button>
+              </div>
+              <button type="button" class="animal-primary" :disabled="!canAnimal('collectAnimal')" @click="beginAnimalAction('collectAnimal')">{{ selectedAnimal.productIcon }} 答題採集 {{ selectedAnimal.product }}</button>
+              <p class="animal-help">{{ animalCareDone(selectedAnimal, selectedPen) ? (now >= selectedPen.readyAt ? '照護與倒數皆完成，可以採集。' : '照護已完成，等待產出。') : '先答對單字，完成上方三項照護。' }}</p>
+            </template>
+            <div class="animal-inventory"><span>🎒 {{ selectedAnimal.product }}庫存 <strong>{{ farm.animalProducts?.[selectedAnimal.id] || 0 }}</strong></span><button type="button" :disabled="!canAnimal('sellAnimalProduct')" @click="beginAnimalAction('sellAnimalProduct')">答題賣出</button></div>
+            <p class="animal-total">動物產品共 {{ totalAnimalProducts }} 份 · 累計採集 {{ farm.animalCollected || 0 }} 份</p>
+            <p class="animal-disclaimer">青蛙、金魚、鱷魚提供虛擬導覽或觀賞券；照護時間與售價為遊戲數值。</p>
           </section>
           <section v-if="activePanel === 'visitors'" class="visit-card">
             <div class="visit-card-heading"><h2>🏘️ 同班互訪</h2><button type="button" @click="refreshSocial" :disabled="busy || !!quiz">更新農場</button></div>
@@ -568,6 +640,20 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
 .status-bar a{margin-left:auto}
 .farm-layout{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(300px,1fr);gap:16px;align-items:start}
 .farm-field{position:relative;min-height:560px;overflow:hidden;border:4px solid #74a45a;border-radius:22px;background:radial-gradient(ellipse at 50% 90%,#89c66f,#78b85e 70%,#64a650);box-shadow:0 12px 0 #b8d69d}
+.animal-field{display:flex;flex-direction:column;min-height:560px;min-width:0;overflow:hidden;border:4px solid #74a45a;border-radius:22px;background:linear-gradient(#c1ecf0 0 18%,#a6d67d 18% 100%);box-shadow:0 12px 0 #b8d69d}
+.animal-scene{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 18px;color:#275838;font-size:1rem}.animal-scene strong{font-size:1.3rem}.animal-scene span{font-weight:800}
+.animal-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr));gap:10px;min-height:0;flex:1;padding:12px}
+.animal-pen{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:0;border:3px solid #9d7549;border-radius:15px;background:linear-gradient(145deg,#fff9dd,#e8d5a9);color:#3c5634;box-shadow:0 4px #94724d;transition:transform .15s,border-color .15s}
+.animal-pen:hover,.animal-pen.chosen{transform:translateY(-3px);border-color:#d18727;outline:3px solid #ffe69a}.animal-pen.owned{background:linear-gradient(145deg,#f5ffda,#d4eda8)}.animal-pen.productive{background:linear-gradient(145deg,#fff3c1,#ffe093)}
+.animal-sprite{font-size:clamp(1.8rem,5vh,3.5rem);line-height:1.1;animation:animal-bob 3s ease-in-out infinite}.animal-pen:nth-child(3n) .animal-sprite{animation-delay:-1s}.animal-pen:nth-child(3n + 1) .animal-sprite{animation-delay:-2s}
+.animal-pen strong{font-size:1rem}.animal-pen small{font-size:.75rem;font-weight:800}.animal-pen-product{font-size:.72rem;color:#6a6043}
+.animal-scene-note{margin:0;padding:6px 12px;background:#ebf8cd;color:#326044;text-align:center;font-size:.78rem;font-weight:750}
+.animal-card{display:flex;flex-direction:column;gap:9px;min-height:0;border:3px solid #8eb471;border-radius:18px;padding:16px;background:#fffdf0;box-shadow:0 6px 0 #bdd6a3}
+.animal-card h2{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:0;color:#326341;font-size:1.3rem}.animal-card h2 small{font-size:.78rem}.animal-card p{margin:0}.animal-intro{font-weight:800}.animal-economy,.animal-total,.animal-disclaimer{font-size:.8rem;color:#586c51}
+.animal-care-list{display:grid;gap:7px}.animal-care-list button{display:flex;align-items:center;justify-content:space-between;gap:8px;border:2px solid #81ab78;border-radius:10px;background:#e8f5d2;color:#28543b;padding:10px;text-align:left;font-size:.9rem;font-weight:800}.animal-care-list button.done{background:#d4eed1}.animal-care-list button strong{white-space:nowrap;font-size:.78rem}
+.animal-primary,.animal-inventory button{border:2px solid #45865a;border-radius:10px;background:#d9efaa;color:#245438;padding:10px;font-weight:900}.animal-primary{width:100%}.animal-help{font-size:.83rem;color:#356647}
+.animal-inventory{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:auto;padding:10px;border:1px dashed #a4bc8c;border-radius:10px;background:#f8ffe9;font-size:.85rem;font-weight:800}.animal-inventory button{padding:7px 10px}.animal-total{font-weight:800}
+@keyframes animal-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
 .scene-sky{height:63px;display:flex;justify-content:space-around;align-items:center;font-size:2rem;background:linear-gradient(#a9dff3,#e0f5e9)}
 .farm-barn{width:max-content;max-width:75%;margin:15px auto 10px;padding:10px 20px;border:3px solid #9b6435;border-radius:16px;background:#f8e0a0;box-shadow:0 6px #a37a48;font-size:1.7rem}
 .farm-barn span{font-size:.95rem;font-weight:900}
@@ -629,7 +715,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
 .quiz-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:20px}
 .quiz-actions button:last-child{background:#d9ef9f}
 .quiz-actions .cancel{background:#fff}
-@media(max-width:850px){.farm-layout{grid-template-columns:1fr}.farm-field{min-height:0}.field-grid{max-width:580px}.farm-controls{display:flex;flex-direction:column}.status-bar a{margin-left:0}}
+@media(max-width:850px){.farm-layout{grid-template-columns:1fr}.farm-field,.animal-field{min-height:0}.field-grid{max-width:580px}.farm-controls{display:flex;flex-direction:column}.status-bar a{margin-left:0}}
 @media(max-width:620px){.farm-page{padding:12px 9px 25px}.farm-header{align-items:flex-start}.farm-header h1{font-size:1.5rem}.farm-top-actions{justify-content:flex-end}.farm-top-actions button{font-size:.74rem;padding:7px}.farm-controls{grid-template-columns:1fr}.farm-field{border-width:2px}.field-grid{gap:6px;margin:14px auto;padding:0 8px}.plot{min-height:76px;border-width:2px;border-radius:9px}.plot-plant{font-size:1.65rem}.plot-name,.plot-progress{font-size:.63rem}.plot-alert{font-size:.78rem}.scene-footer{font-size:1.4rem}.status-bar{gap:6px}.status-bar>div,.status-bar>a{font-size:.75rem;padding:7px}.choices{grid-template-columns:1fr}}
 @media(min-width:900px) and (min-height:560px){
   .farm-page{box-sizing:border-box;height:100dvh;min-height:0;overflow:hidden;display:flex;flex-direction:column;padding:8px 16px}
@@ -640,6 +726,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
   .status-bar a{margin-left:0;white-space:nowrap}
   .farm-layout{width:100%;height:0;flex:1;min-height:0;margin:0 auto;grid-template-columns:minmax(0,1.5fr) minmax(320px,.9fr);gap:10px}
   .farm-field{box-sizing:border-box;min-height:0;height:100%;display:flex;flex-direction:column;box-shadow:none}
+  .animal-field{box-sizing:border-box;min-height:0;height:100%;box-shadow:none}.animal-grid{gap:7px;padding:7px}.animal-pen{min-height:0;border-width:2px}.animal-scene{padding:5px 11px}.animal-scene strong{font-size:1rem}.animal-scene-note{padding:4px 8px;font-size:.69rem}
   .scene-sky{height:35px;flex:none;font-size:1.45rem}
   .farm-barn{flex:none;margin:5px auto;padding:4px 12px;font-size:1.15rem;box-shadow:0 3px #a37a48}
   .farm-barn span{font-size:.78rem}
@@ -648,7 +735,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
   .plot-name,.plot-progress{font-size:.65rem}.scene-footer{flex:none;font-size:1.25rem;line-height:1.3}
   .farm-controls{display:flex;flex-direction:column;min-height:0;height:100%;gap:7px}
   .panel-tabs{flex:none}.panel-tabs button{padding:5px 3px;font-size:.78rem}
-  .tool-card,.shop-card,.visit-card{box-sizing:border-box;flex:1;min-height:0;overflow:hidden;padding:10px;box-shadow:none}
+  .tool-card,.shop-card,.visit-card,.animal-card{box-sizing:border-box;flex:1;min-height:0;overflow:hidden;padding:10px;box-shadow:none}.animal-card{gap:5px}.animal-card h2{font-size:1rem}.animal-care-list{gap:4px}.animal-care-list button{padding:6px}.animal-inventory{padding:6px}
   .tool-card h2,.shop-card h2,.visit-card h2{font-size:.98rem}
   .tool-card p{margin:3px 0}.tool-card label{margin:5px 0 3px}.tool-card select{padding:6px}
   .tool-grid{margin:7px 0;gap:5px}.tool-grid button{padding:7px 3px;font-size:.75rem}
@@ -710,6 +797,8 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
 }
 @media(max-width:899px){.farm-field{min-height:0}.village-map{height:300px;flex:none}.land-layout{padding-bottom:12px}}
 @media(max-width:620px){
+  .animal-field{min-height:510px}.animal-grid{gap:5px;padding:8px}.animal-pen{padding:4px 1px}.animal-sprite{font-size:2rem}.animal-pen strong{font-size:.83rem}.animal-pen small,.animal-pen-product{font-size:.59rem}.animal-scene strong{font-size:1rem}.animal-scene span{font-size:.68rem}.animal-scene-note{font-size:.69rem}
+  .panel-tabs button{font-size:.72rem;padding:7px 2px}.animal-card h2{font-size:1.12rem}.animal-card h2 small{font-size:.7rem}
   .land-layout{grid-template-columns:1fr;gap:10px}
   .village-map{height:265px;max-height:265px}
   .village-list button{font-size:.7rem;padding:5px 1px}
@@ -756,6 +845,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
   .farm-controls{gap:12px}
   .panel-tabs button{padding:9px 5px;font-size:.95rem}
   .tool-card,.shop-card,.visit-card{padding:18px}
+  .animal-card{padding:18px;gap:12px}.animal-card h2{font-size:1.35rem}.animal-care-list button{padding:12px;font-size:1rem}.animal-pen strong{font-size:1.15rem}.animal-pen small,.animal-pen-product{font-size:.88rem}
   .tool-card h2,.shop-card h2,.visit-card h2{font-size:1.2rem}
   .tool-card p,.visit-card p{font-size:.95rem}
   .tool-card label{font-size:.9rem}
@@ -776,5 +866,5 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
   .visit-actions button,.friend-picker button{font-size:.9rem}
   .visit-log{font-size:.85rem}
 }
-@media(prefers-reduced-motion:reduce){.action-pop{animation:none}}
+@media(prefers-reduced-motion:reduce){.action-pop,.animal-sprite{animation:none}}
 </style>
