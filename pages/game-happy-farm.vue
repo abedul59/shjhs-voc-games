@@ -577,7 +577,12 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
               <a class="map-source" href="https://maps.nlsc.gov.tw/pro/download.jsp" target="_blank" rel="noopener">村里界資料：國土測繪中心（2026）</a>
             </div>
             <div class="village-field">
-              <p class="village-heading"><strong>{{ villageName(selectedVillage) }}</strong><span>{{ ownedVillage ? (viewFarm.homeVillage === selectedVillage ? '起始農地' : '已購農地') : '尚未購買' }}</span></p>
+              <p class="village-heading"><strong>{{ villageName(selectedVillage) }}</strong><span>{{ ownedVillage ? `${visiblePlots.length} / ${FARM_MAX_PLOTS} 格農地` : '尚未購買' }}</span></p>
+              <div v-if="!visiting" class="village-land-actions">
+                <template v-if="!ownedVillage"><button type="button" :disabled="!can('buyLand')" @click="beginAction('buyLand')">🏡 答題購買此里 · {{ villageCost }} 金幣（取得 4 格）</button><small v-if="farm.coins < villageCost">還需 {{ villageCost - farm.coins }} 金幣</small></template>
+                <template v-else-if="visiblePlots.length < FARM_MAX_PLOTS"><button type="button" :disabled="!can('expand')" @click="beginAction('expand')">🪵 答題擴建 +1 格 · {{ expansionCost }} 金幣</button><small v-if="farm.coins < expansionCost">還需 {{ expansionCost - farm.coins }} 金幣</small></template>
+                <small v-else>此里農地已達 {{ FARM_MAX_PLOTS }} 格上限</small>
+              </div>
               <div v-if="ownedVillage" class="field-grid">
                 <button v-for="(entry, localIndex) in visiblePlots" :key="entry.index" type="button" class="plot"
                   :class="{ chosen: selectedPlot === entry.index, mature: entry.plot?.crop && !secondsLeft(entry.plot), facility: !!entry.plot?.facility }"
@@ -597,7 +602,6 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
           </div>
         </section>
         <aside class="farm-controls">
-          <div v-if="!ownedVillage && !visiting && activePanel !== 'animals'" class="land-buy-card"><strong>🏡 {{ villageName(selectedVillage) }}</strong><span>購地 {{ villageCost }} 金幣 · 獲得 4 塊田</span><button type="button" :disabled="!can('buyLand')" @click="beginAction('buyLand')">答題購買此里農地</button></div>
           <div v-if="ownedVillage && !visiting && selectedVillage !== farm.homeVillage && activePanel !== 'animals'" class="land-buy-card"><strong>🏡 {{ villageName(selectedVillage) }}</strong><span>收成此里作物後，可售地獲得 {{ villageRefund }} 金幣</span><button type="button" :disabled="!can('sellLand')" @click="beginAction('sellLand')">答題出售農地</button></div>
           <nav class="panel-tabs" aria-label="農場操作">
             <button type="button" :class="{ active: activePanel === 'tools' }" :disabled="!!visiting" @click="activePanel = 'tools'">🧤 農具</button>
@@ -628,7 +632,6 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
               <div><strong>{{ item.icon }} {{ item.name }}</strong><small>{{ item.growMinutes }} 分鐘成熟 · 種苗 {{ item.seed }} 金幣 · 售價 {{ item.sale }} 金幣/個</small><small>{{ cropInSeason(item, now) ? '✅ 本季適種' : '🌿 非適季' }}（{{ cropSeasonLabel(item) }}） · 種苗 {{ farm.seeds[item.id] || 0 }} · 庫存 {{ farm.produce[item.id] || 0 }}</small></div>
               <div><button type="button" :disabled="!can('buy', item.id)" @click="beginAction('buy', item.id)">買種苗</button><button type="button" :disabled="!can('sell', item.id)" @click="beginAction('sell', item.id)">賣作物</button></div>
             </div></div>
-            <button v-if="ownedVillage" class="expand" type="button" :disabled="!can('expand')" @click="beginAction('expand')">🪵 擴建 {{ villageName(selectedVillage) }} 一塊田 · {{ expansionCost }} 金幣</button>
           </section>
           <section v-if="activePanel === 'animals' && !visiting" class="animal-card">
             <h2>{{ selectedAnimal.icon }} {{ selectedAnimal.name }} <small>產品：{{ selectedAnimal.productIcon }} {{ selectedAnimal.product }}</small></h2>
@@ -883,6 +886,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
 .map-panel,.village-field{min-width:0;min-height:0;display:flex;flex-direction:column}
 .map-heading,.village-heading{display:flex;justify-content:space-between;align-items:center;gap:6px;margin:0 0 4px;padding:4px 7px;border-radius:8px;background:#ecf8cd;color:#285d38;font-size:.78rem}
 .village-heading{background:#fff3c7}
+.village-land-actions{flex:none;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:7px;margin:0 0 5px;min-height:29px}.village-land-actions button{border:1px solid #367a47;border-radius:8px;background:#e0f3b4;color:#275b38;padding:5px 9px;font-size:.74rem;font-weight:900}.village-land-actions small{color:#744a26;font-size:.69rem;font-weight:800}
 .map-heading span,.village-heading span{font-size:.7rem}
 .village-map{display:block;min-height:0;max-height:295px;width:100%;flex:1;overflow:visible;filter:drop-shadow(0 3px 2px #2e663e58)}
 .village-shape{fill:#b6d39c;stroke:#fff9df;stroke-width:2;cursor:pointer;transition:fill .16s}
@@ -959,6 +963,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
   .farm-barn span{font-size:1rem}
   .land-layout{gap:16px;padding:8px 16px 16px}
   .map-heading,.village-heading{padding:8px 10px;font-size:1rem}
+  .village-land-actions button{padding:7px 12px;font-size:.9rem}.village-land-actions small{font-size:.82rem}
   .village-heading strong{font-size:1.1rem}
   .map-heading span,.village-heading span{font-size:.86rem}
   .district-picker{gap:9px;margin:6px 0;font-size:.9rem}
