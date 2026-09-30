@@ -1,0 +1,894 @@
+{
+  "uk": {
+    "London King's Cross": {
+      "lat": 51.531,
+      "lon": -0.1233,
+      "wikiTitle": "London King's Cross railway station"
+    },
+    "Peterborough": {
+      "lat": 52.5748,
+      "lon": -0.2502,
+      "wikiTitle": "Peterborough railway station"
+    },
+    "Grantham": {
+      "lat": 52.906,
+      "lon": -0.642,
+      "wikiTitle": "Grantham railway station"
+    },
+    "Newark North Gate": {
+      "lat": 53.081,
+      "lon": -0.799,
+      "wikiTitle": "Newark Northgate railway station"
+    },
+    "Doncaster": {
+      "lat": 53.5225,
+      "lon": -1.1395,
+      "wikiTitle": "Doncaster railway station"
+    },
+    "York": {
+      "lat": 53.9583,
+      "lon": -1.093,
+      "wikiTitle": "York railway station"
+    },
+    "Darlington": {
+      "lat": 54.5207294,
+      "lon": -1.5466938,
+      "wikiTitle": "Darlington railway station"
+    },
+    "Durham": {
+      "lat": 54.7797488,
+      "lon": -1.5815122,
+      "wikiTitle": "Durham railway station"
+    },
+    "Newcastle": {
+      "lat": 54.9683766,
+      "lon": -1.6170427,
+      "wikiTitle": "Newcastle railway station"
+    },
+    "Berwick-upon-Tweed": {
+      "lat": 55.7745555,
+      "lon": -2.0105423,
+      "wikiTitle": "Berwick-upon-Tweed railway station"
+    },
+    "Edinburgh Waverley": {
+      "lat": 55.9521,
+      "lon": -3.1893,
+      "wikiTitle": "Edinburgh Waverley railway station"
+    },
+    "London Euston": {
+      "lat": 51.5284,
+      "lon": -0.1331,
+      "wikiTitle": "Euston railway station"
+    },
+    "Milton Keynes Central": {
+      "lat": 52.034,
+      "lon": -0.7747,
+      "wikiTitle": "Milton Keynes Central railway station"
+    },
+    "Rugby": {
+      "lat": 52.379,
+      "lon": -1.25,
+      "wikiTitle": "Rugby railway station"
+    },
+    "Coventry": {
+      "lat": 52.401,
+      "lon": -1.5136,
+      "wikiTitle": "Coventry railway station"
+    },
+    "Birmingham International": {
+      "lat": 52.451,
+      "lon": -1.725,
+      "wikiTitle": "Birmingham International railway station"
+    },
+    "Birmingham New Street": {
+      "lat": 52.478,
+      "lon": -1.899,
+      "wikiTitle": "Birmingham New Street railway station"
+    },
+    "Wolverhampton": {
+      "lat": 52.5875,
+      "lon": -2.12,
+      "wikiTitle": "Wolverhampton station"
+    },
+    "Stafford": {
+      "lat": 52.8036,
+      "lon": -2.1231,
+      "wikiTitle": "Stafford railway station"
+    },
+    "Crewe": {
+      "lat": 53.089,
+      "lon": -2.433,
+      "wikiTitle": "Crewe railway station"
+    },
+    "Warrington Bank Quay": {
+      "lat": 53.386,
+      "lon": -2.603,
+      "wikiTitle": "Warrington Bank Quay railway station"
+    },
+    "Wigan North Western": {
+      "lat": 53.543,
+      "lon": -2.632,
+      "wikiTitle": "Wigan North Western railway station"
+    },
+    "Preston": {
+      "lat": 53.756,
+      "lon": -2.7072,
+      "wikiTitle": "Preston railway station"
+    },
+    "Lancaster": {
+      "lat": 54.04888889,
+      "lon": -2.80722222,
+      "wikiTitle": "Lancaster railway station"
+    },
+    "Carlisle": {
+      "lat": 54.891,
+      "lon": -2.934,
+      "wikiTitle": "Carlisle railway station"
+    },
+    "Glasgow Central": {
+      "lat": 55.86027778,
+      "lon": -4.25805556,
+      "wikiTitle": "Glasgow Central railway station"
+    },
+    "London Paddington": {
+      "lat": 51.5173,
+      "lon": -0.1774,
+      "wikiTitle": "London Paddington station"
+    },
+    "Reading": {
+      "lat": 51.459,
+      "lon": -0.9722,
+      "wikiTitle": "Reading railway station"
+    },
+    "Didcot Parkway": {
+      "lat": 51.61197,
+      "lon": -1.24348,
+      "wikiTitle": "Didcot Parkway railway station"
+    },
+    "Swindon": {
+      "lat": 51.5656,
+      "lon": -1.7854,
+      "wikiTitle": "Swindon railway station"
+    },
+    "Chippenham": {
+      "lat": 51.4625,
+      "lon": -2.1154,
+      "wikiTitle": "Chippenham railway station"
+    },
+    "Bath Spa": {
+      "lat": 51.3775,
+      "lon": -2.3564,
+      "wikiTitle": "Bath Spa railway station"
+    },
+    "Bristol Temple Meads": {
+      "lat": 51.449,
+      "lon": -2.58,
+      "wikiTitle": "Bristol Temple Meads railway station"
+    },
+    "Taunton": {
+      "lat": 51.0228,
+      "lon": -3.1035,
+      "wikiTitle": "Taunton railway station"
+    },
+    "Exeter St Davids": {
+      "lat": 50.7296,
+      "lon": -3.5435,
+      "wikiTitle": "Exeter St Davids railway station"
+    },
+    "Newton Abbot": {
+      "lat": 50.53,
+      "lon": -3.5997,
+      "wikiTitle": "Newton Abbot railway station"
+    },
+    "Plymouth": {
+      "lat": 50.3778,
+      "lon": -4.143,
+      "wikiTitle": "Plymouth railway station"
+    },
+    "Truro": {
+      "lat": 50.264,
+      "lon": -5.06432,
+      "wikiTitle": "Truro railway station"
+    },
+    "Penzance": {
+      "lat": 50.122,
+      "lon": -5.533,
+      "wikiTitle": "Penzance railway station"
+    },
+    "London St Pancras": {
+      "lat": 51.53,
+      "lon": -0.12527778,
+      "wikiTitle": "St Pancras railway station"
+    },
+    "Luton": {
+      "lat": 51.88227,
+      "lon": -0.41432,
+      "wikiTitle": "Luton railway station"
+    },
+    "Bedford": {
+      "lat": 52.13638889,
+      "lon": -0.47944444,
+      "wikiTitle": "Bedford railway station"
+    },
+    "Kettering": {
+      "lat": 52.39307,
+      "lon": -0.73215,
+      "wikiTitle": "Kettering railway station"
+    },
+    "Market Harborough": {
+      "lat": 52.48,
+      "lon": -0.9094,
+      "wikiTitle": "Market Harborough railway station"
+    },
+    "Leicester": {
+      "lat": 52.632,
+      "lon": -1.124,
+      "wikiTitle": "Leicester railway station"
+    },
+    "Loughborough": {
+      "lat": 52.779075,
+      "lon": -1.19604722,
+      "wikiTitle": "Loughborough railway station"
+    },
+    "East Midlands Parkway": {
+      "lat": 52.8625,
+      "lon": -1.2632,
+      "wikiTitle": "East Midlands Parkway railway station"
+    },
+    "Derby": {
+      "lat": 52.91617,
+      "lon": -1.46336,
+      "wikiTitle": "Derby railway station"
+    },
+    "Chesterfield": {
+      "lat": 53.23822222,
+      "lon": -1.41972222,
+      "wikiTitle": "Chesterfield railway station"
+    },
+    "Sheffield": {
+      "lat": 53.378,
+      "lon": -1.462,
+      "wikiTitle": "Sheffield station"
+    }
+  },
+  "france": {
+    "Paris-Gare-de-Lyon": {
+      "lat": 48.8448,
+      "lon": 2.3735,
+      "wikiTitle": "Paris-Gare-de-Lyon"
+    },
+    "Le Creusot TGV": {
+      "lat": 46.765106,
+      "lon": 4.499752,
+      "wikiTitle": "Gare du Creusot TGV"
+    },
+    "Mâcon-Loché TGV": {
+      "lat": 46.2831,
+      "lon": 4.7779,
+      "wikiTitle": "Gare de Mâcon-Loché-TGV"
+    },
+    "Lyon-Part-Dieu": {
+      "lat": 45.7599,
+      "lon": 4.8596,
+      "wikiTitle": "Gare de Lyon-Part-Dieu"
+    },
+    "Valence TGV": {
+      "lat": 44.99174,
+      "lon": 4.978716,
+      "wikiTitle": "Gare de Valence TGV"
+    },
+    "Avignon TGV": {
+      "lat": 43.921742,
+      "lon": 4.786064,
+      "wikiTitle": "Gare d'Avignon TGV"
+    },
+    "Aix-en-Provence TGV": {
+      "lat": 43.4551,
+      "lon": 5.3173,
+      "wikiTitle": "Gare d'Aix-en-Provence TGV"
+    },
+    "Marseille-Saint-Charles": {
+      "lat": 43.3034761,
+      "lon": 5.3798246,
+      "wikiTitle": "Gare de Marseille-Saint-Charles"
+    },
+    "Toulon": {
+      "lat": 43.12854,
+      "lon": 5.929631,
+      "wikiTitle": "Gare de Toulon"
+    },
+    "Cannes": {
+      "lat": 43.554123,
+      "lon": 7.019718,
+      "wikiTitle": "Gare de Cannes"
+    },
+    "Nice-Ville": {
+      "lat": 43.705005,
+      "lon": 7.261929,
+      "wikiTitle": "Gare de Nice-Ville"
+    },
+    "Paris-Montparnasse": {
+      "lat": 48.841157,
+      "lon": 2.320474,
+      "wikiTitle": "Gare de Paris-Montparnasse"
+    },
+    "Massy TGV": {
+      "lat": 48.72584,
+      "lon": 2.261345,
+      "wikiTitle": "Gare de Massy TGV"
+    },
+    "Le Mans": {
+      "lat": 47.995551,
+      "lon": 0.192345,
+      "wikiTitle": "Gare du Mans"
+    },
+    "Angers-Saint-Laud": {
+      "lat": 47.4646,
+      "lon": -0.557,
+      "wikiTitle": "Gare d'Angers-Saint-Laud"
+    },
+    "Nantes": {
+      "lat": 47.217,
+      "lon": -1.542,
+      "wikiTitle": "Gare de Nantes"
+    },
+    "Saint-Pierre-des-Corps": {
+      "lat": 47.385782,
+      "lon": 0.723795,
+      "wikiTitle": "Gare de Saint-Pierre-des-Corps"
+    },
+    "Poitiers": {
+      "lat": 46.5821,
+      "lon": 0.333,
+      "wikiTitle": "Gare de Poitiers"
+    },
+    "Angoulême": {
+      "lat": 45.653708,
+      "lon": 0.164374,
+      "wikiTitle": "Gare d'Angoulême"
+    },
+    "Bordeaux-Saint-Jean": {
+      "lat": 44.825815,
+      "lon": -0.555732,
+      "wikiTitle": "Gare de Bordeaux-Saint-Jean"
+    },
+    "Agen": {
+      "lat": 44.208375,
+      "lon": 0.620919,
+      "wikiTitle": "Gare d'Agen"
+    },
+    "Montauban-Ville-Bourbon": {
+      "lat": 44.014011,
+      "lon": 1.340929,
+      "wikiTitle": "Gare de Montauban-Ville-Bourbon"
+    },
+    "Toulouse-Matabiau": {
+      "lat": 43.611322,
+      "lon": 1.454112,
+      "wikiTitle": "Gare de Toulouse-Matabiau"
+    },
+    "Paris-Nord": {
+      "lat": 48.881642,
+      "lon": 2.35616,
+      "wikiTitle": "Gare de Paris-Nord"
+    },
+    "Arras": {
+      "lat": 50.286682,
+      "lon": 2.78163,
+      "wikiTitle": "Gare d'Arras"
+    },
+    "Lille-Europe": {
+      "lat": 50.639717,
+      "lon": 3.074911,
+      "wikiTitle": "Gare de Lille-Europe"
+    },
+    "Calais-Fréthun": {
+      "lat": 50.901551,
+      "lon": 1.811571,
+      "wikiTitle": "Gare de Calais - Fréthun"
+    },
+    "Paris-Est": {
+      "lat": 48.877552,
+      "lon": 2.359156,
+      "wikiTitle": "Gare de Paris-Est"
+    },
+    "Champagne-Ardenne TGV": {
+      "lat": 49.214413,
+      "lon": 3.994303,
+      "wikiTitle": "Gare de Champagne-Ardenne TGV"
+    },
+    "Meuse TGV": {
+      "lat": 48.978759,
+      "lon": 5.270645,
+      "wikiTitle": "Gare de Meuse TGV"
+    },
+    "Lorraine TGV": {
+      "lat": 48.9475,
+      "lon": 6.169722,
+      "wikiTitle": "Gare de Lorraine TGV"
+    },
+    "Strasbourg-Ville": {
+      "lat": 48.585144,
+      "lon": 7.734263,
+      "wikiTitle": "Gare de Strasbourg-Ville"
+    },
+    "Colmar": {
+      "lat": 48.072512,
+      "lon": 7.346568,
+      "wikiTitle": "Gare de Colmar"
+    },
+    "Mulhouse-Ville": {
+      "lat": 47.74223821,
+      "lon": 7.34272956,
+      "wikiTitle": "Gare de Mulhouse-Ville"
+    }
+  },
+  "germany": {
+    "Berlin Hauptbahnhof": {
+      "lat": 52.525,
+      "lon": 13.36944444,
+      "wikiTitle": "Berlin Hauptbahnhof"
+    },
+    "Berlin Südkreuz": {
+      "lat": 52.47555556,
+      "lon": 13.36444444,
+      "wikiTitle": "Bahnhof Berlin Südkreuz"
+    },
+    "Lutherstadt Wittenberg Hauptbahnhof": {
+      "lat": 51.867515,
+      "lon": 12.660965,
+      "wikiTitle": "Lutherstadt Wittenberg Hauptbahnhof"
+    },
+    "Leipzig Hauptbahnhof": {
+      "lat": 51.345278,
+      "lon": 12.382222,
+      "wikiTitle": "Leipzig Hauptbahnhof"
+    },
+    "Erfurt Hauptbahnhof": {
+      "lat": 50.972778,
+      "lon": 11.037778,
+      "wikiTitle": "Erfurt Hauptbahnhof"
+    },
+    "Bamberg": {
+      "lat": 49.90083333,
+      "lon": 10.89944444,
+      "wikiTitle": "Bahnhof Bamberg"
+    },
+    "Nürnberg Hauptbahnhof": {
+      "lat": 49.44638889,
+      "lon": 11.08194444,
+      "wikiTitle": "Nürnberg Hauptbahnhof"
+    },
+    "Ingolstadt Hauptbahnhof": {
+      "lat": 48.744444,
+      "lon": 11.436944,
+      "wikiTitle": "Ingolstadt Hauptbahnhof"
+    },
+    "München Hauptbahnhof": {
+      "lat": 48.140442,
+      "lon": 11.557723,
+      "wikiTitle": "München Hauptbahnhof"
+    },
+    "Hamburg Hauptbahnhof": {
+      "lat": 53.552778,
+      "lon": 10.006389,
+      "wikiTitle": "Hamburg Hauptbahnhof"
+    },
+    "Hamburg-Harburg": {
+      "lat": 53.456111,
+      "lon": 9.991389,
+      "wikiTitle": "Bahnhof Hamburg-Harburg"
+    },
+    "Hannover Hauptbahnhof": {
+      "lat": 52.377222,
+      "lon": 9.741667,
+      "wikiTitle": "Hannover Hauptbahnhof"
+    },
+    "Göttingen": {
+      "lat": 51.536667,
+      "lon": 9.926944,
+      "wikiTitle": "Bahnhof Göttingen"
+    },
+    "Kassel-Wilhelmshöhe": {
+      "lat": 51.312222,
+      "lon": 9.447222,
+      "wikiTitle": "Bahnhof Kassel-Wilhelmshöhe"
+    },
+    "Fulda": {
+      "lat": 50.553889,
+      "lon": 9.684722,
+      "wikiTitle": "Bahnhof Fulda"
+    },
+    "Würzburg Hauptbahnhof": {
+      "lat": 49.801389,
+      "lon": 9.935556,
+      "wikiTitle": "Würzburg Hauptbahnhof"
+    },
+    "Köln Hauptbahnhof": {
+      "lat": 50.9425,
+      "lon": 6.958056,
+      "wikiTitle": "Köln Hauptbahnhof"
+    },
+    "Bonn Hauptbahnhof": {
+      "lat": 50.731944,
+      "lon": 7.096944,
+      "wikiTitle": "Bonn Hauptbahnhof"
+    },
+    "Koblenz Hauptbahnhof": {
+      "lat": 50.350556,
+      "lon": 7.589167,
+      "wikiTitle": "Koblenz Hauptbahnhof"
+    },
+    "Mainz Hauptbahnhof": {
+      "lat": 50.00129722,
+      "lon": 8.25865,
+      "wikiTitle": "Mainz Hauptbahnhof"
+    },
+    "Frankfurt (Main) Hauptbahnhof": {
+      "lat": 50.106944,
+      "lon": 8.6625,
+      "wikiTitle": "Frankfurt (Main) Hauptbahnhof"
+    },
+    "Mannheim Hauptbahnhof": {
+      "lat": 49.479633,
+      "lon": 8.469858,
+      "wikiTitle": "Mannheim Hauptbahnhof"
+    },
+    "Karlsruhe Hauptbahnhof": {
+      "lat": 48.993997,
+      "lon": 8.400558,
+      "wikiTitle": "Karlsruhe Hauptbahnhof"
+    },
+    "Baden-Baden": {
+      "lat": 48.790556,
+      "lon": 8.190833,
+      "wikiTitle": "Bahnhof Baden-Baden"
+    },
+    "Offenburg": {
+      "lat": 48.476014,
+      "lon": 7.945725,
+      "wikiTitle": "Bahnhof Offenburg"
+    },
+    "Freiburg (Breisgau) Hauptbahnhof": {
+      "lat": 47.997697,
+      "lon": 7.84117,
+      "wikiTitle": "Freiburg (Breisgau) Hauptbahnhof"
+    },
+    "Wolfsburg Hauptbahnhof": {
+      "lat": 52.429167,
+      "lon": 10.787778,
+      "wikiTitle": "Wolfsburg Hauptbahnhof"
+    },
+    "Bielefeld Hauptbahnhof": {
+      "lat": 52.028333,
+      "lon": 8.531667,
+      "wikiTitle": "Bielefeld Hauptbahnhof"
+    },
+    "Hamm (Westfalen) Hauptbahnhof": {
+      "lat": 51.678333,
+      "lon": 7.808056,
+      "wikiTitle": "Hamm (Westfalen) Hauptbahnhof"
+    },
+    "Dortmund Hauptbahnhof": {
+      "lat": 51.5175,
+      "lon": 7.458889,
+      "wikiTitle": "Dortmund Hauptbahnhof"
+    },
+    "Bochum Hauptbahnhof": {
+      "lat": 51.47850556,
+      "lon": 7.22278056,
+      "wikiTitle": "Bochum Hauptbahnhof"
+    },
+    "Essen Hauptbahnhof": {
+      "lat": 51.451389,
+      "lon": 7.013889,
+      "wikiTitle": "Essen Hauptbahnhof"
+    },
+    "Duisburg Hauptbahnhof": {
+      "lat": 51.43,
+      "lon": 6.77611111,
+      "wikiTitle": "Duisburg Hauptbahnhof"
+    },
+    "Düsseldorf Hauptbahnhof": {
+      "lat": 51.220278,
+      "lon": 6.792778,
+      "wikiTitle": "Düsseldorf Hauptbahnhof"
+    },
+    "Heidelberg Hauptbahnhof": {
+      "lat": 49.403611,
+      "lon": 8.675278,
+      "wikiTitle": "Heidelberg Hauptbahnhof"
+    },
+    "Stuttgart Hauptbahnhof": {
+      "lat": 48.783889,
+      "lon": 9.181667,
+      "wikiTitle": "Stuttgart Hauptbahnhof"
+    },
+    "Ulm Hauptbahnhof": {
+      "lat": 48.4,
+      "lon": 9.983333,
+      "wikiTitle": "Ulm Hauptbahnhof"
+    },
+    "Augsburg Hauptbahnhof": {
+      "lat": 48.36556,
+      "lon": 10.88639,
+      "wikiTitle": "Augsburg Hauptbahnhof"
+    }
+  },
+  "australia": {
+    "Sydney Central": {
+      "lat": -33.8849,
+      "lon": 151.2052,
+      "wikiTitle": "Central railway station, Sydney"
+    },
+    "Campbelltown": {
+      "lat": -34.063659,
+      "lon": 150.814347,
+      "wikiTitle": "Campbelltown railway station"
+    },
+    "Moss Vale": {
+      "lat": -34.5481,
+      "lon": 150.371504,
+      "wikiTitle": "Moss Vale railway station"
+    },
+    "Goulburn": {
+      "lat": -34.758397,
+      "lon": 149.7194,
+      "wikiTitle": "Goulburn railway station"
+    },
+    "Cootamundra": {
+      "lat": -34.641,
+      "lon": 148.0305,
+      "wikiTitle": "Cootamundra railway station"
+    },
+    "Junee": {
+      "lat": -34.8701,
+      "lon": 147.584,
+      "wikiTitle": "Junee railway station"
+    },
+    "Wagga Wagga": {
+      "lat": -35.1202,
+      "lon": 147.3683,
+      "wikiTitle": "Wagga Wagga railway station"
+    },
+    "Albury": {
+      "lat": -36.08388889,
+      "lon": 146.92444444,
+      "wikiTitle": "Albury railway station"
+    },
+    "Wangaratta": {
+      "lat": -36.3549,
+      "lon": 146.317,
+      "wikiTitle": "Wangaratta railway station"
+    },
+    "Benalla": {
+      "lat": -36.5447,
+      "lon": 145.9838,
+      "wikiTitle": "Benalla railway station"
+    },
+    "Seymour": {
+      "lat": -37.0245,
+      "lon": 145.1384,
+      "wikiTitle": "Seymour railway station"
+    },
+    "Melbourne Southern Cross": {
+      "lat": -37.8184,
+      "lon": 144.9524,
+      "wikiTitle": "Southern Cross railway station"
+    },
+    "Strathfield": {
+      "lat": -33.8718,
+      "lon": 151.09433,
+      "wikiTitle": "Strathfield railway station"
+    },
+    "Hornsby": {
+      "lat": -33.70298889,
+      "lon": 151.0985667,
+      "wikiTitle": "Hornsby railway station"
+    },
+    "Gosford": {
+      "lat": -33.423687,
+      "lon": 151.341664,
+      "wikiTitle": "Gosford railway station"
+    },
+    "Wyong": {
+      "lat": -33.2854,
+      "lon": 151.425253,
+      "wikiTitle": "Wyong railway station"
+    },
+    "Broadmeadow": {
+      "lat": -32.92316,
+      "lon": 151.734542,
+      "wikiTitle": "Broadmeadow railway station"
+    },
+    "Maitland": {
+      "lat": -32.738073,
+      "lon": 151.552016,
+      "wikiTitle": "Maitland railway station"
+    },
+    "Dungog": {
+      "lat": -32.401836,
+      "lon": 151.759477,
+      "wikiTitle": "Dungog railway station"
+    },
+    "Taree": {
+      "lat": -31.9065,
+      "lon": 152.457,
+      "wikiTitle": "Taree railway station"
+    },
+    "Wauchope": {
+      "lat": -31.4559,
+      "lon": 152.7365,
+      "wikiTitle": "Wauchope railway station"
+    },
+    "Coffs Harbour": {
+      "lat": -30.3061,
+      "lon": 153.1377,
+      "wikiTitle": "Coffs Harbour railway station"
+    },
+    "Grafton": {
+      "lat": -29.703496,
+      "lon": 152.941763,
+      "wikiTitle": "Grafton railway station, New South Wales"
+    },
+    "Casino": {
+      "lat": -28.861081,
+      "lon": 153.038215,
+      "wikiTitle": "Casino railway station"
+    },
+    "Brisbane Roma Street": {
+      "lat": -27.4652,
+      "lon": 153.0191,
+      "wikiTitle": "Roma Street railway station"
+    },
+    "Nambour": {
+      "lat": -26.6253,
+      "lon": 152.9582,
+      "wikiTitle": "Nambour railway station"
+    },
+    "Gympie North": {
+      "lat": -26.1583,
+      "lon": 152.6819,
+      "wikiTitle": "Gympie North railway station"
+    },
+    "Maryborough West": {
+      "lat": -25.50777778,
+      "lon": 152.63666667,
+      "wikiTitle": "Maryborough West railway station"
+    },
+    "Bundaberg": {
+      "lat": -24.86805556,
+      "lon": 152.34527778,
+      "wikiTitle": "Bundaberg railway station"
+    },
+    "Gladstone": {
+      "lat": -23.84638889,
+      "lon": 151.26305556,
+      "wikiTitle": "Gladstone railway station, Queensland"
+    },
+    "Rockhampton": {
+      "lat": -23.38972222,
+      "lon": 150.51222222,
+      "wikiTitle": "Rockhampton railway station"
+    },
+    "Mackay": {
+      "lat": -21.172,
+      "lon": 149.1597,
+      "wikiTitle": "Mackay railway station"
+    },
+    "Proserpine": {
+      "lat": -20.4029,
+      "lon": 148.5787,
+      "wikiTitle": "Proserpine railway station"
+    },
+    "Townsville": {
+      "lat": -19.2693,
+      "lon": 146.808,
+      "wikiTitle": "Townsville railway station"
+    },
+    "Cairns": {
+      "lat": -16.92528,
+      "lon": 145.77222,
+      "wikiTitle": "Cairns railway station"
+    },
+    "Parramatta": {
+      "lat": -33.81770833,
+      "lon": 151.0055694,
+      "wikiTitle": "Parramatta railway station"
+    },
+    "Katoomba": {
+      "lat": -33.711904,
+      "lon": 150.311347,
+      "wikiTitle": "Katoomba railway station"
+    },
+    "Lithgow": {
+      "lat": -33.480487,
+      "lon": 150.157388,
+      "wikiTitle": "Lithgow railway station"
+    },
+    "Bathurst": {
+      "lat": -33.4256,
+      "lon": 149.5833,
+      "wikiTitle": "Bathurst railway station, New South Wales"
+    },
+    "Orange": {
+      "lat": -33.2868,
+      "lon": 149.1036,
+      "wikiTitle": "Orange railway station, New South Wales"
+    },
+    "Dubbo": {
+      "lat": -32.2448,
+      "lon": 148.6095,
+      "wikiTitle": "Dubbo railway station"
+    },
+    "Footscray": {
+      "lat": -37.8016,
+      "lon": 144.9024,
+      "wikiTitle": "Footscray railway station"
+    },
+    "Sunshine": {
+      "lat": -37.7881,
+      "lon": 144.8325,
+      "wikiTitle": "Sunshine railway station"
+    },
+    "Melton": {
+      "lat": -37.7032,
+      "lon": 144.5725,
+      "wikiTitle": "Melton railway station, Melbourne"
+    },
+    "Bacchus Marsh": {
+      "lat": -37.6876,
+      "lon": 144.4369,
+      "wikiTitle": "Bacchus Marsh railway station"
+    },
+    "Ballarat": {
+      "lat": -37.5587,
+      "lon": 143.8594,
+      "wikiTitle": "Ballarat railway station"
+    },
+    "Ararat": {
+      "lat": -37.2823,
+      "lon": 142.9367,
+      "wikiTitle": "Ararat railway station"
+    },
+    "East Perth": {
+      "lat": -31.943896,
+      "lon": 115.876976,
+      "wikiTitle": "East Perth railway station"
+    },
+    "Midland": {
+      "lat": -31.892415,
+      "lon": 116.00344,
+      "wikiTitle": "Midland railway station, Perth"
+    },
+    "Northam": {
+      "lat": -31.648992316770308,
+      "lon": 116.67603850197297,
+      "wikiTitle": "Northam railway station, Western Australia",
+      "wikidataId": "Q20718083"
+    },
+    "Merredin": {
+      "lat": -31.4825039,
+      "lon": 118.2765001,
+      "wikiTitle": "Merredin railway station",
+      "wikidataId": "Q20718060"
+    },
+    "Southern Cross": {
+      "lat": -31.214903,
+      "lon": 119.310483,
+      "wikiTitle": "Southern Cross railway station, Western Australia",
+      "wikidataId": "Q20718140"
+    },
+    "Kalgoorlie": {
+      "lat": -30.74611111,
+      "lon": 121.46666667,
+      "wikiTitle": "Kalgoorlie railway station",
+      "wikidataId": "Q14935833"
+    },
+    "Penrith": {
+      "lat": -33.750142,
+      "lon": 150.696427,
+      "wikiTitle": "Penrith railway station, Sydney"
+    }
+  }
+}
