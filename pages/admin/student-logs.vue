@@ -115,6 +115,7 @@ const pathNames = {
   '/game-monopoly-dual': '🏘️ 單字大富翁（雙人）',
   '/game-verb-monopoly': '🏘️ 動詞變化大富翁',
   '/game-happy-farm': '🌻 單字開心農場',
+  '/game-railway-tour': '🚂 單字鐵路旅遊高手',
   '/game-pikavolley-dual': '⚡ 皮卡丘排球（雙人）',
   '/game-battle': '⚔️ 單字方塊陣',
   '/game-tetris': '🧱 單字俄羅斯方塊',
