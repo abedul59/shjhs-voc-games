@@ -2,11 +2,13 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import taiwanRail from '~/data/railway-taiwan.json';
 import japanIndex from '~/data/railway-japan-index.json';
+import worldRail from '~/data/railway-world.json';
 import outlines from '~/data/railway-outlines.json';
 import { prepareEnglishUtterance, primeEnglishVoices } from '~/utils/englishSpeech';
 
 const GAME_TYPE = '單字鐵路旅遊高手';
-const railwayMaps = [{ id: 'taiwan', name: '臺灣' }, { id: 'japan', name: '日本' }];
+const railwayMaps = [{ id: 'taiwan', name: '臺灣' }, { id: 'japan', name: '日本' },
+  ...Object.values(worldRail.countries).map(country => ({ id: country.id, name: country.name }))];
 const ATLAS_STAMPS = 3;
 const db = useSupabaseClient();
 const route = useRoute();
@@ -23,9 +25,10 @@ const selectedScopeSize = ref('line');
 const japanData = ref(null);
 const japanLoading = ref(false);
 const japanError = ref('');
-const baseMap = computed(() => selectedMapId.value === 'japan' ? japanData.value : taiwanRail);
+const baseMap = computed(() => selectedMapId.value === 'japan' ? japanData.value
+  : selectedMapId.value === 'taiwan' ? taiwanRail : worldRail.countries[selectedMapId.value]);
 const scopeRegions = computed(() => {
-  if (selectedMapId.value !== 'japan') return taiwanRail.regions;
+  if (selectedMapId.value !== 'japan') return baseMap.value?.regions || [];
   if (!japanData.value) return [];
   const source = selectedScopeSize.value === 'line' ? japanData.value.lines
     : selectedScopeSize.value === 'prefecture' ? japanData.value.prefectures
@@ -37,7 +40,7 @@ const scopeRegions = computed(() => {
   }));
 });
 const activeMap = computed(() => baseMap.value ? { ...baseMap.value, regions: scopeRegions.value,
-  flag: selectedMapId.value === 'japan' ? '🇯🇵' : '🇹🇼' } : null);
+  flag: selectedMapId.value === 'japan' ? '🇯🇵' : baseMap.value.flag || '🇹🇼' } : null);
 const mapReady = computed(() => !!activeMap.value?.regions.length);
 const islandOutline = computed(() => outlines[selectedMapId.value]?.path || '');
 const stationById = computed(() => Object.fromEntries((activeMap.value?.stations || []).map(station => [station.id, station])));
@@ -46,7 +49,9 @@ const progress = ref({ visitedIds: [], lastStations: {} });
 const regionById = computed(() => Object.fromEntries((activeMap.value?.regions || []).map(region => [region.id, region])));
 const activeRegion = computed(() => regionById.value[selectedRegionId.value] || activeMap.value?.regions[0]);
 const activeRegionKey = computed(() => selectedMapId.value === 'japan'
-  ? `japan:${selectedCompanyId.value}:${activeRegion.value?.id || ''}` : activeRegion.value?.id || '');
+  ? `japan:${selectedCompanyId.value}:${activeRegion.value?.id || ''}`
+  : selectedMapId.value === 'taiwan' ? activeRegion.value?.id || ''
+    : `${selectedMapId.value}:${activeRegion.value?.id || ''}`);
 const regionStations = computed(() => (activeRegion.value?.stationIds || []).map(id => stationById.value[id]).filter(Boolean));
 const regionStationIds = computed(() => new Set(activeRegion.value?.stationIds || []));
 const links = computed(() => (activeMap.value?.links || []).filter(([a, b]) => regionStationIds.value.has(a) && regionStationIds.value.has(b))
@@ -56,7 +61,9 @@ const regionCounts = computed(() => Object.fromEntries((activeMap.value?.regions
   [region.id, region.stationIds.filter(id => progress.value.visitedIds.includes(id)).length])));
 const committedRegionKey = computed(() => progress.value.lastStations._activeRegion || '');
 const committedRegionId = computed(() => committedRegionKey.value.startsWith('japan:')
-  ? committedRegionKey.value.split(':').slice(2).join(':') : committedRegionKey.value);
+  ? committedRegionKey.value.split(':').slice(2).join(':')
+  : worldRail.countries[committedRegionKey.value.split(':')[0]]
+    ? committedRegionKey.value.split(':').slice(1).join(':') : committedRegionKey.value);
 const committedRegionCompleted = computed(() => {
   if (!committedRegionKey.value) return true;
   let stationIds;
@@ -68,11 +75,15 @@ const committedRegionCompleted = computed(() => {
     stationIds = size === 'line' ? data.lines.find(line => line.id === scopeId)?.stationIds
       : size === 'prefecture' ? data.prefectures.find(pref => pref.id === scopeId)?.stationIds
         : size === 'all' ? data.stations.map(station => station.id) : null;
+  } else if (committedRegionKey.value.includes(':')) {
+    const [country, ...regionId] = committedRegionKey.value.split(':');
+    stationIds = worldRail.countries[country]?.regions.find(region => region.id === regionId.join(':'))?.stationIds;
   } else stationIds = taiwanRail.regions.find(region => region.id === committedRegionKey.value)?.stationIds;
   return !!stationIds?.length && stationIds.every(id => progress.value.visitedIds.includes(id));
 });
 const canChooseRegion = region => !committedRegionKey.value || committedRegionCompleted.value ||
-  (selectedMapId.value === 'japan' ? `japan:${selectedCompanyId.value}:${region.id}` : region.id) === committedRegionKey.value;
+  (selectedMapId.value === 'japan' ? `japan:${selectedCompanyId.value}:${region.id}`
+    : selectedMapId.value === 'taiwan' ? region.id : `${selectedMapId.value}:${region.id}`) === committedRegionKey.value;
 const regionStampCount = computed(() => regionCounts.value[activeRegion.value?.id] || 0);
 const atlasGoal = computed(() => Math.min(ATLAS_STAMPS, activeRegion.value?.stationIds.length || ATLAS_STAMPS));
 const atlasUnlocked = computed(() => regionStampCount.value >= atlasGoal.value);
@@ -134,6 +145,16 @@ function stationAnnouncement(station, mapId, side) {
       { label: 'English', lang: 'en-US', text: '' }
     ]
   };
+  if (mapId === 'france') return { station, mapId, side, lines: [
+    { label: 'Français', lang: 'fr-FR', text: `Nous arrivons bientôt à ${station.name}. Les portes s'ouvriront du côté ${side === 'right' ? 'droit' : 'gauche'}.` }
+  ] };
+  if (mapId === 'germany') return { station, mapId, side, lines: [
+    { label: 'Deutsch', lang: 'de-DE', text: `Wir erreichen in Kürze ${station.name}. Der Ausstieg befindet sich auf der ${side === 'right' ? 'rechten' : 'linken'} Seite.` }
+  ] };
+  if (mapId === 'uk' || mapId === 'australia') return { station, mapId, side, lines: [
+    { label: 'English', lang: mapId === 'uk' ? 'en-GB' : 'en-AU',
+      text: `We will soon arrive at ${station.name} Station. The doors will open on the ${side}.` }
+  ] };
   return {
     station, mapId, side,
     lines: [
@@ -224,7 +245,7 @@ async function playAnnouncement() {
       || (line.lang === 'zh-TW' ? voices.find(candidate => /^cmn[-_]Hant[-_]TW$/i.test(candidate.lang)) : null)
       || (line.lang === 'nan-TW' || line.lang === 'hak-TW' ? null
         : voices.find(candidate => candidate.lang.toLowerCase().startsWith(line.lang.split('-')[0].toLowerCase() + '-')));
-    if ((line.lang === 'nan-TW' || line.lang === 'hak-TW') && !voice) {
+    if (['nan-TW', 'hak-TW', 'fr-FR', 'de-DE'].includes(line.lang) && !voice) {
       skipped.push(line.label);
       continue;
     }
@@ -271,14 +292,16 @@ const wikiPending = new Set();
 const viewedWiki = computed(() => ({ ...viewedStation.value, ...(stationWikiCache.value[viewedStation.value.id] || {}) }));
 watch([viewedId, selectedMapId, viewedInAtlas], async () => {
   const station = viewedStation.value;
-  if (selectedMapId.value !== 'japan' || !viewedInAtlas.value || !station.id.startsWith('jp:') ||
+  if (selectedMapId.value === 'taiwan' || !viewedInAtlas.value ||
     stationWikiCache.value[station.id] || wikiPending.has(station.id)) return;
   wikiPending.add(station.id);
   try {
     let page;
     let wikiLanguage = 'ja';
-    for (const [language, title] of [['zh', station.zhName], ['zh', station.name + '站'],
-      ['zh', station.name + '車站'], ['ja', station.name + '駅']]) {
+    const candidates = station.wikiTitle ? [[station.wikiLanguage, station.wikiTitle]]
+      : [['zh', station.zhName], ['zh', station.name + '站'],
+        ['zh', station.name + '車站'], ['ja', station.name + '駅']];
+    for (const [language, title] of candidates) {
       if (!title) continue;
       const response = await fetch(`https://${language}.wikipedia.org/api/rest_v1/page/summary/` + encodeURIComponent(title));
       if (!response.ok) continue;
@@ -350,7 +373,7 @@ const mapBounds = computed(() => {
   const distances = adjacent.value.map(item => Math.hypot(item.station.x - station.x, item.station.y - station.y))
     .sort((a, b) => a - b);
   const referenceDistance = distances[Math.min(2, distances.length - 1)] || 6;
-  const baseWidth = Math.max(6, Math.min(90, referenceDistance * 4));
+  const baseWidth = Math.max(6, Math.min(selectedMapId.value === 'australia' ? 180 : 90, referenceDistance * 4));
   // Keep the local scale closer than the fitted region view, even for one-station scopes.
   const width = Math.min(baseWidth / (1.5 ** nearbyZoom.value), overview.width * .72);
   const height = width / mapAspect.value;
@@ -446,8 +469,9 @@ const shuffle = source => {
   }
   return array;
 };
-const wikiUrl = station => station.wiki
-  ? 'https://zh.wikipedia.org/wiki/' + encodeURIComponent(station.wiki.replaceAll(' ', '_'))
+const wikiUrl = station => station.wikiTitle
+  ? `https://${station.wikiLanguage || 'en'}.wikipedia.org/wiki/` + encodeURIComponent(station.wikiTitle.replaceAll(' ', '_'))
+  : station.wiki ? 'https://zh.wikipedia.org/wiki/' + encodeURIComponent(station.wiki.replaceAll(' ', '_'))
   : station.zhName ? 'https://zh.wikipedia.org/wiki/' + encodeURIComponent(station.zhName.replaceAll(' ', '_'))
     : 'https://ja.wikipedia.org/wiki/Special:Search?search=' + encodeURIComponent(station.name + '駅');
 const progressKey = () => `railway-tour-v2:${String(student.value?.id || 'guest')}`;
@@ -529,7 +553,8 @@ async function loadProgress() {
     } else if (error) progressStatus.value = '雲端進度尚未啟用；目前使用本瀏覽器保存車站章。';
   }
   const known = new Set([...taiwanRail.stations.map(station => station.id),
-    ...japanIndex.regions.flatMap(region => region.stationIds)]);
+    ...japanIndex.regions.flatMap(region => region.stationIds),
+    ...Object.values(worldRail.countries).flatMap(country => country.stations.map(station => station.id))]);
   progress.value = {
     visitedIds: local.visitedIds.filter(id => known.has(id)),
     lastStations: local.lastStations
@@ -543,6 +568,8 @@ async function loadProgress() {
       selectedScopeSize.value = size;
       await loadJapaneseCompany(company);
     }
+  } else if (worldRail.countries[commitment.split(':')[0]]) {
+    selectedMapId.value = commitment.split(':')[0];
   }
   if (commitment && !regionById.value[committedRegionId.value])
     delete progress.value.lastStations._activeRegion;
@@ -764,6 +791,7 @@ function newGame() {
 let restoringProgress = false;
 watch([selectedMapId, selectedCompanyId, selectedScopeSize], async () => {
   if (restoringProgress) return;
+  branchSearch.value = '';
   if (selectedMapId.value === 'japan' && japanData.value?.id !== selectedCompanyId.value)
     await loadJapaneseCompany(selectedCompanyId.value);
   selectedRegionId.value = scopeRegions.value[0]?.id || 'north';
@@ -798,7 +826,7 @@ onMounted(async () => {
     if (error) throw error;
     words.value = (data || []).filter(word => word.en_us?.trim() && word.zh_tw?.trim());
     message.value = words.value.length >= 2
-      ? '可選臺灣區域或日本 JR 分區與地圖大小。選定範圍後踏破全部車站，再選下一區；累積最多 3 站章可開啟圖鑑。'
+      ? '可選臺灣、日本 JR、英國、法國、澳洲或德國鐵道。選定範圍後踏破全部車站，再選下一區；累積最多 3 站章可開啟圖鑑。'
       : '本單元至少需要兩筆有效單字，請返回首頁改選單元。';
   } catch (error) {
     message.value = '載入單字失敗：' + (error?.message || '請稍後重試。');
@@ -811,7 +839,7 @@ onMounted(async () => {
 <template>
   <main class="rail-page">
     <header class="rail-header">
-      <div><NuxtLink to="/" class="back-link">← 遊戲選單</NuxtLink><h1>🚂 單字鐵路旅遊高手</h1><p>{{ lessonLabel || (selectedMapId === 'japan' ? '日本 JR 之旅' : '臺灣鐵道之旅') }} · 答單字搭車、集章、升級車站</p></div>
+      <div><NuxtLink to="/" class="back-link">← 遊戲選單</NuxtLink><h1>🚂 單字鐵路旅遊高手</h1><p>{{ lessonLabel || (selectedMapId === 'japan' ? '日本 JR 之旅' : selectedMapId === 'taiwan' ? '臺灣鐵道之旅' : `${activeMap?.name || ''}鐵道之旅`) }} · 答單字搭車、集章、升級車站</p></div>
       <div class="setup">
         <label>鐵路地圖 <select v-model="selectedMapId" :disabled="(started && !finished) || !committedRegionCompleted"><option v-for="map in railwayMaps" :key="map.id" :value="map.id">{{ map.name }}</option></select></label>
         <label v-if="selectedMapId === 'japan'">JR 分區 <select v-model="selectedCompanyId" :disabled="(started && !finished) || !committedRegionCompleted"><option v-for="company in japanIndex.regions" :key="company.id" :value="company.id">{{ company.name }} · {{ company.stationCount }} 站</option></select></label>
@@ -826,6 +854,7 @@ onMounted(async () => {
 
     <p v-if="japanLoading || japanError" class="notice" role="status">{{ japanError || '正在載入 JR 車站與路線…' }} <button v-if="japanError" type="button" @click="loadJapaneseCompany(selectedCompanyId)">重試載入</button></p>
     <div v-if="mapReady && selectedMapId === 'japan'" class="japan-scope"><label>探索範圍 <select v-model="selectedRegionId" :disabled="(started && !finished) || !committedRegionCompleted"><option v-for="region in activeMap.regions" :key="region.id" :value="region.id">{{ region.name }} · {{ region.stationIds.length }} 站 · {{ regionCounts[region.id] }} 章</option></select></label><small>依 2025 年國土交通省鐵道資料；同一站在不同 JR 公司可分別探索。</small></div>
+    <div v-if="mapReady && worldRail.countries[selectedMapId]" class="japan-scope"><label>探索路線 <select v-model="selectedRegionId" :disabled="(started && !finished) || !committedRegionCompleted"><option v-for="region in activeMap.regions" :key="region.id" :value="region.id">{{ region.name }} · {{ region.stationIds.length }} 站 · {{ regionCounts[region.id] }} 章</option></select></label><small>收錄主要客運幹線的代表車站；連線為遊戲路線，未列出所有中間站或即時列車班次。</small></div>
     <nav v-if="mapReady && selectedMapId === 'taiwan'" class="region-picker" aria-label="臺灣鐵路探索區域">
       <button v-for="region in activeMap.regions" :key="region.id" type="button"
         :class="{ chosen: selectedRegionId === region.id, complete: regionCounts[region.id] === region.stationIds.length }"
@@ -872,23 +901,23 @@ onMounted(async () => {
             <text v-if="label.japanese" :x="label.x + mapUnit * 6" :y="label.y + mapUnit * 26" :style="{ fontSize: mapUnit * 10 + 'px' }" lang="ja">{{ label.japanese }}</text>
           </g>
         </svg>
-        <section v-if="selectedMapId === 'japan' && selectedScopeSize === 'line'" class="branch-stations" :aria-label="activeRegion.name + '全部車站的中日文名稱'">
-          <div class="branch-stations-heading"><strong>🚉 {{ activeRegion.name }}完整車站列表 · {{ activeRegion.stationIds.length }} 站</strong><label>搜尋站名 <input v-model="branchSearch" type="search" placeholder="中文或日文"></label></div>
-          <ol><li v-for="station in branchStations" :key="station.id"><button type="button" :class="{ current: currentId === station.id, viewed: viewedId === station.id }" @click="viewedId = station.id"><span class="branch-zh">{{ station.zhName }}</span><span class="branch-ja" lang="ja">{{ station.name }}駅</span><small>{{ progress.visitedIds.includes(station.id) ? '📍' : '' }}</small></button></li></ol>
+        <section v-if="selectedMapId !== 'taiwan' && (selectedMapId !== 'japan' || selectedScopeSize === 'line')" class="branch-stations" :aria-label="activeRegion.name + '遊戲車站列表'">
+          <div class="branch-stations-heading"><strong>🚉 {{ activeRegion.name }}遊戲車站列表 · {{ activeRegion.stationIds.length }} 站</strong><label>搜尋站名 <input v-model="branchSearch" type="search" :placeholder="selectedMapId === 'japan' ? '中文或日文' : '輸入車站名稱'"></label></div>
+          <ol><li v-for="station in branchStations" :key="station.id"><button type="button" :class="{ current: currentId === station.id, viewed: viewedId === station.id }" @click="viewedId = station.id"><span class="branch-zh">{{ station.zhName || station.name }}</span><span v-if="selectedMapId === 'japan'" class="branch-ja" lang="ja">{{ station.name }}駅</span><small>{{ progress.visitedIds.includes(station.id) ? '📍' : '' }}</small></button></li></ol>
           <p v-if="!branchStations.length">找不到相符車站。</p>
         </section>
-        <p class="map-caption">附近地圖以目前車站為中心，顯示視野內所有路線與車站；可用 ＋／－ 調整倍率。全區總覽顯示所選範圍，全國輪廓可查看海岸形狀。資料：<a v-if="selectedMapId === 'taiwan'" href="https://data.gov.tw/dataset/33425" target="_blank" rel="noopener noreferrer">臺鐵車站 ↗</a><a v-else href="https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N02-2025.html" target="_blank" rel="noopener noreferrer">日本國土交通省 2025 鐵道資料（CC BY 4.0）↗</a>；海岸輪廓：<a href="https://www.naturalearthdata.com/downloads/10m-cultural-vectors/" target="_blank" rel="noopener noreferrer">Natural Earth 1:10m ↗</a>。</p>
+        <p class="map-caption">附近地圖以目前車站為中心，顯示視野內所有路線與車站；可用 ＋／－ 調整倍率。全區總覽顯示所選範圍，全國輪廓可查看海岸形狀。資料：<a v-if="selectedMapId === 'taiwan'" href="https://data.gov.tw/dataset/33425" target="_blank" rel="noopener noreferrer">臺鐵車站 ↗</a><a v-else-if="selectedMapId === 'japan'" href="https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N02-2025.html" target="_blank" rel="noopener noreferrer">日本國土交通省 2025 鐵道資料（CC BY 4.0）↗</a><template v-else><a :href="activeMap.source" target="_blank" rel="noopener noreferrer">{{ activeMap.name }}主要路線來源 ↗</a><a v-for="(url, index) in activeMap.extraSources" :key="url" :href="url" target="_blank" rel="noopener noreferrer"> · 補充來源 {{ index + 1 }} ↗</a></template>；海岸輪廓：<a :href="selectedMapId === 'taiwan' || selectedMapId === 'japan' ? 'https://www.naturalearthdata.com/downloads/10m-cultural-vectors/' : 'https://www.naturalearthdata.com/downloads/50m-cultural-vectors/'" target="_blank" rel="noopener noreferrer">Natural Earth {{ selectedMapId === 'taiwan' || selectedMapId === 'japan' ? '1:10m' : '1:50m' }} ↗</a>。</p>
       </section>
 
       <section class="station-card" aria-label="車站小百科">
         <div class="station-photo">
           <img v-if="viewedInAtlas && viewedWiki.image && !imageFailures.includes(viewedStation.id)" :key="viewedStation.id" :src="viewedWiki.image" :alt="viewedStation.name + '車站照片'" referrerpolicy="no-referrer" @error="imageFailures.push(viewedStation.id)">
-          <div v-else class="photo-fallback">{{ viewedInAtlas ? '🚉' : '🔒' }}<span>{{ viewedInAtlas ? (selectedMapId === 'japan' ? '可開啟維基百科搜尋車站照片' : '照片暫時無法載入，可開啟維基百科查看') : '到站集章且本區累積 3 站後解鎖圖鑑' }}</span></div>
+          <div v-else class="photo-fallback">{{ viewedInAtlas ? '🚉' : '🔒' }}<span>{{ viewedInAtlas ? (selectedMapId !== 'taiwan' ? '可開啟維基百科搜尋車站照片' : '照片暫時無法載入，可開啟維基百科查看') : '到站集章且本區累積 3 站後解鎖圖鑑' }}</span></div>
         </div>
         <div class="station-info">
           <p class="eyebrow">{{ viewedStation.line }} · {{ viewedStation.en || viewedStation.prefectureName || '' }}</p>
           <h2>{{ selectedMapId === 'japan' ? viewedStation.zhName : viewedStation.name + '車站' }} <small v-if="selectedMapId === 'japan'" lang="ja">{{ viewedStation.name }}駅</small> <span v-if="progress.visitedIds.includes(viewedStation.id)">📍 已集章</span></h2>
-          <p>{{ viewedInAtlas ? (viewedWiki.summary || `${viewedStation.name}站位於${viewedStation.prefectureName || '日本'}，營運路線：${viewedStation.lines?.join('、') || viewedStation.line}。點選維基百科搜尋車站照片與詳細介紹。`) : `圖鑑尚未解鎖：先到達這座車站，並在${activeRegion.name}累積 ${atlasGoal} 座不同車站章。` }}</p>
+          <p>{{ viewedInAtlas ? (viewedWiki.summary || `${viewedStation.name}站位於${viewedStation.prefectureName || activeMap.name}，遊戲路線：${viewedStation.lines?.join('、') || viewedStation.line}。點選維基百科搜尋車站照片與詳細介紹。`) : `圖鑑尚未解鎖：先到達這座車站，並在${activeRegion.name}累積 ${atlasGoal} 座不同車站章。` }}</p>
           <div v-if="viewedInAtlas" class="source-links"><a :href="viewedWiki.wikiPage || wikiUrl(viewedStation)" target="_blank" rel="noopener noreferrer">{{ selectedMapId === 'japan' ? `維基百科${viewedWiki.wikiLanguage === 'zh' ? '中文' : '日文'}簡介（CC BY-SA）↗` : '維基百科簡介 ↗' }}</a><a v-if="viewedWiki.imagePage" :href="viewedWiki.imagePage" target="_blank" rel="noopener noreferrer" :title="(viewedWiki.imageAuthor || 'Wikimedia Commons') + ' · ' + (viewedWiki.imageLicense || '請於圖片頁查看授權')">圖片：{{ viewedWiki.imageAuthor || 'Wikimedia Commons' }} · {{ viewedWiki.imageLicense || '授權資訊見圖片頁' }} ↗</a></div>
         </div>
       </section>

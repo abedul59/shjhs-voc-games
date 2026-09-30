@@ -12,3 +12,14 @@
 既有 Supabase 專案需執行 `supabase/migrations/20260929_railway_japan_progress_capacity.sql`，將車站章上限從 300 提升到 6,000；既有進度不會清除。
 
 日本車站圖鑑只在到站解鎖後查詢維基百科簡介（優先中文，找不到才查日文）。若文章有封面照片，另查 Wikimedia Commons 的作者、授權及圖片頁資訊後才顯示。站點資料本身不仰賴維基百科載入，維基百科暫時不可用時仍可遊玩。
+
+## 英國、法國、德國、澳洲的代表路線
+
+四國地圖使用 Natural Earth [1:50m 國界](https://www.naturalearthdata.com/downloads/50m-cultural-vectors/)（public domain）與維基百科條目／Wikidata 的車站座標。車站座標及條目標題快照存於 `data/railway-world-coordinate-source.json`；生成結果存於 `data/railway-world.json`。路線取自官方客運路線圖，**僅節選主要車站**：英國 50 站／4 條路線、法國 34 站／5 條路線、德國 38 站／5 條路線、澳洲 54 站／6 條路線。圖上的直線是遊戲探索連線，不代表軌道實際形狀、直達班次或完整停靠站。
+
+- 英國：[National Rail 官方路線圖](https://www.nationalrail.co.uk/travel-information/maps-of-the-national-rail-network/)。
+- 法國：[SNCF Réseau 2026 鐵路圖冊](https://www.sncf-reseau.com/fr/cartes/atlas-du-reseau-ferre-francais)。
+- 德國：[Deutsche Bahn ICE／IC 路網圖](https://www.bahn.de/service/fahrplaene/streckennetz)。
+- 澳洲：[NSW TrainLink](https://transportnsw.info/routes/train)、[Queensland Rail Travel](https://www.queenslandrailtravel.com.au/Planyourtrip/networkmap)、[V/Line](https://www.vline.com.au/Maps-stations-stops/Network-Maps)、[Transwa Prospector](https://transwa.wa.gov.au/plan-your-journey/train-lines/prospector)。
+
+重建這四國資料時，下載 Natural Earth `ne_50m_admin_0_countries.geojson`，安裝 Python `requests`，執行 `python3 scripts/generate-railway-world.py --countries COUNTRIES.geojson`。腳本可使用座標快照離線重建；新增車站時才需查詢維基百科 API。四國共新增 176 個車站 ID，連同臺灣及日本資料仍低於前述 6,000 站的資料庫進度上限，因此不需另執行 SQL。

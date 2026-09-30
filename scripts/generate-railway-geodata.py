@@ -25,7 +25,9 @@ def rings(geom):
  if geom.geom_type=='Polygon':yield geom.exterior;yield from geom.interiors
  elif geom.geom_type=='MultiPolygon':
   for poly in geom.geoms:yield from rings(poly)
-outlines={}
+outline_path=root/'data/railway-outlines.json'
+outlines={key:value for key,value in (json.load(open(outline_path)) if outline_path.exists() else {}).items()
+          if key not in ('taiwan','japan')}
 for key,name,tol in [('taiwan','Taiwan',.0005),('japan','Japan',.0005)]:
  geom=shape(selected[name]['geometry']).simplify(tol,preserve_topology=True)
  pieces=[]
