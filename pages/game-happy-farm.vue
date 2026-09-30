@@ -698,7 +698,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
               <a class="map-source" href="https://data.tainan.gov.tw/Resource/46e014c9-0e5a-4734-9b98-23ab163e6517" target="_blank" rel="noopener">農地格數參考：臺南市政府 115 年 8 月區面積與村里界推估</a>
             </div>
             <div class="village-field">
-              <p class="village-heading"><strong>{{ villageName(selectedVillage) }}</strong><span>約 {{ villageAreaKm2(selectedVillage).toFixed(2) }} km² · {{ ownedVillage ? `${visiblePlots.length} / ${villagePlotLimit(viewFarm, selectedVillage)} 格農地` : '尚未購買' }}</span></p>
+              <p class="village-heading"><strong>{{ villageName(selectedVillage) }}</strong><span title="遊戲上限：基本 4 格，每約 0.5 平方公里增加 1 格，最高 30 格；舊存檔已擴建的地格保留">約 {{ villageAreaKm2(selectedVillage).toFixed(2) }} km² · {{ ownedVillage ? `${visiblePlots.length} / ${villagePlotLimit(viewFarm, selectedVillage)} 格農地` : '尚未購買' }}</span></p>
               <div v-if="!visiting" class="village-land-actions">
                 <template v-if="!ownedVillage"><button type="button" :disabled="!can('buyLand')" @click="beginAction('buyLand')">🏡 答題購買此里 · {{ villageCost }} 金幣（取得 4 格）</button><small v-if="farm.coins < villageCost">還需 {{ villageCost - farm.coins }} 金幣</small></template>
                 <template v-else-if="visiblePlots.length < villagePlotCapacity(selectedVillage)"><button type="button" :disabled="!can('expand')" @click="beginAction('expand')">🪵 答題擴建 +1 格 · {{ expansionCost }} 金幣</button><small v-if="farm.coins < expansionCost">還需 {{ expansionCost - farm.coins }} 金幣</small></template>
