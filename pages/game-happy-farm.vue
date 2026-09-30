@@ -6,7 +6,7 @@ import {
   villageById, neighborAccess, landSalePrice, cropInSeason
 } from '~/lib/happy-farm';
 import { FARM_ANIMALS, animalActionError, animalById, applyAnimalAction } from '~/lib/happy-farm-animals';
-import { FACILITY_COST, applyEconomyAction, economyActionError, farmDay, processedSale, solarIncome, solarSite, tourismIncome } from '~/lib/happy-farm-economy';
+import { FACILITY_COST, applyEconomyAction, economyActionError, farmDay, farmRevenueSlot, processedSale, revenueWaitMs, solarIncome, solarSite, tourismIncome } from '~/lib/happy-farm-economy';
 import { FARM_BUSINESSES, agricultureLesson, applyBusinessAction, businessActionError, businessById, businessIncome, marketUnitPrice, populationSource, villagePopulation } from '~/lib/happy-farm-businesses';
 
 const db = useSupabaseClient();
@@ -32,7 +32,7 @@ const economySection = ref('solar');
 const selectedBusiness = ref('market');
 const marketProductKind = ref('fresh');
 const schoolAnswer = ref('');
-const schoolAnsweredDay = ref('');
+const schoolAnsweredSlot = ref('');
 const schoolFeedback = ref('');
 const classmates = ref([]);
 const chosenClassmateId = ref('');
@@ -89,9 +89,19 @@ const plotLabel = index => index < 0 || index >= farm.value.plots.length ? '請�
 const animalLocation = pen => Number.isInteger(pen?.plotIndex) ? plotLabel(pen.plotIndex) : '待安置';
 const facilityLabel = plot => plot?.facility === 'animal' ? `${animal(plot.animalId)?.icon || '🐾'} ${animal(plot.animalId)?.habitat || '動物農舍'}` : plot?.facility === 'factory' ? '🏭 加工坊' : plot?.facility === 'tourism' ? '🎟️ 觀光接待站' : plot?.facility === 'solar' ? '☀️ 光電板' : businessById(plot?.facility) ? `${businessById(plot.facility).icon} ${businessById(plot.facility).name}` : '';
 const today = computed(() => farmDay(now.value));
+const revenueSlot = computed(() => farmRevenueSlot(now.value));
 const solarPlots = computed(() => farm.value.plots.map((plot, index) => ({ plot, index })).filter(item => item.plot?.solar));
 const tourismPlot = computed(() => farm.value.plots.findIndex(plot => plot?.facility === 'tourism'));
 const economyPreview = computed(() => tourismIncome(farm.value, now.value));
+const solarWait = computed(() => revenueWaitMs(farm.value.plots[selectedPlot.value], 'lastSolarAt', 'lastSolarDay', now.value));
+const tourismWait = computed(() => revenueWaitMs(farm.value.plots[tourismPlot.value], 'lastVisitAt', 'lastVisitDay', now.value));
+const businessWait = computed(() => revenueWaitMs(farm.value.plots[selectedPlot.value], 'lastBusinessAt', 'lastBusinessDay', now.value));
+const waitLabel = milliseconds => {
+  if (milliseconds <= 0) return '現在可收款';
+  const minutes = Math.ceil(milliseconds / 60000);
+  const hours = Math.floor(minutes / 60);
+  return `還需 ${hours ? hours + ' 小時 ' : ''}${minutes % 60} 分鐘`;
+};
 const business = computed(() => businessById(selectedBusiness.value) || FARM_BUSINESSES[0]);
 const businessSites = computed(() => farm.value.plots.map((plot, index) => ({ plot, index })).filter(item => item.plot?.facility === selectedBusiness.value));
 const schoolLesson = computed(() => agricultureLesson(now.value));
@@ -400,7 +410,7 @@ function beginEconomyAction(action, cropId = selectedCrop.value, mode = '') {
   const actionText = {
     buildSolar: `在${plotLabel(plotIndex)}設置光電板`, collectSolar: `結算${plotLabel(plotIndex)}的賣電收入`,
     buildFactory: `在${plotLabel(plotIndex)}建造加工坊`, buildTourism: `在${plotLabel(plotIndex)}建造觀光接待站`,
-    collectVisitors: '接待今日遊客', processCrop: `製作${CROP_PRODUCTS[cropId]}${mode === 'outsource' ? '（委外）' : ''}`,
+    collectVisitors: '接待本輪遊客', processCrop: `製作${CROP_PRODUCTS[cropId]}${mode === 'outsource' ? '（委外）' : ''}`,
     sellProcessed: `賣出全部${CROP_PRODUCTS[cropId]}`
   }[action];
   quiz.value = { ...buildQuiz(), action, cropId, plotIndex, mode, economy: true, actionText };
@@ -416,8 +426,9 @@ function beginBusinessAction(action) {
   const problem = businessActionError(farm.value, action, plotIndex, businessId, cropId, productKind, Date.now());
   if (problem) { notice.value = problem; return; }
   if (action === 'collectBusiness' && businessId === 'school') {
-    if (schoolAnsweredDay.value !== today.value.date || schoolAnswer.value !== schoolLesson.value.answer) {
-      schoolFeedback.value = schoolAnsweredDay.value === today.value.date ? '再想一想：' + schoolLesson.value.explanation : '請先完成今天的農業小測驗。';
+    if (!schoolLesson.value) { schoolFeedback.value = '課程暫時無法載入，請重新整理頁面。'; return; }
+    if (schoolAnsweredSlot.value !== revenueSlot.value || schoolAnswer.value !== schoolLesson.value.answer) {
+      schoolFeedback.value = schoolAnsweredSlot.value === revenueSlot.value ? '再想一想：' + schoolLesson.value.explanation : '請先完成本輪農業小測驗。';
       return;
     }
     schoolFeedback.value = '答對農業小測驗！' + schoolLesson.value.explanation;
@@ -658,10 +669,10 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
           </section>
           <section v-if="activePanel === 'economy' && !visiting" class="economy-card">
             <h2>☀️ 農場經營 <small>{{ today.date }} · {{ today.season }} · {{ today.weatherIcon }} {{ today.weatherName }}</small></h2>
-            <p class="help">每日遊戲模擬天氣；晴天賣電最多。每日收益需答對單字領取，跨日不累積。</p>
+            <p class="help">模擬天氣每日更新；光電、觀光與營業設施每次收款後需等 3 小時，再答對單字領取下一輪收益。不會自動累積。</p>
             <nav class="economy-tabs" aria-label="經營項目"><button v-for="item in [{ id: 'solar', text: '☀️ 光電' }, { id: 'processing', text: '🏭 加工' }, { id: 'tourism', text: '🎟️ 觀光' }, { id: 'business', text: '🏬 設施' }]" :key="item.id" type="button" :class="{ active: economySection === item.id }" @click="economySection = item.id">{{ item.text }}</button></nav>
             <div v-if="economySection === 'solar'" class="economy-block"><strong>📍 {{ plotLabel(selectedPlot) }} · {{ selectedSite?.facility ? facilityLabel(selectedSite) : selected ? crop(selected.crop)?.name : '空地' }}</strong>
-              <p v-if="selectedSite?.solar">{{ solarSite(selectedSite) }}光電板 · 今日可賣電 {{ solarIncome(selectedSite, now) }} 金幣</p>
+              <p v-if="selectedSite?.solar">{{ solarSite(selectedSite) }}光電板 · 本輪可賣電 {{ solarIncome(selectedSite, now) }} 金幣 · {{ waitLabel(solarWait) }}</p>
               <div class="economy-actions"><button type="button" :disabled="!canEconomy('buildSolar')" @click="beginEconomyAction('buildSolar')">設置光電 {{ FACILITY_COST.solar }}</button><button type="button" :disabled="!canEconomy('collectSolar')" @click="beginEconomyAction('collectSolar')">賣電收款</button></div>
               <small>空地可設地面板；魚塭與動物農舍可設上方或屋頂板。已設 {{ solarPlots.length }} 處。</small>
             </div>
@@ -672,8 +683,9 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
               <div class="economy-actions"><button type="button" :disabled="!canEconomy('processCrop', selectedCrop, 'factory')" @click="beginEconomyAction('processCrop', selectedCrop, 'factory')">坊內加工 2 份</button><button type="button" :disabled="!canEconomy('processCrop', selectedCrop, 'outsource')" @click="beginEconomyAction('processCrop', selectedCrop, 'outsource')">委外加工 12</button><button type="button" :disabled="!canEconomy('sellProcessed')" @click="beginEconomyAction('sellProcessed')">賣副產品</button></div>
             </div>
             <div v-if="economySection === 'tourism'" class="economy-block"><strong>🎟️ 觀光農場</strong>
-              <p>{{ today.weekend ? '週末' : '平日' }}預計 {{ economyPreview.visitors }} 位遊客 · 今日門票 {{ economyPreview.coins }} 金幣 · 累計來客 {{ farm.visitors || 0 }}</p>
-              <div class="economy-actions"><button type="button" :disabled="!canEconomy('buildTourism')" @click="beginEconomyAction('buildTourism')">空地建接待站 {{ FACILITY_COST.tourism }}</button><button type="button" :disabled="!canEconomy('collectVisitors')" @click="beginEconomyAction('collectVisitors')">接待今日遊客</button></div>
+              <p>{{ today.weekend ? '週末' : '平日' }}本輪預計 {{ economyPreview.visitors }} 位遊客 · 門票 {{ economyPreview.coins }} 金幣 · 累計來客 {{ farm.visitors || 0 }}</p>
+              <div class="economy-actions"><button type="button" :disabled="!canEconomy('buildTourism')" @click="beginEconomyAction('buildTourism')">空地建接待站 {{ FACILITY_COST.tourism }}</button><button type="button" :disabled="!canEconomy('collectVisitors')" @click="beginEconomyAction('collectVisitors')">接待本輪遊客</button></div>
+              <small v-if="tourismPlot >= 0">{{ waitLabel(tourismWait) }}</small>
               <small>農作物與動物種類越多，來客越多；週末人潮較高。</small>
             </div>
             <div v-if="economySection === 'business'" class="economy-block business-block">
@@ -681,8 +693,9 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
               <p><strong>{{ business.icon }} {{ business.name }}</strong> · {{ business.description }}</p>
               <small>設備：{{ business.equipment }} · 建設 {{ business.cost }} 金幣 · 每里此類設施限一間。</small>
               <p>📍 {{ plotLabel(selectedPlot) }} · {{ selectedSite?.facility ? facilityLabel(selectedSite) : selected ? crop(selected.crop)?.name : '空地' }}</p>
-              <div class="economy-actions"><button type="button" :disabled="!canBusiness('buildBusiness')" @click="beginBusinessAction('buildBusiness')">答題建造 {{ business.name }}</button><button type="button" :disabled="!canBusiness('collectBusiness')" @click="beginBusinessAction('collectBusiness')">答題結算今日 {{ businessIncome(farm, selectedBusiness, farm.plotVillages?.[selectedPlot], now) }} 金幣</button></div>
-              <div v-if="businessSites.length" class="business-sites"><span>已建設：</span><button v-for="site in businessSites" :key="site.index" type="button" :class="{ active: selectedPlot === site.index }" @click="selectBusinessSite(site.index)">{{ plotLabel(site.index) }}{{ site.plot.lastBusinessDay === today.date ? ' ✓' : '' }}</button></div>
+              <div class="economy-actions"><button type="button" :disabled="!canBusiness('buildBusiness')" @click="beginBusinessAction('buildBusiness')">答題建造 {{ business.name }}</button><button type="button" :disabled="!canBusiness('collectBusiness')" @click="beginBusinessAction('collectBusiness')">答題結算本輪 {{ businessIncome(farm, selectedBusiness, farm.plotVillages?.[selectedPlot], now) }} 金幣</button></div>
+              <small v-if="selectedSite?.facility === selectedBusiness">{{ waitLabel(businessWait) }}</small>
+              <div v-if="businessSites.length" class="business-sites"><span>已建設：</span><button v-for="site in businessSites" :key="site.index" type="button" :class="{ active: selectedPlot === site.index }" @click="selectBusinessSite(site.index)">{{ plotLabel(site.index) }}{{ revenueWaitMs(site.plot, 'lastBusinessAt', 'lastBusinessDay', now) > 0 ? ' · 等待中' : ' · 可收款' }}</button></div>
               <div v-if="selectedBusiness === 'market'" class="business-extra">
                 <p>本里人口 {{ villagePopulation(farm.plotVillages?.[selectedPlot]).toLocaleString() }} 人 · 人口越多，客流分潤越高；自產商品在超市售價也較高。</p>
                 <div class="business-pickers"><select v-model="marketProductKind" aria-label="選擇產品類型"><option value="fresh">農作物</option><option value="processed">加工品</option></select><select v-model="selectedCrop" aria-label="選擇超市販售商品"><option v-for="item in FARM_CROPS" :key="item.id" :value="item.id">{{ marketProductKind === 'fresh' ? item.name : CROP_PRODUCTS[item.id] }}</option></select></div>
@@ -691,14 +704,14 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
                 <a :href="populationSource.sourceUrl" target="_blank" rel="noopener">人口參考：臺南市政府民政局民國 {{ populationSource.year }} 年里別資料</a>
               </div>
               <div v-if="selectedBusiness === 'school'" class="business-extra school-lesson">
-                <strong>今日農業小課堂</strong><p>{{ schoolLesson.question }}</p>
-                <div class="school-choices"><button v-for="choice in schoolLesson.choices" :key="choice" type="button" :class="{ active: schoolAnsweredDay === today.date && schoolAnswer === choice }" @click="schoolAnswer = choice; schoolAnsweredDay = today.date; schoolFeedback = ''">{{ choice }}</button></div>
-                <small>先答農業題，再答一題單字，才能領取今日教學收入。</small><p v-if="schoolFeedback" role="status">{{ schoolFeedback }}</p>
+                <strong>本輪農業小課堂</strong><p>{{ schoolLesson?.question || '正在準備課程' }}</p>
+                <div class="school-choices"><button v-for="choice in schoolLesson?.choices || []" :key="choice" type="button" :class="{ active: schoolAnsweredSlot === revenueSlot && schoolAnswer === choice }" @click="schoolAnswer = choice; schoolAnsweredSlot = revenueSlot; schoolFeedback = ''">{{ choice }}</button></div>
+                <small>每輪先答農業題，再答一題單字，才能領取教學收入。</small><p v-if="schoolFeedback" role="status">{{ schoolFeedback }}</p>
               </div>
-              <small v-if="selectedBusiness === 'restaurant'">庫存有農作物或動物產品時，今日營收加 15 金幣；此加成不消耗庫存。</small>
+              <small v-if="selectedBusiness === 'restaurant'">庫存有農作物或動物產品時，每輪營收加 5 金幣；此加成不消耗庫存。</small>
               <small v-if="selectedBusiness === 'fishing' || selectedBusiness === 'shrimp'">設施本身包含池與釣位；雨天客流較少，週末較多。</small>
-              <small v-if="selectedBusiness === 'karaoke'">包廂每日可營業一次，週末客流較多。</small>
-              <small>累計設施營收 {{ farm.businessRevenue || 0 }} 金幣。遊戲營收為模擬數值，每日需答題領取。</small>
+              <small v-if="selectedBusiness === 'karaoke'">包廂每 3 小時可結算一次，週末客流較多。</small>
+              <small>累計設施營收 {{ farm.businessRevenue || 0 }} 金幣。遊戲營收為模擬數值，每輪需答題領取。</small>
             </div>
           </section>
           <section v-if="activePanel === 'visitors'" class="visit-card">
