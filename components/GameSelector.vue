@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, computed, onUnmounted, watch } from 'vue';
+import { farmLessonAllowed, farmPolicyTableMissing } from '~/lib/happy-farm-access';
 
 const props = defineProps({ autoLogoutMinutes: { type: Number, default: 10 } });
 const supabase = useSupabaseClient();
@@ -281,6 +282,15 @@ const handleStartGame = async () => {
 
   if (!selectedVersion.value || !selectedVolume.value || !selectedUnit.value) { errorMsg.value = '⚠️ 請完整選擇要挑戰的範圍！'; return; }
   if (isUnitLocked.value) { errorMsg.value = '⚠️ 此單元已被老師鎖定，目前無法遊玩！'; return; }
+
+  if (selectedGameType.value === 'happyFarm' && studentCookie.value?.class) {
+    const { data: farmPolicy, error: policyError } = await supabase.from('happy_farm_lesson_access')
+      .select('mode,units').eq('class_name', studentCookie.value.class).maybeSingle();
+    if (policyError && !farmPolicyTableMissing(policyError)) { errorMsg.value = '⚠️ 農場範圍設定暫時無法讀取，請稍後再試。'; return; }
+    if (!farmLessonAllowed(farmPolicy, { version: selectedVersion.value, volume: selectedVolume.value, unit: selectedUnit.value })) {
+      errorMsg.value = '⚠️ 導師目前沒有開放這個單元的開心農場。'; return;
+    }
+  }
 
   isLoading.value = true;
   const targetPath = gameDict[selectedGameType.value]?.path || '/game';
