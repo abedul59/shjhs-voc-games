@@ -1,4 +1,4 @@
--- 新增三種作物與適季收成，維持原有同班互訪規則。
+-- 支援全部現有作物與適季收成，維持原有同班互訪規則。
 -- 在已安裝開心農場與鄰區互訪 SQL 的 Supabase SQL Editor 執行。
 BEGIN;
 
@@ -55,7 +55,7 @@ BEGIN
     RAISE EXCEPTION '農場資料不完整';
   END IF;
   v_crop := v_plot->>'crop';
-  IF v_crop NOT IN ('carrot', 'corn', 'strawberry', 'pumpkin', 'pineapple', 'bamboo', 'sweet_potato', 'olive', 'sesame', 'rice', 'mango', 'dragon_fruit', 'banana') THEN RAISE EXCEPTION '作物資料無效'; END IF;
+  IF v_crop NOT IN ('carrot', 'corn', 'strawberry', 'pumpkin', 'pineapple', 'bamboo', 'sweet_potato', 'olive', 'sesame', 'rice', 'mango', 'dragon_fruit', 'banana', 'shallot', 'papaya', 'avocado', 'water_caltrop', 'lotus_root', 'water_snowflake', 'lychee', 'guava', 'red_bean', 'wax_apple') THEN RAISE EXCEPTION '作物資料無效'; END IF;
   v_now := floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint;
   v_ready := (v_plot->>'readyAt')::bigint;
   v_planted := (v_plot->>'plantedAt')::bigint;
