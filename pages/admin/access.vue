@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue';
+import { farmLessonKey } from '~/lib/happy-farm-access';
 
 const supabase = useSupabaseClient();
 const isLoading = ref(true);
@@ -52,6 +53,43 @@ const displayClasses = computed(() => {
 const selStudentClass = ref('');
 const classStudents = ref([]);
 const isFetchingStudents = ref(false);
+const farmPolicy = ref({ mode: 'all', units: [] });
+const farmPolicyMessage = ref('');
+const farmPolicySaving = ref(false);
+const farmVer = ref(''); const farmVol = ref(''); const farmUnit = ref('');
+const farmVolumes = computed(() => [...new Set(vocabMenu.value.filter(item => item.version === farmVer.value).map(item => item.volume))]);
+const farmUnits = computed(() => [...new Set(vocabMenu.value.filter(item => item.version === farmVer.value && item.volume === farmVol.value).map(item => item.unit))]);
+const farmUnitOptions = computed(() => [...new Map(vocabMenu.value.map(item => [farmLessonKey(item), item])).values()]);
+async function fetchFarmPolicy() {
+  farmPolicyMessage.value = '';
+  farmPolicy.value = { mode: 'all', units: [] };
+  if (!selStudentClass.value) return;
+  const { data, error } = await supabase.from('happy_farm_lesson_access').select('mode,units').eq('class_name', selStudentClass.value).maybeSingle();
+  if (error) farmPolicyMessage.value = '農場單元權限尚未啟用，請先執行新增的 SQL：' + error.message;
+  else if (data) farmPolicy.value = { mode: data.mode, units: Array.isArray(data.units) ? data.units : [] };
+}
+function addFarmUnit() {
+  if (!farmVer.value || !farmVol.value || !farmUnit.value) return;
+  const key = farmLessonKey({ version: farmVer.value, volume: farmVol.value, unit: farmUnit.value });
+  if (!farmPolicy.value.units.includes(key)) farmPolicy.value.units.push(key);
+}
+function addFarmVolume() {
+  if (!farmVer.value || !farmVol.value) return;
+  for (const unit of farmUnits.value) {
+    const key = farmLessonKey({ version: farmVer.value, volume: farmVol.value, unit });
+    if (!farmPolicy.value.units.includes(key)) farmPolicy.value.units.push(key);
+  }
+}
+async function saveFarmPolicy() {
+  if (!selStudentClass.value || (!isSuperAdmin.value && !allowedClasses.includes(selStudentClass.value))) return;
+  farmPolicySaving.value = true;
+  const { error } = await supabase.from('happy_farm_lesson_access').upsert({
+    class_name: selStudentClass.value, mode: farmPolicy.value.mode, units: farmPolicy.value.units,
+    updated_by: String(authCookie.value?.name || '導師'), updated_at: new Date().toISOString()
+  }, { onConflict: 'class_name' });
+  farmPolicyMessage.value = error ? '儲存失敗：' + error.message : '已儲存。學生重新進入或操作時會套用此班設定。';
+  farmPolicySaving.value = false;
+}
 
 const showStudentModal = ref(false);
 const editingStudent = ref(null);
@@ -112,6 +150,7 @@ const fetchStudents = async () => {
   isFetchingStudents.value = false;
 };
 watch(selStudentClass, fetchStudents);
+watch(selStudentClass, fetchFarmPolicy);
 
 const openStudentModal = (student) => {
   editingStudent.value = student;
@@ -197,6 +236,20 @@ const saveStudentAccess = async () => {
           </div>
         </div>
       </template>
+
+      <div class="admin-card full-width" style="border-color: #4caf50;">
+        <h3>🌻 開心農場可玩範圍</h3>
+        <p>以學生原班為單位。白名單只允許列出的單元；黑名單禁止列出的單元。其他遊戲不受影響。</p>
+        <p><strong>目前班級：{{ selStudentClass || '請先選班級' }}</strong></p>
+        <div class="unit-selector"><label><input v-model="farmPolicy.mode" type="radio" value="all"> 全部開放</label><label><input v-model="farmPolicy.mode" type="radio" value="allow"> 只准清單</label><label><input v-model="farmPolicy.mode" type="radio" value="deny"> 禁止清單</label></div>
+        <template v-if="farmPolicy.mode !== 'all'">
+          <div class="unit-selector"><select v-model="farmVer" class="retro-input" @change="farmVol = ''; farmUnit = ''"><option value="">版本</option><option v-for="version in availableVersions" :key="version">{{ version }}</option></select><select v-model="farmVol" class="retro-input" @change="farmUnit = ''"><option value="">冊數</option><option v-for="volume in farmVolumes" :key="volume">{{ volume }}</option></select><select v-model="farmUnit" class="retro-input"><option value="">單元</option><option v-for="unit in farmUnits" :key="unit">{{ unit }}</option></select><button class="retro-btn btn-primary" type="button" :disabled="!farmUnit" @click="addFarmUnit">加入單元</button><button class="retro-btn btn-secondary" type="button" :disabled="!farmVol" @click="addFarmVolume">加入整冊</button></div>
+          <div class="locked-list"><span v-for="key in farmPolicy.units" :key="key" class="locked-tag">{{ key.replace(/\|/g, ' · ') }} <button type="button" class="del-btn" @click="farmPolicy.units = farmPolicy.units.filter(item => item !== key)">✖</button></span><span v-if="!farmPolicy.units.length">目前尚未選單元</span></div>
+          <small>共 {{ farmUnitOptions.length }} 個單元可選；白名單若為空，這個班暫時不能玩開心農場。</small>
+        </template>
+        <p v-if="farmPolicyMessage" role="status">{{ farmPolicyMessage }}</p>
+        <button class="retro-btn btn-primary" type="button" :disabled="!selStudentClass || farmPolicySaving" @click="saveFarmPolicy">{{ farmPolicySaving ? '儲存中…' : '儲存農場範圍' }}</button>
+      </div>
 
       <div class="admin-card full-width" style="border-color: #4caf50;">
         <h3 style="color: #2e7d32; border-bottom-color: #a5d6a7;">🧑‍🎓 學生個別遊戲開放設定 (白名單)</h3>

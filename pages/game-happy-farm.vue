@@ -8,10 +8,14 @@ import {
 import { FARM_ANIMALS, animalActionError, animalById, applyAnimalAction } from '~/lib/happy-farm-animals';
 import { FACILITY_COST, FARMHOUSE_PARCEL_PLOTS, FARMHOUSE_PLOT_HA, SOLAR_SUBSIDY_LIMIT, SOLAR_UNSUBSIDIZED_COST, applyDemolition, applyEconomyAction, demolitionCost, demolitionError, economyActionError, farmDay, farmRevenueSlot, farmhouseName, farmhouseParcel, processedSale, revenueWaitMs, solarBuildCost, solarIncome, solarPanelCount, solarSite, tourismIncome } from '~/lib/happy-farm-economy';
 import { DORM_CAPACITY, DORM_COST, commuteLabel, dormName, dorms, housingAssignments, workerCommute } from '~/lib/happy-farm-housing';
-import { WORKER_CANDIDATES, WORKER_GROUPS, WORKER_MIGRANT_LIMIT, WORKER_SHIFT_MS, WORKER_TASKS, WORKER_TOTAL_LIMIT, addWorkerHistory, applyWorkerAction, requiredShopLanguages, runWorkerShift, shopStaff, workerActionError, workerById, workerGroupName, workerWage } from '~/lib/happy-farm-workers';
+import { WORKER_GROUPS, WORKER_MIGRANT_LIMIT, WORKER_SHIFT_MS, WORKER_TASKS, WORKER_TOTAL_LIMIT, addWorkerHistory, applyWorkerAction, requiredShopLanguages, runWorkerShift, shopStaff, workerActionError, workerById, workerGroupName, workerWage } from '~/lib/happy-farm-workers';
 import { POWER_UNIT_COST, UTILITY_CYCLE_MS, WATER_UNIT_COST, payUtilityDebt, settleUtilityBill, utilityPaymentError, utilityPreview, utilitySlot } from '~/lib/happy-farm-utilities';
 import { FARM_BUSINESSES, agricultureLesson, applyBusinessAction, businessActionError, businessById, businessIncome, marketUnitPrice, populationSource, villagePopulation } from '~/lib/happy-farm-businesses';
 import { GOVERNMENT_LOAN_AMOUNT, SEED_RESERVE, applyGovernmentLoan, collectOverdueGovernmentLoan, governmentLoanBalance, governmentLoanError } from '~/lib/happy-farm-finance';
+import { FARM_PROTAGONISTS, REINCARNATION_COST, chooseProtagonist, protagonistById } from '~/lib/happy-farm-protagonists';
+import { DISASTER_PREP_COST, prepareDisaster, settleSeasonalEvent } from '~/lib/happy-farm-events';
+import { farmLessonAllowed, farmPolicyTableMissing } from '~/lib/happy-farm-access';
+import { workerMarket } from '~/lib/happy-farm-worker-roster';
 
 const db = useSupabaseClient();
 const route = useRoute();
@@ -33,6 +37,8 @@ const seedQuantities = ref(Object.fromEntries(FARM_CROPS.map(item => [item.id, 1
 const workerPayPeriod = ref('day');
 const workerView = ref('hire');
 const selectedAnimalId = ref('chicken');
+const animalCategory = ref('livestock');
+const animalCategories = [{ id: 'livestock', label: '🐄 家畜' }, { id: 'aquatic', label: '🐟 水域' }, { id: 'companions', label: '🐈 伴侶動物' }, { id: 'experience', label: '🦌 體驗動物' }];
 const facilityPlotChoice = ref(-1);
 const activePanel = ref('tools');
 const economySection = ref('solar');
@@ -97,6 +103,10 @@ const selectedAnimal = computed(() => animal(selectedAnimalId.value) || FARM_ANI
 const selectedPen = computed(() => farm.value.animals?.[selectedAnimal.value.id] || null);
 const ownedAnimals = computed(() => FARM_ANIMALS.filter(item => farm.value.animals?.[item.id]).length);
 const totalAnimalProducts = computed(() => Object.values(farm.value.animalProducts || {}).reduce((sum, count) => sum + Number(count || 0), 0));
+const visibleAnimals = computed(() => FARM_ANIMALS.filter(item => item.category ? item.category === animalCategory.value : animalCategory.value === (['frog', 'goldfish', 'crocodile', 'milkfish', 'tilapia'].includes(item.id) ? 'aquatic' : 'livestock')));
+const marketWorkers = computed(() => workerMarket(now.value, farm.value.workers));
+const marketNextRefresh = computed(() => new Date((Math.floor((now.value + 8 * 3600000) / (3 * 3600000)) + 1) * 3 * 3600000 - 8 * 3600000).toLocaleString('zh-TW'));
+const protagonist = computed(() => protagonistById(farm.value.protagonistId));
 const emptyPlots = computed(() => farm.value.plots.map((plot, index) => ({ plot, index })).filter(item => item.plot === null && farm.value.ownedVillages?.includes(farm.value.plotVillages?.[item.index])));
 const eligibleLoanPlots = computed(() => emptyPlots.value.filter(item => villagePlotCount(farm.value, farm.value.plotVillages[item.index]) >= 2
   && !farm.value.plots.some(plot => plot?.facility === 'farmhouse' && plot.parcel?.includes(item.index))));
@@ -140,10 +150,11 @@ const waitLabel = milliseconds => {
   return `還需 ${hours ? hours + ' 小時 ' : ''}${minutes % 60} 分鐘`;
 };
 const business = computed(() => businessById(selectedBusiness.value) || FARM_BUSINESSES[0]);
-const businessChoices = computed(() => FARM_BUSINESSES.filter(item => economySection.value === 'attractions' ? item.category === 'attractions' : !item.category));
+const businessChoices = computed(() => FARM_BUSINESSES.filter(item => economySection.value === 'attractions' ? item.category === 'attractions' : economySection.value === 'animal-business' ? item.category === 'animal-business' : !item.category));
 function chooseEconomySection(section) {
   economySection.value = section;
   if (section === 'attractions') selectedBusiness.value = 'bicycle';
+  if (section === 'animal-business') selectedBusiness.value = 'cat_cafe';
   if (section === 'business' && business.value.category) selectedBusiness.value = 'market';
 }
 const productionPanel = computed(() => ['tools', 'shop', 'animals', 'workers'].includes(activePanel.value));
@@ -162,9 +173,10 @@ function selectFarmPlot(entry) {
   if (siteBusiness) {
     activePanel.value = 'economy';
     selectedBusiness.value = siteBusiness.id;
-    economySection.value = siteBusiness.category === 'attractions' ? 'attractions' : 'business';
+    economySection.value = siteBusiness.category || 'business';
   } else if (entry.plot?.facility === 'animal') {
     selectedAnimalId.value = entry.plot.animalId;
+    animalCategory.value = animal(entry.plot.animalId)?.category || (['frog', 'goldfish', 'crocodile', 'milkfish', 'tilapia'].includes(entry.plot.animalId) ? 'aquatic' : 'livestock');
     activePanel.value = 'animals';
   } else if (entry.plot?.facility === 'factory') {
     activePanel.value = 'economy';
@@ -538,8 +550,8 @@ function beginWorkerAction(action, personId) {
   if (problem) { notice.value = problem; return; }
   const person = workerById(personId);
   const actionText = action === 'hireWorker'
-    ? `雇用${person.name}並預付${period === 'day' ? '日薪' : '周薪'} ${workerWage(person, period)} 金幣`
-    : action === 'renewWorker' ? `續付${person.name}的${period === 'day' ? '日薪' : '周薪'} ${workerWage(person, period)} 金幣`
+    ? `雇用${person.name}並預付${period === 'day' ? '日薪' : '周薪'} ${workerWage(person, period, farm.value.protagonistId)} 金幣`
+    : action === 'renewWorker' ? `續付${person.name}的${period === 'day' ? '日薪' : '周薪'} ${workerWage(person, period, farm.value.protagonistId)} 金幣`
       : `結束與${person.name}的雇用`;
   queueFarmOperation({ action, personId, period, workerAction: true, actionText }, true);
 }
@@ -556,6 +568,69 @@ function toggleWorkerTask(taskId, enabled) {
 function assignWorker(personId, focus) {
   if (!workerById(personId)?.roles.includes(focus)) return;
   changeWorkerSettings({ workers: farm.value.workers.map(hired => hired.id === personId ? { ...hired, focus } : hired) });
+}
+function toggleWorkerCrop(cropId, enabled) {
+  const ids = new Set(farm.value.workerCropIds || []);
+  if (enabled) ids.add(cropId); else ids.delete(cropId);
+  changeWorkerSettings({ workerCropIds: [...ids] });
+}
+async function selectProtagonist(id) {
+  if (!ready.value || busy.value || farm.value.protagonistId) return;
+  const next = chooseProtagonist(farm.value, id);
+  if (!next) return;
+  busy.value = true;
+  try { await saveFarm(next); notice.value = `已選擇${protagonistById(id).name}。農夫是你的兼職，開始經營吧！`; }
+  catch (error) { notice.value = '主角選擇未儲存：' + error.message; }
+  finally { busy.value = false; }
+}
+async function reincarnate() {
+  if (!ready.value || busy.value || quiz.value || !farm.value.protagonistId) return;
+  if (farm.value.coins < REINCARNATION_COST) { notice.value = `轉生需要 ${REINCARNATION_COST} 金幣。`; return; }
+  if (governmentBalance.value || farm.value.utilityDebt || relevantLoans.value.length) { notice.value = '請先結清政府借款、水電欠費及同學借款，再轉生。'; return; }
+  if (!confirm(`轉生需 ${REINCARNATION_COST} 金幣，整座農場會從頭開始，土地、設施、庫存及金幣都會重置。學習成績保留。確定嗎？`)) return;
+  busy.value = true;
+  try {
+    const startVillage = FARM_DISTRICTS[0].villages[Math.floor(Math.random() * XINHUA_VILLAGE_IDS.length)].id;
+    await saveFarm(freshFarm(startVillage));
+    chooseVillage(startVillage);
+    notice.value = '轉生完成。請選擇新的主角，重新開始農場。';
+  } catch (error) { notice.value = '轉生未完成：' + error.message; }
+  finally { busy.value = false; }
+}
+function beginDisasterPrep() {
+  if (busy.value || quiz.value || farm.value.disasterShield || farm.value.coins < DISASTER_PREP_COST) return;
+  queueFarmOperation({ action: 'prepareDisaster', eventAction: true, actionText: `防災整備（${DISASTER_PREP_COST} 金幣）` }, true);
+}
+let checkingAccess = false, lastAccessCheckAt = 0;
+async function checkFarmAccess() {
+  if (!student.value?.class || checkingAccess) return true;
+  checkingAccess = true;
+  try {
+    const { data, error } = await db.from('happy_farm_lesson_access').select('mode,units').eq('class_name', student.value.class).maybeSingle();
+    if (error && !farmPolicyTableMissing(error)) throw error;
+    lastAccessCheckAt = Date.now();
+    if (!farmLessonAllowed(data, lesson)) {
+      ready.value = false;
+      quiz.value = null;
+      notice.value = '導師目前沒有開放本單元的開心農場。請返回首頁選擇其他單元。';
+      return false;
+    }
+    return true;
+  } catch (error) {
+    ready.value = false;
+    quiz.value = null;
+    notice.value = '無法確認導師的農場單元設定：' + error.message;
+    return false;
+  } finally { checkingAccess = false; }
+}
+async function settleFarmEvent() {
+  if (!ready.value || busy.value || quiz.value || visiting.value) return;
+  const result = settleSeasonalEvent(farm.value, Date.now());
+  if (!result) return;
+  busy.value = true;
+  try { await saveFarm(result.farm); notice.value = `農場日報：${result.detail}`; }
+  catch (error) { notice.value = '農場事件尚未結算：' + error.message; }
+  finally { busy.value = false; }
 }
 async function toggleNoSowPlot() {
   if (!ready.value || busy.value || quiz.value || visiting.value || selectedSite.value?.facility || selectedPlot.value < 0
@@ -674,7 +749,8 @@ async function applyFinanceQuiz(q) {
   return { detail: data?.detail || '借款操作完成' };
 }
 function operationProblem(q) {
-  return q.financeAction ? (q.action === 'borrowGovernment' || q.action === 'repayGovernment' ? governmentLoanError(farm.value, q.action) : loanError.value)
+  return q.eventAction ? (farm.value.disasterShield ? '防災措施已啟用。' : farm.value.coins < DISASTER_PREP_COST ? '金幣不足。' : '')
+    : q.financeAction ? (q.action === 'borrowGovernment' || q.action === 'repayGovernment' ? governmentLoanError(farm.value, q.action) : loanError.value)
     : q.ownerId ? visitProblem(q.action, q.plotIndex)
       : q.demolition ? demolitionError(farm.value, q.plotIndex, q.mode)
       : q.utilityAction ? utilityPaymentError(farm.value)
@@ -688,7 +764,8 @@ async function applyOperation(q) {
   const problem = operationProblem(q);
   if (problem) throw new Error(problem);
   let result;
-  if (q.financeAction) result = await applyFinanceQuiz(q);
+  if (q.eventAction) { result = prepareDisaster(farm.value); await saveFarm(result.farm); }
+  else if (q.financeAction) result = await applyFinanceQuiz(q);
   else if (q.ownerId) result = await applyVisit(q);
   else if (q.demolition) {
     result = applyDemolition(farm.value, q.plotIndex, q.mode);
@@ -740,7 +817,7 @@ async function performWithoutQuiz(operation) {
   } finally { busy.value = false; }
 }
 async function submitAnswer() {
-  if (!quiz.value || busy.value || !String(answer.value).trim()) return;
+  if (!ready.value || !quiz.value || busy.value || !String(answer.value).trim()) return;
   busy.value = true;
   const q = quiz.value;
   const correct = answer.value.trim().toLocaleLowerCase() === q.target.toLocaleLowerCase();
@@ -753,7 +830,7 @@ async function submitAnswer() {
     await syncRecord();
     rememberRoutineQuiz();
     notice.value = correct
-      ? '答對 ' + q.word.en_us + '！已完成「' + q.actionText + '」' + (q.action === 'harvest' || q.action === 'sell' || q.ownerId || q.animalId || q.economy || q.businessAction || q.financeAction || q.workerAction || q.demolition || q.utilityAction ? '，' + result.detail : '') + '。'
+      ? '答對 ' + q.word.en_us + '！已完成「' + q.actionText + '」' + (q.action === 'harvest' || q.action === 'sell' || q.ownerId || q.animalId || q.economy || q.businessAction || q.financeAction || q.workerAction || q.demolition || q.utilityAction || q.eventAction ? '，' + result.detail : '') + '。'
       : '答錯了：' + q.word.en_us + '＝' + q.word.zh_tw + '。這次沒有執行「' + q.actionText + '」。';
     quiz.value = null;
     now.value = Date.now();
@@ -780,6 +857,8 @@ onMounted(async () => {
   } catch { /* Storage may be unavailable. */ }
   clock = window.setInterval(() => {
     now.value = Date.now();
+    if (ready.value && now.value - lastAccessCheckAt > 60000) void checkFarmAccess();
+    if (ready.value && !busy.value && !quiz.value && farm.value.lastEventDay !== farmDay(now.value).date) void settleFarmEvent();
     if (ready.value && !busy.value && !quiz.value && utilitySlot(now.value) > farm.value.utilityLastSlot) void settleUtilities();
     if (ready.value && farm.value.workerAuto && farm.value.workers.length && !busy.value && !quiz.value
       && now.value - farm.value.workerLastRunAt >= WORKER_SHIFT_MS) void runWorkerRound(true);
@@ -792,6 +871,7 @@ onMounted(async () => {
     loading.value = false; return;
   }
   try {
+    if (!await checkFarmAccess()) return;
     const { data, error } = await db.from('vocabularies').select('id,en_us,zh_tw')
       .eq('version', lesson.version).eq('volume', lesson.volume).eq('unit', lesson.unit).limit(1000);
     if (error) throw error;
@@ -824,6 +904,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
     </div>
     <template v-if="ready">
       <section class="status-bar" aria-label="農場狀態">
+        <button type="button" class="hero-chip" @click="activePanel = 'events'">{{ protagonist?.icon || '🎭' }} {{ protagonist?.name || '選主角' }} · {{ today.season }}</button>
         <div><span>🪙 我的金幣</span><strong>{{ farm.coins }}</strong><button v-if="!visiting" type="button" class="utility-shortcut" @click="activePanel = 'economy'; economySection = 'utilities'">💧 水電{{ farm.utilityDebt ? `欠 ${farm.utilityDebt}` : '' }}</button></div>
         <div><span>🌾 累計收成</span><strong>{{ farm.harvested }}</strong></div>
         <div><span>🎒 倉庫作物</span><strong>{{ totalProduce }}</strong></div>
@@ -834,8 +915,9 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
       <div class="farm-layout">
         <section v-if="activePanel === 'animals' && !visiting" class="animal-field" aria-label="我的養殖區">
           <div class="animal-scene"><span>{{ today.weatherIcon }} {{ today.weatherName }}</span><strong>🐾 我的養殖區</strong><span>{{ ownedAnimals }}/{{ FARM_ANIMALS.length }} 種已入住</span></div>
+          <nav class="animal-categories"><button v-for="category in animalCategories" :key="category.id" type="button" :class="{ active: animalCategory === category.id }" @click="animalCategory = category.id">{{ category.label }}</button></nav>
           <div class="animal-grid">
-            <button v-for="item in FARM_ANIMALS" :key="item.id" type="button" class="animal-pen"
+            <button v-for="item in visibleAnimals" :key="item.id" type="button" class="animal-pen"
               :class="{ chosen: selectedAnimalId === item.id, owned: !!farm.animals?.[item.id], productive: animalCareDone(item, farm.animals?.[item.id]) && now >= farm.animals[item.id].readyAt }"
               :aria-pressed="selectedAnimalId === item.id" :aria-label="item.name + (farm.animals?.[item.id] ? '，已入住，' + animalTimeLabel(farm.animals[item.id]) : '，尚未入住')"
               @click="selectedAnimalId = item.id">
@@ -902,6 +984,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
             <button type="button" :class="{ active: productionPanel }" :disabled="!!visiting" @click="activePanel = 'tools'">🌱 生產</button>
             <button type="button" :class="{ active: activePanel === 'economy' }" :disabled="!!visiting" @click="activePanel = 'economy'">🏪 經營</button>
             <button type="button" :class="{ active: activePanel === 'finance' }" :disabled="!!visiting" @click="activePanel = 'finance'">💰 資金</button>
+            <button type="button" :class="{ active: activePanel === 'events' }" :disabled="!!visiting" @click="activePanel = 'events'">🌀 事件</button>
             <button type="button" :class="{ active: activePanel === 'visitors' }" @click="activePanel = 'visitors'">🏘️ 同學</button>
           </nav>
           <nav v-if="productionPanel && !visiting" class="panel-subtabs" aria-label="生產項目">
@@ -943,10 +1026,10 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
             <nav class="worker-view-tabs" aria-label="人力仲介頁面"><button type="button" :class="{ active: workerView === 'hire' }" @click="workerView = 'hire'">👥 雇用</button><button type="button" :class="{ active: workerView === 'tasks' }" @click="workerView = 'tasks'">🧤 排班與任務</button><button type="button" :class="{ active: workerView === 'history' }" @click="workerView = 'history'">📋 紀錄 {{ farm.workerHistory?.length || 0 }}</button></nav>
             <div v-if="workerView === 'hire'" class="worker-body">
               <div class="worker-hiring-head"><label>計薪方式 <select v-model="workerPayPeriod"><option value="day">日薪</option><option value="week">周薪</option></select></label><button type="button" @click="activePanel = 'economy'; economySection = 'housing'">🛏️ 建移工宿舍</button></div>
-              <p class="worker-help">移工需先有同性別空床位才可雇用；每間宿舍佔一格、住 2 人，可供通勤範圍內多里共用。台灣人免住宿舍。</p>
+              <p class="worker-help">本輪 {{ marketWorkers.length }} 位候選人，每 3 小時換檔（下次 {{ marketNextRefresh }}）；已雇用者會保留。移工需先有同性別空床位才可雇用；台灣人免住宿舍。</p>
               <div class="worker-dorm-list"><span v-for="item in dorms(farm)" :key="item.index">{{ dormName(item.plot.gender) }} · {{ plotLabel(item.index) }} · {{ dormOccupants(item.index) }}/{{ DORM_CAPACITY }} 人</span><span v-if="!dorms(farm).length">目前沒有移工宿舍</span></div>
-              <div class="worker-roster"><div v-for="person in WORKER_CANDIDATES" :key="person.id" class="worker-person">
-                <div><strong>{{ person.name }} <small v-if="person.gender">· {{ person.gender === 'female' ? '女' : '男' }}</small></strong><span>{{ person.group }} · {{ person.roles.map(workerGroupName).join('、') }}</span><small>語言：{{ person.languages.join('、') }} · 遊戲{{ (workerContract(person.id)?.period || workerPayPeriod) === 'day' ? '日薪' : '周薪' }} {{ workerWage(person, workerContract(person.id)?.period || workerPayPeriod) }} 金幣</small><small v-if="workerContract(person.id)">已付至 {{ new Date(workerContract(person.id).paidUntil).toLocaleString('zh-TW') }}<span v-if="person.gender"> · {{ workerDorm(person.id) }}</span></small><small v-else-if="person.gender && workerActionError(farm, 'hireWorker', person.id, workerPayPeriod)" class="worker-blocked">{{ workerActionError(farm, 'hireWorker', person.id, workerPayPeriod) }}</small><label v-if="workerContract(person.id)" class="worker-focus">目前班別 <select :value="workerContract(person.id).focus" :disabled="busy || !!quiz" @change="assignWorker(person.id, $event.target.value)"><option v-for="role in person.roles" :key="role" :value="role">{{ workerGroupName(role) }}</option></select></label></div>
+              <div class="worker-roster"><div v-for="person in marketWorkers" :key="person.id" class="worker-person">
+                <div><strong>{{ person.name }} <small v-if="person.gender">· {{ person.gender === 'female' ? '女' : '男' }}</small></strong><span>{{ person.group }} · {{ person.roles.map(workerGroupName).join('、') }}</span><small>語言：{{ person.languages.join('、') }} · 遊戲{{ (workerContract(person.id)?.period || workerPayPeriod) === 'day' ? '日薪' : '周薪' }} {{ workerWage(person, workerContract(person.id)?.period || workerPayPeriod, farm.protagonistId) }} 金幣</small><small v-if="workerContract(person.id)">已付至 {{ new Date(workerContract(person.id).paidUntil).toLocaleString('zh-TW') }}<span v-if="person.gender"> · {{ workerDorm(person.id) }}</span></small><small v-else-if="person.gender && workerActionError(farm, 'hireWorker', person.id, workerPayPeriod)" class="worker-blocked">{{ workerActionError(farm, 'hireWorker', person.id, workerPayPeriod) }}</small><label v-if="workerContract(person.id)" class="worker-focus">目前班別 <select :value="workerContract(person.id).focus" :disabled="busy || !!quiz" @change="assignWorker(person.id, $event.target.value)"><option v-for="role in person.roles" :key="role" :value="role">{{ workerGroupName(role) }}</option></select></label></div>
                 <div v-if="workerContract(person.id)" class="worker-person-actions"><button v-if="workerContract(person.id).paidUntil <= now" type="button" :disabled="busy || !!quiz || !!workerActionError(farm, 'renewWorker', person.id, workerContract(person.id).period)" @click="beginWorkerAction('renewWorker', person.id)">答題續薪</button><button type="button" :disabled="busy || !!quiz" @click="beginWorkerAction('dismissWorker', person.id)">解雇</button></div>
                 <button v-else type="button" :disabled="busy || !!quiz || !!workerActionError(farm, 'hireWorker', person.id, workerPayPeriod)" @click="beginWorkerAction('hireWorker', person.id)">答題雇用</button>
               </div></div>
@@ -954,7 +1037,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
             </div>
             <div v-else-if="workerView === 'tasks'" class="worker-body">
               <p class="worker-help">每人指定一種班別，每分鐘最多完成 2 項該班工作。離線只補一輪；購地、建設、拆除與借款由玩家答題決定。</p>
-              <div class="worker-settings"><label>自動播種作物 <select :value="farm.workerCropId" :disabled="busy || !!quiz" @change="changeWorkerSettings({ workerCropId: $event.target.value })"><option v-for="item in FARM_CROPS" :key="item.id" :value="item.id">{{ item.icon }} {{ item.name }}（種苗 {{ farm.seeds[item.id] || 0 }}）</option></select></label></div>
+              <div class="worker-settings"><strong>自動播種作物（可多選）</strong><div class="worker-crop-choices"><label v-for="item in FARM_CROPS" :key="item.id"><input type="checkbox" :checked="farm.workerCropIds?.includes(item.id)" :disabled="busy || !!quiz" @change="toggleWorkerCrop(item.id, $event.target.checked)">{{ item.icon }} {{ item.name }} <small>{{ farm.seeds[item.id] || 0 }} 苗</small></label></div><small v-if="!farm.workerCropIds?.length">目前未勾選任何作物，自動播種會暫停。</small></div>
               <div class="worker-actions"><button type="button" :disabled="busy || !!quiz || !farm.workers.length || workerShiftWait > 0" @click="runWorkerRound()">🧤 一鍵執行一輪</button><button type="button" :disabled="busy || !!quiz" @click="changeWorkerSettings({ workerAuto: !farm.workerAuto })">{{ farm.workerAuto ? '⏸ 關閉自動巡田' : '▶ 開啟自動巡田' }}</button></div>
               <p class="worker-report">{{ farm.workerLastReport || '尚未執行外包作業。' }}{{ farm.workerAuto ? ' · 自動巡田已開啟' : '' }}</p>
               <div class="worker-task-groups"><div v-for="group in WORKER_GROUPS" :key="group.id" class="worker-task-group"><strong>{{ group.name }}</strong><div class="worker-task-list"><label v-for="task in WORKER_TASKS.filter(item => item.group === group.id)" :key="task.id"><input type="checkbox" :checked="farm.workerTasks[task.id]" :disabled="busy || !!quiz" @change="toggleWorkerTask(task.id, $event.target.checked)" />{{ task.name }}</label></div></div></div>
@@ -988,7 +1071,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
           <section v-if="activePanel === 'economy' && !visiting" class="economy-card">
             <h2>☀️ 農場經營 <small>{{ today.date }} · {{ today.season }} · {{ today.weatherIcon }} {{ today.weatherName }}</small></h2>
             <p class="help">模擬天氣每日更新；光電、觀光與營業設施每次收款後需等 3 小時。一般收款約每 35 秒才會出一題單字，不會自動累積收益。</p>
-            <nav class="economy-tabs" aria-label="經營項目"><button v-for="item in [{ id: 'solar', text: '☀️ 光電' }, { id: 'processing', text: '🏭 加工' }, { id: 'tourism', text: '🎟️ 觀光' }, { id: 'housing', text: '🏡 住居' }, { id: 'attractions', text: '🚲 觀光店' }, { id: 'business', text: '🏬 商業' }, { id: 'utilities', text: '💧 水電' }, { id: 'demolition', text: '🧱 拆除' }]" :key="item.id" type="button" :class="{ active: economySection === item.id }" @click="chooseEconomySection(item.id)">{{ item.text }}</button></nav>
+            <nav class="economy-tabs" aria-label="經營項目"><button v-for="item in [{ id: 'solar', text: '☀️ 光電' }, { id: 'processing', text: '🏭 加工' }, { id: 'tourism', text: '🎟️ 觀光' }, { id: 'housing', text: '🏡 住居' }, { id: 'attractions', text: '🚲 觀光店' }, { id: 'animal-business', text: '🐾 動物商業' }, { id: 'business', text: '🏬 商業' }, { id: 'utilities', text: '💧 水電' }, { id: 'demolition', text: '🧱 拆除' }]" :key="item.id" type="button" :class="{ active: economySection === item.id }" @click="chooseEconomySection(item.id)">{{ item.text }}</button></nav>
             <div v-if="economySection === 'solar'" class="economy-block"><strong>📍 {{ plotLabel(selectedPlot) }} · {{ selectedSite?.facility ? facilityLabel(selectedSite) : selected ? crop(selected.crop)?.name : '空地' }}</strong>
               <p v-if="selectedSite?.solar">{{ solarSite(selectedSite) }}光電板 · 本輪可賣電 {{ solarIncome(selectedSite, now) }} 金幣 · {{ waitLabel(solarWait) }}</p>
               <div class="economy-actions"><button type="button" :disabled="!canEconomy('buildSolar')" @click="beginEconomyAction('buildSolar')">設置光電 {{ solarBuildCost(farm) }} 金幣</button><button type="button" :disabled="!canEconomy('collectSolar')" @click="beginEconomyAction('collectSolar')">賣電收款</button></div>
@@ -1012,10 +1095,11 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
               <div class="housing-option"><strong>🛏️ 移工宿舍</strong><p>男女分開，每間佔 1 格、可住 {{ DORM_CAPACITY }} 人；多里共用，限同區與新化相鄰區的遊戲通勤級距。先建宿舍才能雇用對應性別移工。</p><div class="economy-actions"><button type="button" :disabled="!canEconomy('buildDorm', selectedCrop, 'female')" @click="beginEconomyAction('buildDorm', selectedCrop, 'female')">建女宿舍 {{ DORM_COST }}</button><button type="button" :disabled="!canEconomy('buildDorm', selectedCrop, 'male')" @click="beginEconomyAction('buildDorm', selectedCrop, 'male')">建男宿舍 {{ DORM_COST }}</button></div><small v-for="item in dorms(farm)" :key="item.index">{{ dormName(item.plot.gender) }}：{{ plotLabel(item.index) }} · {{ dormOccupants(item.index) }}/{{ DORM_CAPACITY }} 人</small></div>
               <div class="housing-option"><strong>🏡 農舍外觀（二選一）</strong><p>遊戲以同一里連續 {{ FARMHOUSE_PARCEL_PLOTS }} 格各 {{ FARMHOUSE_PLOT_HA }} 公頃，模擬單筆 {{ FARMHOUSE_PARCEL_PLOTS * FARMHOUSE_PLOT_HA }} 公頃農地。建築佔 1 格，其餘 9 格保留農用。已擁有 {{ villagePlotCount(farm, selectedVillage) }} 格；{{ selectedFarmhouseParcel ? '所選地格符合遊戲門檻' : '所選地格尚未符合遊戲門檻' }}。</p><div class="economy-actions"><button type="button" :disabled="!canEconomy('buildFarmhouse', selectedCrop, 'headquarters')" @click="beginEconomyAction('buildFarmhouse', selectedCrop, 'headquarters')">🏢 農業公司總部 {{ FACILITY_COST.headquarters }}</button><button type="button" :disabled="!canEconomy('buildFarmhouse', selectedCrop, 'villa')" @click="beginEconomyAction('buildFarmhouse', selectedCrop, 'villa')">🏠 自家豪宅 {{ FACILITY_COST.villa }}</button></div><small>總部外觀：一般賣作物與副產品收入 +10%。豪宅外觀：起始里的作物每次收成 +1。兩者都只作自用農舍的遊戲外觀設定，不提供實際公司辦公或住宿營業許可。</small><small>實際申請還須農民資格、同縣市戶籍與持有年限、農業使用、建築許可等審查；遊戲地格不是地籍，不能當成申請資格。<a href="https://law.moa.gov.tw/LawContent.aspx?id=FL014306" target="_blank" rel="noopener noreferrer">農業部《農業用地興建農舍辦法》</a></small></div>
             </div>
-            <div v-if="economySection === 'business' || economySection === 'attractions'" class="economy-block business-block">
+            <div v-if="economySection === 'business' || economySection === 'attractions' || economySection === 'animal-business'" class="economy-block business-block">
               <label>選擇設施 <select v-model="selectedBusiness" aria-label="選擇經營設施"><option v-for="item in businessChoices" :key="item.id" :value="item.id">{{ item.icon }} {{ item.name }}</option></select></label>
               <p><strong>{{ business.icon }} {{ business.name }}</strong> · {{ business.description }}</p>
               <small>設備：{{ business.equipment }} · 建設 {{ business.cost }} 金幣 · 每里此類設施限一間。</small>
+              <small v-if="business.requiredAnimal">先在同一里養 {{ animal(business.requiredAnimal)?.name }} 才能建設與營業；設施另佔一格地。</small>
               <p class="staffing-state">👷 營業人力：{{ shopStaff(farm, selectedBusiness, now, selectedPlot) ? workerById(shopStaff(farm, selectedBusiness, now, selectedPlot).id)?.name + ' 可值班' : '尚無可值班人員' }} · 需要 {{ requiredShopLanguages(selectedBusiness).join('、') }}。請至「生產 → 人力仲介」安排店鋪與觀光班；每位人員每輪最多處理 2 項工作。</p>
               <p>📍 {{ plotLabel(selectedPlot) }} · {{ selectedSite?.facility ? facilityLabel(selectedSite) : selected ? crop(selected.crop)?.name : '空地' }}</p>
               <div class="economy-actions"><button type="button" :disabled="!canBusiness('buildBusiness')" @click="beginBusinessAction('buildBusiness')">答題建造 {{ business.name }}</button><button type="button" :disabled="!canBusiness('collectBusiness')" @click="beginBusinessAction('collectBusiness')">結算本輪 {{ businessIncome(farm, selectedBusiness, farm.plotVillages?.[selectedPlot], now) }} 金幣</button></div>
@@ -1054,6 +1138,14 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
               <div class="economy-actions"><button type="button" :disabled="busy || !!quiz || !!demolitionError(farm, selectedPlot, 'solar')" @click="beginDemolition('solar')">答題拆光電 · {{ demolitionCost(selectedSite, 'solar') }} 金幣</button><button type="button" :disabled="busy || !!quiz || !!demolitionError(farm, selectedPlot, 'facility')" @click="beginDemolition('facility')">答題拆設施 · {{ demolitionCost(selectedSite) }} 金幣</button></div>
               <small>空地、作物及借款抵押地不能拆除。先點選地格，再進入此頁操作。</small>
             </div>
+          </section>
+          <section v-if="activePanel === 'events' && !visiting" class="finance-card event-card">
+            <h2>🌀 天災人禍與我的主角</h2>
+            <div v-if="protagonist" class="event-hero" :style="{ background: protagonist.color }"><FarmHeroPortrait :person="protagonist" /><div><strong>{{ protagonist.name }}</strong><p>{{ protagonist.story }}</p><small>能力：{{ protagonist.skill }}。農夫是兼職。</small></div></div>
+            <p>目前 {{ today.season }} · {{ today.weatherIcon }} {{ today.weatherName }}。每天最多一件季節事件；沒有事件的日子也會留下平安日報。事件機率及金幣為遊戲設定。</p>
+            <div class="finance-block"><strong>🛠️ 防災整備</strong><p>支付 {{ DISASTER_PREP_COST }} 金幣並答對單字，可免除下一次負面事件。{{ farm.disasterShield ? '目前已啟用。' : '目前尚未啟用。' }}</p><button type="button" :disabled="busy || !!quiz || farm.disasterShield || farm.coins < DISASTER_PREP_COST" @click="beginDisasterPrep">答題完成防災整備</button></div>
+            <div class="event-list"><strong>📋 最近事件</strong><p v-if="!farm.eventHistory?.length">尚無事件，下一個農場日開始出現。</p><article v-for="(event, index) in farm.eventHistory" :key="index"><b>{{ event.icon }} {{ event.name }} · {{ event.season }}</b><span>{{ event.detail }}</span><small>{{ new Date(event.at).toLocaleString('zh-TW') }}</small></article></div>
+            <div class="finance-block"><strong>♻️ 轉生重來</strong><p>轉生需有 {{ REINCARNATION_COST }} 金幣且清償借款與水電。整座農場、主角、土地、設施及庫存重置；學習成績保留，之後可重新選主角。</p><button type="button" :disabled="busy || !!quiz || farm.coins < REINCARNATION_COST || governmentBalance > 0 || farm.utilityDebt > 0 || relevantLoans.length > 0" @click="reincarnate">花 {{ REINCARNATION_COST }} 金幣轉生</button></div>
           </section>
           <section v-if="activePanel === 'finance' && !visiting" class="finance-card">
             <h2>💰 農場資金</h2>
@@ -1114,6 +1206,13 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
       </div>
     </template>
     <section v-else-if="!loading" class="start-help"><NuxtLink to="/">返回首頁選擇單元</NuxtLink></section>
+    <div v-if="ready && !farm.protagonistId" class="hero-shade">
+      <section class="hero-dialog" role="dialog" aria-modal="true" aria-labelledby="hero-title">
+        <h2 id="hero-title">🎭 選擇你的主角</h2>
+        <p>你有自己的本業，農夫是兼職。選定後不能更換；付費轉生會讓農場從頭開始。</p>
+        <div class="hero-grid"><button v-for="person in FARM_PROTAGONISTS" :key="person.id" type="button" class="hero-choice" :style="{ background: person.color }" :disabled="busy" @click="selectProtagonist(person.id)"><FarmHeroPortrait :person="person" /><strong>{{ person.name }}</strong><small>{{ person.story }}</small><em>起步 +{{ person.amount }} 金幣 · {{ person.skill }}</em></button></div>
+      </section>
+    </div>
     <div v-if="quiz" class="quiz-shade">
       <section class="quiz-card" role="dialog" aria-modal="true" aria-labelledby="quiz-title">
         <p class="eyebrow">答對即可完成一次農場操作</p>
@@ -1239,7 +1338,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
   .farm-page{box-sizing:border-box;height:100dvh;min-height:0;overflow:hidden;display:flex;flex-direction:column;padding:8px 16px}
   .farm-header{width:100%;flex:none}.farm-header h1{font-size:1.55rem;margin:0}.farm-header .eyebrow{font-size:.6rem}.farm-header p{font-size:.78rem}
   .feedback{width:100%;flex:none;margin:5px auto}.feedback .notice,.feedback .save-notice{padding:6px 10px;font-size:.78rem}
-  .status-bar{width:100%;flex:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto auto;gap:6px;margin:0 auto 7px}
+  .status-bar{width:100%;flex:none;display:grid;grid-template-columns:repeat(5,minmax(0,1fr)) auto auto;gap:6px;margin:0 auto 7px}
   .status-bar>div,.status-bar>a{padding:5px 7px;min-width:0;font-size:.7rem;box-shadow:none}
   .status-bar a{margin-left:0;white-space:nowrap}
   .farm-layout{width:100%;height:0;flex:1;min-height:0;margin:0 auto;grid-template-columns:minmax(0,1.5fr) minmax(320px,.9fr);gap:10px}
@@ -1459,5 +1558,12 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
   .worker-body .worker-task-list label{font-size:.8rem;padding:5px 6px}
   .worker-body .worker-actions button{font-size:.82rem}
 }
+.hero-chip{border:2px solid #9dbb72;border-radius:12px;background:#fffdf1;color:#245b38;padding:9px 12px;font-weight:850;box-shadow:0 3px 0 #b4c888}
+@media(min-width:900px) and (min-height:560px){.status-bar .hero-chip{min-width:0;padding:5px 7px;font-size:.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:none}}
+.animal-categories{display:flex;flex-wrap:wrap;gap:5px;padding:2px 10px}.animal-categories button{flex:1;min-width:88px;border:1px solid #639063;border-radius:8px;background:#f3ffe4;color:#285338;padding:5px;font-weight:800}.animal-categories button.active{background:#3d8b57;color:#fff}
+.worker-crop-choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(115px,1fr));gap:5px;max-height:145px;overflow:auto;width:100%}.worker-crop-choices label{display:flex;justify-content:flex-start;gap:5px;border:1px solid #a5c58e;border-radius:7px;padding:4px;background:#f7ffe9;min-width:0}.worker-crop-choices label small{margin-left:auto}.worker-settings{display:block}.worker-settings>strong{display:block;margin-bottom:5px;font-size:.81rem}.worker-settings>small{font-size:.74rem;color:#8a4a31}
+.event-card{overflow:auto}.event-hero{display:flex;align-items:center;gap:12px;border-radius:14px;padding:12px}.event-hero>span{font-size:3rem}.event-hero p{margin:3px 0}.event-list{display:grid;gap:6px}.event-list article{display:grid;gap:3px;border:1px solid #a9bf9c;border-radius:8px;background:#fffef1;padding:8px}.event-list small{color:#60745b}
+.hero-shade{position:fixed;inset:0;z-index:1005;display:grid;place-items:center;padding:16px;background:#163421dc}.hero-dialog{width:min(980px,100%);max-height:92vh;overflow:auto;border:4px solid #79aa5e;border-radius:20px;background:#fffcdd;padding:18px;box-shadow:0 14px 40px #14241966}.hero-dialog h2{margin:0 0 7px;color:#275538}.hero-dialog p{margin:0 0 12px}.hero-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px}.hero-choice{display:flex;flex-direction:column;align-items:center;gap:5px;min-height:155px;border:2px solid #66945b;border-radius:14px;padding:9px;color:#244735;text-align:center}.hero-choice>span{font-size:2.3rem;line-height:1.1}.hero-choice strong{font-size:1rem}.hero-choice small,.hero-choice em{font-size:.75rem;line-height:1.3}.hero-choice em{font-style:normal;font-weight:800}.hero-choice:hover{outline:3px solid #f6b747}
+@media(max-width:760px){.hero-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hero-choice{min-height:135px}.animal-categories button{min-width:70px;font-size:.72rem}.worker-crop-choices{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(prefers-reduced-motion:reduce){.action-pop,.animal-sprite{animation:none}}
 </style>
