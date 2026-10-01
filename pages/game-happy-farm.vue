@@ -6,7 +6,8 @@ import {
   villageById, neighborAccess, landSalePrice, cropInSeason, villageAreaKm2, villagePlotCapacity, villagePlotLimit
 } from '~/lib/happy-farm';
 import { FARM_ANIMALS, animalActionError, animalById, applyAnimalAction } from '~/lib/happy-farm-animals';
-import { FACILITY_COST, applyEconomyAction, economyActionError, farmDay, farmRevenueSlot, processedSale, revenueWaitMs, solarIncome, solarSite, tourismIncome } from '~/lib/happy-farm-economy';
+import { FACILITY_COST, SOLAR_SUBSIDY_LIMIT, SOLAR_UNSUBSIDIZED_COST, applyEconomyAction, economyActionError, farmDay, farmRevenueSlot, processedSale, revenueWaitMs, solarBuildCost, solarIncome, solarPanelCount, solarSite, tourismIncome } from '~/lib/happy-farm-economy';
+import { WORKER_CANDIDATES, WORKER_MIGRANT_LIMIT, WORKER_SHIFT_MS, WORKER_TASKS, WORKER_TOTAL_LIMIT, applyWorkerAction, runWorkerShift, workerActionError, workerById, workerWage } from '~/lib/happy-farm-workers';
 import { FARM_BUSINESSES, agricultureLesson, applyBusinessAction, businessActionError, businessById, businessIncome, marketUnitPrice, populationSource, villagePopulation } from '~/lib/happy-farm-businesses';
 import { GOVERNMENT_LOAN_AMOUNT, SEED_RESERVE, applyGovernmentLoan, collectOverdueGovernmentLoan, governmentLoanBalance, governmentLoanError } from '~/lib/happy-farm-finance';
 
@@ -27,6 +28,7 @@ const selectedVillage = ref('');
 const selectedDistrict = ref('新化區');
 const selectedCrop = ref('carrot');
 const seedQuantities = ref(Object.fromEntries(FARM_CROPS.map(item => [item.id, 1])));
+const workerPayPeriod = ref('day');
 const selectedAnimalId = ref('chicken');
 const facilityPlotChoice = ref(-1);
 const activePanel = ref('tools');
@@ -105,7 +107,9 @@ const animalLocation = pen => Number.isInteger(pen?.plotIndex) ? plotLabel(pen.p
 const facilityLabel = plot => plot?.facility === 'animal' ? `${animal(plot.animalId)?.icon || '🐾'} ${animal(plot.animalId)?.habitat || '動物農舍'}` : plot?.facility === 'factory' ? '🏭 加工坊' : plot?.facility === 'tourism' ? '🎟️ 觀光接待站' : plot?.facility === 'loan_hold' ? '🔒 借款抵押地' : plot?.facility === 'solar' ? '☀️ 光電板' : businessById(plot?.facility) ? `${businessById(plot.facility).icon} ${businessById(plot.facility).name}` : '';
 const today = computed(() => farmDay(now.value));
 const revenueSlot = computed(() => farmRevenueSlot(now.value));
-const solarPlots = computed(() => farm.value.plots.map((plot, index) => ({ plot, index })).filter(item => item.plot?.solar));
+const workerMigrantCount = computed(() => farm.value.workers.filter(item => workerById(item.id)?.group === '移工').length);
+const workerShiftWait = computed(() => Math.max(0, WORKER_SHIFT_MS - (now.value - farm.value.workerLastRunAt)));
+const workerContract = personId => farm.value.workers.find(item => item.id === personId);
 const tourismPlot = computed(() => farm.value.plots.findIndex(plot => plot?.facility === 'tourism'));
 const economyPreview = computed(() => tourismIncome(farm.value, now.value));
 const solarWait = computed(() => revenueWaitMs(farm.value.plots[selectedPlot.value], 'lastSolarAt', 'lastSolarDay', now.value));
@@ -124,7 +128,7 @@ function chooseEconomySection(section) {
   if (section === 'attractions') selectedBusiness.value = 'bicycle';
   if (section === 'business' && business.value.category) selectedBusiness.value = 'market';
 }
-const productionPanel = computed(() => ['tools', 'shop', 'animals'].includes(activePanel.value));
+const productionPanel = computed(() => ['tools', 'shop', 'animals', 'workers'].includes(activePanel.value));
 const businessSites = computed(() => farm.value.plots.map((plot, index) => ({ plot, index })).filter(item => item.plot?.facility === selectedBusiness.value));
 const schoolLesson = computed(() => agricultureLesson(now.value));
 const marketStock = computed(() => Number((marketProductKind.value === 'fresh' ? farm.value.produce : farm.value.processedProduce)?.[selectedCrop.value] || 0));
@@ -505,6 +509,38 @@ function beginEconomyAction(action, cropId = selectedCrop.value, mode = '') {
   }[action];
   queueFarmOperation({ action, cropId, plotIndex, mode, economy: true, actionText }, ['buildSolar', 'buildFactory', 'buildTourism'].includes(action));
 }
+function beginWorkerAction(action, personId) {
+  if (!ready.value || visiting.value || busy.value || quiz.value) return;
+  const period = workerPayPeriod.value;
+  const problem = workerActionError(farm.value, action, personId, period);
+  if (problem) { notice.value = problem; return; }
+  const person = workerById(personId);
+  const actionText = action === 'hireWorker'
+    ? `雇用${person.name}並預付${period === 'day' ? '日薪' : '周薪'} ${workerWage(person, period)} 金幣`
+    : `結束與${person.name}的雇用`;
+  queueFarmOperation({ action, personId, period, workerAction: true, actionText }, true);
+}
+async function changeWorkerSettings(changes) {
+  if (!ready.value || busy.value || quiz.value || visiting.value) return;
+  busy.value = true;
+  try { await saveFarm({ ...farm.value, ...changes }); }
+  catch (error) { notice.value = '人力設定未儲存：' + error.message; }
+  finally { busy.value = false; }
+}
+function toggleWorkerTask(taskId, enabled) {
+  changeWorkerSettings({ workerTasks: { ...farm.value.workerTasks, [taskId]: enabled } });
+}
+async function runWorkerRound(automatic = false) {
+  if (!ready.value || busy.value || quiz.value || visiting.value || !farm.value.workers.length) return;
+  const result = runWorkerShift(farm.value, Date.now());
+  if (!result) return;
+  busy.value = true;
+  try {
+    await saveFarm(result.farm);
+    if (!automatic) notice.value = `人力仲介：${result.detail}。`;
+  } catch (error) { notice.value = '外包作業未完成：' + error.message; }
+  finally { busy.value = false; }
+}
 function beginBusinessAction(action) {
   if (!ready.value || visiting.value || busy.value || quiz.value) return;
   const plotIndex = selectedPlot.value;
@@ -576,6 +612,7 @@ async function applyFinanceQuiz(q) {
 function operationProblem(q) {
   return q.financeAction ? (q.action === 'borrowGovernment' || q.action === 'repayGovernment' ? governmentLoanError(farm.value, q.action) : loanError.value)
     : q.ownerId ? visitProblem(q.action, q.plotIndex)
+      : q.workerAction ? workerActionError(farm.value, q.action, q.personId, q.period)
       : q.animalId ? animalActionError(farm.value, q.action, q.animalId, q.careId, Date.now(), q.plotIndex)
         : q.businessAction ? businessActionError(farm.value, q.action, q.plotIndex, q.businessId, q.cropId, q.productKind, Date.now())
           : q.economy ? economyActionError(farm.value, q.action, q.plotIndex, q.cropId, q.mode, Date.now())
@@ -587,6 +624,10 @@ async function applyOperation(q) {
   let result;
   if (q.financeAction) result = await applyFinanceQuiz(q);
   else if (q.ownerId) result = await applyVisit(q);
+  else if (q.workerAction) {
+    result = applyWorkerAction(farm.value, q.action, q.personId, q.period, Date.now());
+    await saveFarm(result.farm);
+  }
   else if (q.animalId) {
     result = applyAnimalAction(farm.value, q.action, q.animalId, q.careId, Date.now(), q.plotIndex);
     await saveFarm(result.farm);
@@ -633,7 +674,7 @@ async function submitAnswer() {
     await syncRecord();
     rememberRoutineQuiz();
     notice.value = correct
-      ? '答對 ' + q.word.en_us + '！已完成「' + q.actionText + '」' + (q.action === 'harvest' || q.ownerId || q.animalId || q.economy || q.businessAction || q.financeAction ? '，' + result.detail : '') + '。'
+      ? '答對 ' + q.word.en_us + '！已完成「' + q.actionText + '」' + (q.action === 'harvest' || q.action === 'sell' || q.ownerId || q.animalId || q.economy || q.businessAction || q.financeAction || q.workerAction ? '，' + result.detail : '') + '。'
       : '答錯了：' + q.word.en_us + '＝' + q.word.zh_tw + '。這次沒有執行「' + q.actionText + '」。';
     quiz.value = null;
     now.value = Date.now();
@@ -660,6 +701,8 @@ onMounted(async () => {
   } catch { /* Storage may be unavailable. */ }
   clock = window.setInterval(() => {
     now.value = Date.now();
+    if (ready.value && farm.value.workerAuto && farm.value.workers.length && !busy.value && !quiz.value
+      && now.value - farm.value.workerLastRunAt >= WORKER_SHIFT_MS) void runWorkerRound(true);
     if (ready.value && !busy.value && !quiz.value && !settlingLoans.value && !loanError.value
       && loans.value.some(item => item.status === 'active' && Date.parse(item.due_at) <= now.value)) loadLoans(true);
   }, 1000);
@@ -680,6 +723,7 @@ onMounted(async () => {
     await Promise.all([loadClassmates(), loadVisitActivity(), loadLoans(true)]);
     ready.value = true;
     if (notice.value === previousNotice) notice.value = '一般操作約每 35 秒問一次單字；建設與購地等重要操作每次都問。';
+    if (farm.value.workerAuto && farm.value.workers.length) void runWorkerRound(true);
   } catch (error) {
     notice.value = '農場無法載入：' + error.message + '。請確認新專案已執行開心農場 SQL。';
   } finally { loading.value = false; }
@@ -783,6 +827,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
             <button type="button" :class="{ active: activePanel === 'tools' }" @click="activePanel = 'tools'">🧤 種植照護</button>
             <button type="button" :class="{ active: activePanel === 'shop' }" @click="activePanel = 'shop'">🛒 種苗與倉庫</button>
             <button type="button" :class="{ active: activePanel === 'animals' }" @click="activePanel = 'animals'">🐾 動物養殖</button>
+            <button type="button" :class="{ active: activePanel === 'workers' }" @click="activePanel = 'workers'">👷 人力仲介</button>
           </nav>
           <p v-if="!visiting" class="quiz-cadence">{{ routineQuizSeconds ? `一般操作可直接進行；約 ${routineQuizSeconds} 秒後再問單字。` : '下一次一般操作會問單字。' }}購地、擴建及建設設施等重要操作每次都會問。</p>
           <section v-if="activePanel === 'tools' && !visiting && ownedVillage" class="tool-card">
@@ -804,9 +849,29 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
           <section v-if="activePanel === 'shop' && !visiting" class="shop-card">
             <h2>🛒 種苗店與倉庫 <small>新化五寶：鳳梨、麻竹筍、地瓜、橄欖、胡麻</small></h2>
             <div class="shop-list"><div v-for="item in FARM_CROPS" :key="item.id" class="shop-row">
-              <div><strong>{{ item.icon }} {{ item.name }}</strong><small>{{ item.growMinutes }} 分鐘成熟 · 種苗 {{ item.seed }} 金幣 · 售價 {{ item.sale }} 金幣/個</small><small>{{ cropInSeason(item, now) ? '✅ 本季適種' : '🌿 非適季' }}（{{ cropSeasonLabel(item) }}） · 種苗 {{ farm.seeds[item.id] || 0 }} · 庫存 {{ farm.produce[item.id] || 0 }}</small></div>
-              <div class="seed-purchase"><label :for="'seed-quantity-' + item.id">購買數量 <input :id="'seed-quantity-' + item.id" v-model.number="seedQuantities[item.id]" type="number" min="1" max="99" step="1" inputmode="numeric" /></label><small>合計 {{ item.seed * (Number(seedQuantities[item.id]) || 0) }} 金幣</small><button type="button" :disabled="!can('buy', item.id, seedQuantities[item.id])" @click="beginAction('buy', item.id, seedQuantities[item.id])">買種苗</button><button type="button" :disabled="!can('sell', item.id)" @click="beginAction('sell', item.id)">賣作物</button></div>
+              <div><strong>{{ item.icon }} {{ item.name }}</strong><small>{{ item.growMinutes }} 分鐘成熟 · 種苗 {{ item.seed }} 金幣/份 · 售價 {{ item.sale }} 金幣/個</small><small>{{ cropInSeason(item, now) ? '✅ 本季適種' : '🌿 非適季' }}（{{ cropSeasonLabel(item) }}）</small>
+                <div class="crop-stock"><span>🌱 種苗 <strong>{{ farm.seeds[item.id] || 0 }}</strong> 份</span><span>🧺 可賣作物 <strong>{{ farm.produce[item.id] || 0 }}</strong> 個</span><span>🏭 加工品 <strong>{{ farm.processedProduce?.[item.id] || 0 }}</strong> 份</span></div>
+              </div>
+              <div class="seed-purchase"><label :for="'seed-quantity-' + item.id">這次買幾份 <input :id="'seed-quantity-' + item.id" v-model.number="seedQuantities[item.id]" type="number" min="1" max="99" step="1" inputmode="numeric" /></label><small>買入合計 {{ item.seed * (Number(seedQuantities[item.id]) || 0) }} 金幣</small><button type="button" :disabled="!can('buy', item.id, seedQuantities[item.id])" @click="beginAction('buy', item.id, seedQuantities[item.id])">買 {{ Number(seedQuantities[item.id]) || 0 }} 份種苗</button><button type="button" :disabled="!can('sell', item.id)" @click="beginAction('sell', item.id)">賣 {{ farm.produce[item.id] || 0 }} 個 · 收 {{ (farm.produce[item.id] || 0) * item.sale }}</button></div>
             </div></div>
+          </section>
+          <section v-if="activePanel === 'workers' && !visiting" class="worker-card">
+            <h2>👷 人力仲介</h2>
+            <p class="worker-help">雇用時先答一題並預付一期薪資。外包人員每 1 分鐘最多各做 2 項已勾選的田地工作；離線期間只補做一輪，不追收離線薪資。</p>
+            <div class="worker-summary"><strong>已雇 {{ farm.workers.length }}/{{ WORKER_TOTAL_LIMIT }} 人</strong><span>移工名額 {{ workerMigrantCount }}/{{ WORKER_MIGRANT_LIMIT }}</span><span>下輪 {{ waitLabel(workerShiftWait) }}</span></div>
+            <div class="worker-settings">
+              <label>計薪方式 <select v-model="workerPayPeriod"><option value="day">日薪</option><option value="week">周薪</option></select></label>
+              <label>自動播種作物 <select :value="farm.workerCropId" :disabled="busy || !!quiz" @change="changeWorkerSettings({ workerCropId: $event.target.value })"><option v-for="item in FARM_CROPS" :key="item.id" :value="item.id">{{ item.icon }} {{ item.name }}（種苗 {{ farm.seeds[item.id] || 0 }}）</option></select></label>
+            </div>
+            <div class="worker-task-list"><label v-for="task in WORKER_TASKS" :key="task.id"><input type="checkbox" :checked="farm.workerTasks[task.id]" :disabled="busy || !!quiz" @change="toggleWorkerTask(task.id, $event.target.checked)" />{{ task.name }}</label></div>
+            <div class="worker-actions"><button type="button" :disabled="busy || !!quiz || !farm.workers.length || workerShiftWait > 0" @click="runWorkerRound()">🧤 一鍵執行一輪</button><button type="button" :disabled="busy || !!quiz" @click="changeWorkerSettings({ workerAuto: !farm.workerAuto })">{{ farm.workerAuto ? '⏸ 關閉自動巡田' : '▶ 開啟自動巡田' }}</button></div>
+            <p class="worker-report">{{ farm.workerLastReport || '尚未執行外包作業。' }}{{ farm.workerAuto ? ' · 自動巡田已開啟' : '' }}</p>
+            <div class="worker-roster"><div v-for="person in WORKER_CANDIDATES" :key="person.id" class="worker-person">
+              <div><strong>{{ person.name }}</strong><span>{{ person.group }} · 擅長 {{ person.skills.map(id => WORKER_TASKS.find(task => task.id === id)?.name).join('、') }}</span><small>遊戲{{ (workerContract(person.id)?.period || workerPayPeriod) === 'day' ? '日薪' : '周薪' }} {{ workerWage(person, workerContract(person.id)?.period || workerPayPeriod) }} 金幣<span v-if="workerContract(person.id)"> · 已付至 {{ new Date(workerContract(person.id).paidUntil).toLocaleString('zh-TW') }}</span></small></div>
+              <button v-if="workerContract(person.id)" type="button" :disabled="busy || !!quiz" @click="beginWorkerAction('dismissWorker', person.id)">解雇</button>
+              <button v-else type="button" :disabled="busy || !!quiz || !!workerActionError(farm, 'hireWorker', person.id, workerPayPeriod)" @click="beginWorkerAction('hireWorker', person.id)">答題雇用</button>
+            </div></div>
+            <small class="worker-disclaimer">薪資與名額僅為遊戲設定，不代表實際僱傭條件；施肥仍扣 8 金幣，種苗須先購買。</small>
           </section>
           <section v-if="activePanel === 'animals' && !visiting" class="animal-card">
             <h2>{{ selectedAnimal.icon }} {{ selectedAnimal.name }} <small>產品：{{ selectedAnimal.productIcon }} {{ selectedAnimal.product }}</small></h2>
@@ -837,8 +902,8 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
             <nav class="economy-tabs" aria-label="經營項目"><button v-for="item in [{ id: 'solar', text: '☀️ 光電' }, { id: 'processing', text: '🏭 加工' }, { id: 'tourism', text: '🎟️ 觀光' }, { id: 'attractions', text: '🚲 觀光店' }, { id: 'business', text: '🏬 商業' }]" :key="item.id" type="button" :class="{ active: economySection === item.id }" @click="chooseEconomySection(item.id)">{{ item.text }}</button></nav>
             <div v-if="economySection === 'solar'" class="economy-block"><strong>📍 {{ plotLabel(selectedPlot) }} · {{ selectedSite?.facility ? facilityLabel(selectedSite) : selected ? crop(selected.crop)?.name : '空地' }}</strong>
               <p v-if="selectedSite?.solar">{{ solarSite(selectedSite) }}光電板 · 本輪可賣電 {{ solarIncome(selectedSite, now) }} 金幣 · {{ waitLabel(solarWait) }}</p>
-              <div class="economy-actions"><button type="button" :disabled="!canEconomy('buildSolar')" @click="beginEconomyAction('buildSolar')">設置光電 {{ FACILITY_COST.solar }}</button><button type="button" :disabled="!canEconomy('collectSolar')" @click="beginEconomyAction('collectSolar')">賣電收款</button></div>
-              <small>空地可設地面板；魚塭與動物農舍可設上方或屋頂板。已設 {{ solarPlots.length }} 處。</small>
+              <div class="economy-actions"><button type="button" :disabled="!canEconomy('buildSolar')" @click="beginEconomyAction('buildSolar')">設置光電 {{ solarBuildCost(farm) }} 金幣</button><button type="button" :disabled="!canEconomy('collectSolar')" @click="beginEconomyAction('collectSolar')">賣電收款</button></div>
+              <small>空地、魚塭、農舍及所有營業建築都可設置。已設 {{ solarPanelCount(farm) }} 處；遊戲補助價 {{ FACILITY_COST.solar }} 金幣限前 {{ SOLAR_SUBSIDY_LIMIT }} 處，剩 {{ Math.max(0, SOLAR_SUBSIDY_LIMIT - solarPanelCount(farm)) }} 處，之後每處 {{ SOLAR_UNSUBSIDIZED_COST }} 金幣。</small>
             </div>
             <div v-if="economySection === 'processing'" class="economy-block"><strong>🏭 加工與副產品</strong>
               <div class="economy-actions"><button type="button" :disabled="!canEconomy('buildFactory')" @click="beginEconomyAction('buildFactory')">空地建加工坊 {{ FACILITY_COST.factory }}</button></div>
@@ -1011,7 +1076,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
 .panel-tabs{display:flex;gap:6px}
 .panel-tabs button{flex:1;border:2px solid #74a65d;border-radius:10px;background:#fffdf0;color:#315b39;padding:8px 5px;font-weight:850}
 .panel-tabs button.active{background:#d8f1a9;border-color:#3d8451}
-.panel-subtabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}.panel-subtabs button{min-width:0;border:1px solid #78a465;border-radius:9px;background:#f8ffe7;color:#315b39;padding:8px 3px;font-size:.78rem;font-weight:800}.panel-subtabs button.active{background:#d8f1a9;border-width:2px}
+.panel-subtabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}.panel-subtabs button{min-width:0;border:1px solid #78a465;border-radius:9px;background:#f8ffe7;color:#315b39;padding:8px 3px;font-size:.78rem;font-weight:800}.panel-subtabs button.active{background:#d8f1a9;border-width:2px}
 .quiz-cadence{flex:none;margin:0;padding:5px 8px;border-radius:8px;background:#edf7d5;color:#315b39;font-size:.72rem;font-weight:750;line-height:1.35}
 .finance-card{border:3px solid #8eb471;border-radius:18px;padding:14px;background:#fffdf0;box-shadow:0 6px 0 #bdd6a3}.finance-card h2{margin:0 0 9px;color:#326341}.finance-block{display:grid;gap:8px;border-top:1px dashed #b6cba6;padding:11px 0}.finance-block p{margin:0;font-size:.82rem;line-height:1.5}.finance-block strong{color:#245b38}.finance-pickers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.finance-pickers label{display:grid;gap:3px;font-size:.75rem;font-weight:800}.finance-pickers select{min-width:0;width:100%;border:1px solid #8eaf7d;border-radius:8px;padding:7px;background:#fff}.finance-block>button,.finance-refresh{border:2px solid #418151;border-radius:9px;background:#e2f3bb;padding:8px;color:#245338;font-weight:800}.loan-list{display:grid;gap:6px}.loan-list article{display:grid;gap:5px;border:1px solid #b6cba6;border-radius:9px;padding:8px;background:#f6fce7}.loan-list small{font-size:.73rem}
 .tool-card,.shop-card{border:3px solid #8eb471;border-radius:18px;padding:16px;background:#fffdf0;box-shadow:0 6px 0 #bdd6a3}
@@ -1131,6 +1196,10 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
 .unowned-land span{font-size:2rem}.unowned-land p{max-width:260px;font-size:.8rem}
 .unowned-note{margin:8px 2px;padding:7px 9px;border-radius:8px;background:#fff5da;color:#654a2a;font-size:.78rem;font-weight:750}
 .shop-list .shop-row .seed-purchase{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;margin-top:5px}.seed-purchase label{display:flex;align-items:center;gap:4px;grid-column:1 / -1;font-size:.7rem;font-weight:800}.seed-purchase input{box-sizing:border-box;width:68px;min-width:0;border:1px solid #8cac75;border-radius:6px;padding:3px;background:#fff;color:#284a31}.seed-purchase small{grid-column:1 / -1}
+.shop-list .crop-stock{display:flex;flex-wrap:wrap;gap:4px;margin:5px 0}.crop-stock span{display:inline-flex;align-items:center;gap:3px;border:1px solid #9abf81;border-radius:7px;background:#eaf6d7;padding:3px 5px;color:#245338;font-size:.7rem;font-weight:750;white-space:nowrap}.crop-stock strong{font-size:.9rem;color:#163e24}.shop-list .shop-row .seed-purchase small{font-size:.68rem;white-space:normal}.shop-list .shop-row .seed-purchase button{font-size:.7rem;min-height:28px}
+.worker-card{display:flex;flex-direction:column;gap:7px;min-height:0;border:3px solid #8eb471;border-radius:18px;padding:12px;background:#fffdf0;color:#245338;box-shadow:0 6px 0 #bdd6a3}.worker-card h2{margin:0;font-size:1.12rem}.worker-help,.worker-report{margin:0;font-size:.75rem;line-height:1.4}.worker-summary,.worker-settings,.worker-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.worker-summary>*{border-radius:7px;background:#eaf6d7;padding:5px 7px;font-size:.75rem}.worker-settings label{display:flex;align-items:center;gap:4px;flex:1;min-width:140px;font-size:.74rem;font-weight:800}.worker-settings select{flex:1;min-width:0;padding:5px;border:1px solid #8cac75;border-radius:7px;background:#fff;color:#245338}.worker-task-list{display:flex;flex-wrap:wrap;gap:5px}.worker-task-list label{display:flex;align-items:center;gap:3px;border:1px solid #a4c88b;border-radius:7px;padding:4px 6px;font-size:.75rem;font-weight:800}.worker-actions button,.worker-person button{border:1px solid #418151;border-radius:8px;background:#e2f3bb;color:#245338;padding:6px 9px;font-size:.75rem;font-weight:800}.worker-actions button{flex:1}.worker-report{border-radius:7px;background:#f0f6e3;padding:5px}.worker-roster{display:grid;grid-template-columns:1fr 1fr;gap:5px;min-height:0;overflow:auto;align-content:start}.worker-person{display:flex;justify-content:space-between;align-items:center;gap:5px;border:1px solid #b6cba6;border-radius:8px;background:#fbffe9;padding:6px;min-width:0}.worker-person>div{display:flex;flex-direction:column;gap:2px;min-width:0}.worker-person strong{font-size:.82rem}.worker-person span,.worker-person small{font-size:.69rem;line-height:1.3}.worker-person button{flex:none;padding:5px}.worker-disclaimer{font-size:.68rem;color:#607460}
+@media(max-width:620px){.panel-subtabs button{font-size:.68rem;padding:7px 1px}.worker-roster{grid-template-columns:1fr}.worker-card{min-height:420px}.shop-list .crop-stock span{font-size:.68rem}}
+@media(min-width:900px) and (min-height:560px){.worker-card{box-sizing:border-box;flex:1;overflow:hidden;box-shadow:none}.worker-roster{flex:1}}
 .land-buy-card{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 8px;border:2px solid #8eb471;border-radius:10px;background:#fff5d2;font-size:.75rem}
 .land-buy-card span{flex:1}.land-buy-card button{border:1px solid #418151;border-radius:7px;background:#d8ecac;color:#245338;padding:5px;font-weight:800}
 @media(min-width:900px) and (min-height:560px){
