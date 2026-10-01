@@ -955,9 +955,9 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
             <div v-else-if="workerView === 'tasks'" class="worker-body">
               <p class="worker-help">每人指定一種班別，每分鐘最多完成 2 項該班工作。離線只補一輪；購地、建設、拆除與借款由玩家答題決定。</p>
               <div class="worker-settings"><label>自動播種作物 <select :value="farm.workerCropId" :disabled="busy || !!quiz" @change="changeWorkerSettings({ workerCropId: $event.target.value })"><option v-for="item in FARM_CROPS" :key="item.id" :value="item.id">{{ item.icon }} {{ item.name }}（種苗 {{ farm.seeds[item.id] || 0 }}）</option></select></label></div>
-              <div class="worker-task-groups"><div v-for="group in WORKER_GROUPS" :key="group.id" class="worker-task-group"><strong>{{ group.name }}</strong><div class="worker-task-list"><label v-for="task in WORKER_TASKS.filter(item => item.group === group.id)" :key="task.id"><input type="checkbox" :checked="farm.workerTasks[task.id]" :disabled="busy || !!quiz" @change="toggleWorkerTask(task.id, $event.target.checked)" />{{ task.name }}</label></div></div></div>
               <div class="worker-actions"><button type="button" :disabled="busy || !!quiz || !farm.workers.length || workerShiftWait > 0" @click="runWorkerRound()">🧤 一鍵執行一輪</button><button type="button" :disabled="busy || !!quiz" @click="changeWorkerSettings({ workerAuto: !farm.workerAuto })">{{ farm.workerAuto ? '⏸ 關閉自動巡田' : '▶ 開啟自動巡田' }}</button></div>
               <p class="worker-report">{{ farm.workerLastReport || '尚未執行外包作業。' }}{{ farm.workerAuto ? ' · 自動巡田已開啟' : '' }}</p>
+              <div class="worker-task-groups"><div v-for="group in WORKER_GROUPS" :key="group.id" class="worker-task-group"><strong>{{ group.name }}</strong><div class="worker-task-list"><label v-for="task in WORKER_TASKS.filter(item => item.group === group.id)" :key="task.id"><input type="checkbox" :checked="farm.workerTasks[task.id]" :disabled="busy || !!quiz" @change="toggleWorkerTask(task.id, $event.target.checked)" />{{ task.name }}</label></div></div></div>
               <small class="worker-disclaimer">販售與加工預設關閉，可勾選後由人力執行。沒有合適宿舍的既有移工會暫停工作。</small>
             </div>
             <div v-else class="worker-body worker-history"><p v-if="!farm.workerHistory?.length">尚無雇用或工作紀錄。</p><div v-for="(entry, index) in farm.workerHistory" :key="index"><strong>{{ new Date(entry.at).toLocaleString('zh-TW') }} · {{ workerById(entry.personId)?.name || '系統' }}</strong><span>{{ workerGroupName(entry.group) || '👥 人力仲介' }} · {{ entry.detail }}</span></div></div>
@@ -1314,6 +1314,20 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
 @media(min-width:900px) and (min-height:560px){.worker-card{box-sizing:border-box;flex:1;overflow:hidden;box-shadow:none}.worker-roster,.worker-history{flex:1}}
 .worker-card{overflow:hidden}.worker-view-tabs{flex:none}.worker-view-tabs button{min-width:0;white-space:nowrap}.worker-body{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:8px;padding:3px 4px 8px}.worker-hiring-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.worker-hiring-head label{display:flex;align-items:center;gap:5px;font-size:.78rem;font-weight:800}.worker-hiring-head select{padding:5px;border:1px solid #8cac75;border-radius:7px;background:#fff}.worker-hiring-head button{border:1px solid #418151;border-radius:8px;background:#d9efae;color:#245338;padding:7px 10px;font-weight:850}.worker-dorm-list{display:flex;flex-wrap:wrap;gap:5px}.worker-dorm-list span{border-radius:7px;background:#eaf6d7;padding:4px 7px;font-size:.72rem;font-weight:700}.worker-roster{overflow:visible;flex:none}.worker-person{align-items:flex-start;min-height:93px;padding:9px}.worker-person strong{font-size:.91rem}.worker-person span,.worker-person small{font-size:.73rem;white-space:normal}.worker-person .worker-blocked{color:#a54126;font-weight:800}.worker-person-actions{display:flex;flex-direction:column;gap:5px}.worker-task-groups{max-height:none;overflow:visible}.worker-history{display:grid;flex:1;overflow-y:auto}.housing-block{flex:1;min-height:0;overflow-y:auto;align-content:start}.housing-option{display:grid;gap:5px;border:1px solid #b6cba6;border-radius:10px;background:#f7fce9;padding:9px;margin-top:7px}.housing-option p{margin:0;line-height:1.45}.housing-option small{display:block;line-height:1.45}.housing-option a{color:#165c9a;text-decoration:underline}
 @media(max-width:620px){.worker-card{min-height:0}.worker-body{max-height:65vh}.worker-roster{grid-template-columns:1fr}.worker-person{min-height:0}.worker-hiring-head button{flex:1}}
+.worker-body > *{flex-shrink:0}
+.worker-body .worker-settings label{min-width:0}
+.worker-body .worker-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch}
+.worker-body .worker-actions button{min-width:0;min-height:38px;white-space:normal;line-height:1.3}
+.worker-body .worker-report{overflow-wrap:anywhere}
+.worker-body .worker-task-groups{flex:none;min-height:auto;max-height:none;overflow:visible;grid-template-columns:1fr;align-items:start}
+.worker-body .worker-task-group{min-width:0}
+.worker-body .worker-task-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+.worker-body .worker-task-list label{min-width:0;min-height:30px;box-sizing:border-box;line-height:1.3;white-space:normal;overflow-wrap:anywhere}
+.worker-body .worker-task-list input{flex:none;margin:0 2px 0 0}
+@media(min-width:1400px){.worker-body .worker-task-groups{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}}
+@media(min-width:900px) and (min-height:560px){.worker-card{min-height:0}.worker-body{height:0;flex:1 1 0;overflow-y:auto;overflow-x:hidden}}
+@media(min-width:621px) and (max-width:899px){.worker-card{overflow:visible}.worker-body{flex:none;max-height:none;overflow:visible}}
+@media(max-width:420px){.worker-body .worker-task-list,.worker-body .worker-actions{grid-template-columns:1fr}}
 .land-buy-card{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 8px;border:2px solid #8eb471;border-radius:10px;background:#fff5d2;font-size:.75rem}
 .land-buy-card span{flex:1}.land-buy-card button{border:1px solid #418151;border-radius:7px;background:#d8ecac;color:#245338;padding:5px;font-weight:800}
 @media(min-width:900px) and (min-height:560px){
@@ -1407,5 +1421,43 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
 .more-plots{display:block;margin-top:4px;color:#4a3927;text-align:center;font-size:.72rem;font-weight:800}
 .economy-tabs{overflow-x:auto}.economy-tabs button{min-width:64px;white-space:nowrap}.panel-subtabs{flex:none}
 @media(min-width:900px) and (min-height:560px){.finance-card{box-sizing:border-box;flex:1;min-height:0;overflow:auto;box-shadow:none}}
+@media(min-width:1500px) and (min-height:850px){
+  .farm-page{padding:8px 16px 10px}
+  .farm-header h1{font-size:1.75rem}
+  .farm-header p{font-size:.8rem}
+  .farm-header .eyebrow{font-size:.65rem}
+  .feedback{margin:4px auto}
+  .feedback .notice,.feedback .save-notice{padding:6px 9px;font-size:.8rem}
+  .status-bar{gap:6px;margin-bottom:7px}
+  .status-bar>div,.status-bar>a{padding:6px 8px;font-size:.8rem}
+  .farm-layout{gap:12px}
+  .farm-controls{gap:6px}
+  .panel-tabs button{padding:6px 4px;font-size:.84rem}
+  .panel-subtabs button{padding:6px 3px;font-size:.77rem}
+  .quiz-cadence{padding:4px 7px;font-size:.71rem}
+  .scene-sky{height:34px;font-size:1.35rem}
+  .farm-barn{margin:4px auto;padding:4px 11px;font-size:1.18rem}
+  .farm-barn span{font-size:.9rem}
+  .land-layout{gap:10px;padding:4px 10px 9px}
+  .map-heading,.village-heading{padding:5px 8px;font-size:.91rem}
+  .district-picker{gap:6px;margin:3px 0;font-size:.82rem}
+  .district-picker select,.neighbor-village-picker{padding:5px;font-size:.82rem}
+  .unlock-hint{margin:2px 0;padding:4px;font-size:.74rem}
+  .village-list{gap:4px;margin-top:5px}
+  .village-list button{padding:5px 2px;font-size:.8rem}
+  .map-source{margin-top:3px;font-size:.69rem}
+  .village-field{padding:7px}
+  .village-field .field-grid{gap:7px;padding:3px}
+  .village-field .plot{padding:5px 3px}
+  .tool-card,.shop-card,.visit-card,.animal-card{padding:12px}
+  .shop-list{gap:6px}
+  .shop-list .shop-row{padding:5px 7px}
+  .worker-card{gap:5px;padding:10px}
+  .worker-body{gap:6px}
+  .worker-body .worker-task-group{padding:7px}
+  .worker-body .worker-task-group>strong{font-size:.83rem}
+  .worker-body .worker-task-list label{font-size:.8rem;padding:5px 6px}
+  .worker-body .worker-actions button{font-size:.82rem}
+}
 @media(prefers-reduced-motion:reduce){.action-pop,.animal-sprite{animation:none}}
 </style>
