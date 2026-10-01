@@ -1,9 +1,15 @@
 <script setup>
 defineProps({ crop: { type: String, default: '' }, stage: { type: String, default: '空地' } });
+const matureIcons = {
+  mango: '🥭', dragon_fruit: '🐉', banana: '🍌', shallot: '🧅', papaya: '🍈', avocado: '🥑',
+  water_caltrop: '🌰', lotus_root: '🪷', water_snowflake: '🌿', lychee: '🍒', guava: '🍐',
+  red_bean: '🫘', wax_apple: '🍎'
+};
 </script>
 
 <template>
-  <svg v-if="stage !== '空地'" class="farm-crop-art" viewBox="0 0 64 64" role="img" :aria-label="crop + stage">
+  <span v-if="stage === '成熟' && matureIcons[crop]" class="farm-crop-emoji" role="img" :aria-label="crop + stage">{{ matureIcons[crop] }}</span>
+  <svg v-else-if="stage !== '空地'" class="farm-crop-art" viewBox="0 0 64 64" role="img" :aria-label="crop + stage">
     <ellipse cx="32" cy="57" rx="24" ry="5" fill="#5a3c28" opacity=".28" />
     <g class="crop-sway">
       <path d="M32 54V21" fill="none" stroke="#398642" stroke-width="4" stroke-linecap="round" />
@@ -30,7 +36,8 @@ defineProps({ crop: { type: String, default: '' }, stage: { type: String, defaul
 .farm-crop-art{width:42px;height:42px;display:block;overflow:visible;filter:drop-shadow(0 2px 1px #3b2b2760)}
 .crop-sway{transform-origin:32px 54px;animation:crop-sway 3.6s ease-in-out infinite alternate}
 .empty-seed{font-size:1.55rem;color:#efd495;text-shadow:0 1px #694325}
+.farm-crop-emoji{font-size:2rem;line-height:1;animation:crop-sway 3.6s ease-in-out infinite alternate}
 @keyframes crop-sway{from{transform:rotate(-3deg)}to{transform:rotate(3deg)}}
-@media(prefers-reduced-motion:reduce){.crop-sway{animation:none}}
+@media(prefers-reduced-motion:reduce){.crop-sway,.farm-crop-emoji{animation:none}}
 @media(max-width:620px){.farm-crop-art{width:37px;height:37px}}
 </style>
