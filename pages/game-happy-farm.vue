@@ -671,10 +671,10 @@ async function settleUtilities() {
 }
 async function runWorkerRound(automatic = false) {
   if (!ready.value || busy.value || quiz.value || visiting.value || !farm.value.workers.length) return;
-  const result = runWorkerShift(farm.value, Date.now());
-  if (!result) return;
   busy.value = true;
   try {
+    const result = runWorkerShift(farm.value, Date.now());
+    if (!result) return;
     await saveFarm(result.farm);
     if (!automatic) notice.value = `人力仲介：${result.detail}。`;
   } catch (error) { notice.value = '外包作業未完成：' + error.message; }
@@ -1039,7 +1039,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
               <p class="worker-help">每人指定一種班別，每分鐘最多完成 2 項該班工作。離線只補一輪；購地、建設、拆除與借款由玩家答題決定。</p>
               <div class="worker-settings"><strong>自動播種作物（可多選）</strong><div class="worker-crop-choices"><label v-for="item in FARM_CROPS" :key="item.id"><input type="checkbox" :checked="farm.workerCropIds?.includes(item.id)" :disabled="busy || !!quiz" @change="toggleWorkerCrop(item.id, $event.target.checked)">{{ item.icon }} {{ item.name }} <small>{{ farm.seeds[item.id] || 0 }} 苗</small></label></div><small v-if="!farm.workerCropIds?.length">目前未勾選任何作物，自動播種會暫停。</small></div>
               <div class="worker-actions"><button type="button" :disabled="busy || !!quiz || !farm.workers.length || workerShiftWait > 0" @click="runWorkerRound()">🧤 一鍵執行一輪</button><button type="button" :disabled="busy || !!quiz" @click="changeWorkerSettings({ workerAuto: !farm.workerAuto })">{{ farm.workerAuto ? '⏸ 關閉自動巡田' : '▶ 開啟自動巡田' }}</button></div>
-              <p class="worker-report">{{ farm.workerLastReport || '尚未執行外包作業。' }}{{ farm.workerAuto ? ' · 自動巡田已開啟' : '' }}</p>
+              <p class="worker-report">{{ farm.workerLastReport || '尚未執行外包作業。' }}{{ farm.workerLastRunAt ? ` · 最近執行：${new Date(farm.workerLastRunAt).toLocaleString('zh-TW')}` : '' }}{{ farm.workerAuto ? ' · 自動巡田已開啟' : '' }}</p>
               <div class="worker-task-groups"><div v-for="group in WORKER_GROUPS" :key="group.id" class="worker-task-group"><strong>{{ group.name }}</strong><div class="worker-task-list"><label v-for="task in WORKER_TASKS.filter(item => item.group === group.id)" :key="task.id"><input type="checkbox" :checked="farm.workerTasks[task.id]" :disabled="busy || !!quiz" @change="toggleWorkerTask(task.id, $event.target.checked)" />{{ task.name }}</label></div></div></div>
               <small class="worker-disclaimer">販售與加工預設關閉，可勾選後由人力執行。沒有合適宿舍的既有移工會暫停工作。</small>
             </div>
