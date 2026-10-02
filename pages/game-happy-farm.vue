@@ -8,7 +8,7 @@ import {
 import { FARM_ANIMALS, animalActionError, animalById, applyAnimalAction } from '~/lib/happy-farm-animals';
 import { FACILITY_COST, FARMHOUSE_PARCEL_PLOTS, FARMHOUSE_PLOT_HA, SOLAR_SUBSIDY_LIMIT, SOLAR_UNSUBSIDIZED_COST, applyDemolition, applyEconomyAction, demolitionCost, demolitionError, economyActionError, farmDay, farmRevenueSlot, farmhouseName, farmhouseParcel, processedSale, revenueWaitMs, solarBuildCost, solarIncome, solarPanelCount, solarSite, tourismIncome } from '~/lib/happy-farm-economy';
 import { DORM_CAPACITY, DORM_COST, commuteLabel, dormName, dorms, housingAssignments, workerCommute } from '~/lib/happy-farm-housing';
-import { WORKER_GROUPS, WORKER_MIGRANT_LIMIT, WORKER_REST_MS, WORKER_SHIFT_MS, WORKER_TASKS, WORKER_TOTAL_LIMIT, addWorkerHistory, applyWorkerAction, familyWorkerName, requiredShopLanguages, runWorkerShift, sellHarvestAtBestPrice, shopStaff, workerActionError, workerById, workerGroupName, workerWage } from '~/lib/happy-farm-workers';
+import { WORKER_GROUPS, WORKER_MIGRANT_LIMIT, WORKER_SHIFT_MS, WORKER_TASKS, WORKER_TOTAL_LIMIT, addWorkerHistory, applyWorkerAction, familyWorkerName, requiredShopLanguages, runWorkerShift, sellHarvestAtBestPrice, shopStaff, workerActionError, workerById, workerGroupName, workerWage } from '~/lib/happy-farm-workers';
 import { POWER_UNIT_COST, UTILITY_CYCLE_MS, WATER_UNIT_COST, payUtilityDebt, settleUtilityBill, utilityPaymentError, utilityPreview, utilitySlot } from '~/lib/happy-farm-utilities';
 import { FARM_BUSINESSES, agricultureLesson, applyBusinessAction, businessActionError, businessById, businessIncome, marketUnitPrice, populationSource, villagePopulation } from '~/lib/happy-farm-businesses';
 import { GOVERNMENT_LOAN_AMOUNT, SEED_RESERVE, applyGovernmentLoan, collectOverdueGovernmentLoan, governmentLoanBalance, governmentLoanError } from '~/lib/happy-farm-finance';
@@ -71,7 +71,7 @@ const workerActiveMs = ref(0);
 const familyActiveMs = ref(0);
 const ROUTINE_QUIZ_INTERVAL_MS = 35000;
 let clock = null, lastWordId = null, lastUtilityFailureAt = 0;
-let lastFarmInteractionAt = 0, lastFarmTickAt = 0, lastWorkerProgressSaveAt = 0;
+let lastFarmInteractionAt = 0, lastFarmTickAt = 0, lastWorkerProgressSaveAt = 0, lastWorkerCycleSyncAt = 0;
 const rememberFarmInteraction = () => { lastFarmInteractionAt = Date.now(); };
 
 const crop = id => cropById(id);
@@ -116,8 +116,9 @@ const marketWorkers = computed(() => workerMarket(now.value, farm.value.workers)
 const availableFamilyPartners = computed(() => familyCandidates(farm.value));
 const courtshipPartner = computed(() => familyPartnerById(farm.value.courtship?.partnerId));
 const spouseProfile = computed(() => familyPartnerById(farm.value.spouse?.partnerId));
-const familyWorkerCount = computed(() => Number(!!farm.value.spouse?.workEnabled)
-  + farm.value.children.filter(child => child.workEnabled && familyChildAge(child, familyActiveMs.value) >= FAMILY_AFTER_SCHOOL_AGE).length);
+const familyWorkerCount = computed(() => Number(!!(farm.value.spouse?.workEnabled && farm.value.spouse.professionId && farm.value.spouse.abilityId))
+  + farm.value.children.filter(child => child.workEnabled && familyChildAge(child, familyActiveMs.value) >= FAMILY_AFTER_SCHOOL_AGE
+    && (familyChildAge(child, familyActiveMs.value) < FAMILY_ADULT_AGE || child.professionId && child.abilityId)).length);
 const marketNextRefresh = computed(() => new Date((Math.floor((now.value + 8 * 3600000) / (3 * 3600000)) + 1) * 3 * 3600000 - 8 * 3600000).toLocaleString('zh-TW'));
 const protagonist = computed(() => protagonistById(farm.value.protagonistId));
 const emptyPlots = computed(() => farm.value.plots.map((plot, index) => ({ plot, index })).filter(item => item.plot === null && farm.value.ownedVillages?.includes(farm.value.plotVillages?.[item.index])));
@@ -148,8 +149,9 @@ const selectedFarmhouseParcel = computed(() => farm.value.plots[selectedPlot.val
 const workerShiftWait = computed(() => Math.max(0, WORKER_SHIFT_MS - workerActiveMs.value));
 const workerRestWait = computed(() => Math.max(0, (farm.value.workerRestUntil || 0) - now.value));
 const workerContract = personId => farm.value.workers.find(item => item.id === personId);
-const workerWaitLabel = computed(() => workerRestWait.value ? `休息中，還有 ${Math.ceil(workerRestWait.value / 60000)} 分鐘`
-  : farm.value.workerAuto ? `值班累積 ${Math.floor(workerActiveMs.value / 60000)}/30 分鐘` : '可直接啟動下一輪');
+const workerWaitLabel = computed(() => !(farm.value.workers.length || familyWorkerCount.value) ? '尚未安排人力'
+  : workerRestWait.value ? `休息中，還有 ${Math.ceil(workerRestWait.value / 60000)} 分鐘`
+    : farm.value.workerAuto ? `自動值班中 ${Math.floor(workerActiveMs.value / 60000)}/30 分鐘` : '準備自動開始值班');
 const utilityEstimate = computed(() => utilityPreview(farm.value, now.value));
 const utilityNextWait = computed(() => (farm.value.utilityLastSlot + 1) * UTILITY_CYCLE_MS - 8 * 60 * 60 * 1000 - now.value);
 const utilitySiteLabel = index => farm.value.plots[index]?.crop ? `${plotLabel(index)} · ${crop(farm.value.plots[index].crop)?.name}` : `${plotLabel(index)} · ${facilityLabel(farm.value.plots[index])}`;
@@ -585,21 +587,25 @@ async function beginWorkerCycle() {
   if (!ready.value || busy.value || quiz.value || visiting.value || farm.value.workerAuto || workerRestWait.value > 0 || !(farm.value.workers.length || familyWorkerCount.value)) return;
   busy.value = true;
   try {
-    await saveFarm({ ...farm.value, workerAuto: true, workerActiveMs: 0, workerRestUntil: 0, workerCycleVersion: 2 });
+    const next = { ...farm.value, workerAuto: true, workerActiveMs: 0, workerRestUntil: 0, workerCycleVersion: 2 };
+    addWorkerHistory(next, { at: Date.now(), personId: 'system', group: 'agency', detail: '人力自動開始值班；本輪持續 30 分鐘有效遊玩時間' });
+    await saveFarm(next);
     workerActiveMs.value = 0;
     lastWorkerProgressSaveAt = Date.now();
-    notice.value = '人力已開始值班；累積 30 分鐘實際遊玩時間後工作一次。';
+    notice.value = '人力已自動開始值班；累積 30 分鐘有效遊玩時間後完成本輪工作，再休息 30 分鐘。';
   } catch (error) { notice.value = '人力啟動失敗：' + error.message; }
   finally { busy.value = false; }
 }
-async function stopWorkerCycle() {
-  if (!farm.value.workerAuto || busy.value || quiz.value) return;
-  busy.value = true;
-  try {
-    await saveFarm({ ...farm.value, workerAuto: false, workerActiveMs: 0, workerRestUntil: Date.now() + WORKER_REST_MS });
-    notice.value = '人力已停止值班，休息 30 分鐘後可直接按鈕重新啟動，無須答題。';
-  } catch (error) { notice.value = '無法停止值班：' + error.message; }
-  finally { busy.value = false; }
+async function syncWorkerCycle() {
+  if (!ready.value || busy.value || quiz.value || visiting.value) return;
+  if (Date.now() - lastWorkerCycleSyncAt < 10000) return;
+  lastWorkerCycleSyncAt = Date.now();
+  if (farm.value.workers.length || familyWorkerCount.value) {
+    if (!farm.value.workerAuto && workerRestWait.value <= 0) await beginWorkerCycle();
+  } else if (farm.value.workerAuto || farm.value.workerActiveMs || farm.value.workerRestUntil) {
+    await changeWorkerSettings({ workerAuto: false, workerActiveMs: 0, workerRestUntil: 0 });
+    workerActiveMs.value = 0;
+  }
 }
 function toggleWorkerTask(taskId, enabled) {
   changeWorkerSettings({ workerTasks: { ...farm.value.workerTasks, [taskId]: enabled } });
@@ -738,14 +744,14 @@ async function settleUtilities() {
   } catch (error) { lastUtilityFailureAt = Date.now(); notice.value = '水電帳單尚未結算：' + error.message; }
   finally { busy.value = false; settlingUtilities.value = false; }
 }
-async function runWorkerRound(automatic = false) {
+async function runWorkerRound() {
   if (!ready.value || busy.value || quiz.value || visiting.value || !(farm.value.workers.length || familyWorkerCount.value) || !farm.value.workerAuto || workerShiftWait.value > 0) return;
   busy.value = true;
   try {
     const result = runWorkerShift({ ...farm.value, workerActiveMs: workerActiveMs.value, familyActiveMs: familyActiveMs.value }, Date.now());
     if (!result) return;
     await saveFarm(result.farm);
-    notice.value = `人力完成本輪工作：${result.detail}。休息 30 分鐘後須答題才能再啟動。`;
+    notice.value = `人力已結束本輪值班：${result.detail}。現在自動休息 30 分鐘，之後會自動開始下一輪。`;
   } catch (error) { notice.value = '外包作業未完成：' + error.message; }
   finally { busy.value = false; }
 }
@@ -951,7 +957,9 @@ onMounted(async () => {
     if (ready.value && !busy.value && !quiz.value && farm.value.lastEventDay !== farmDay(now.value).date) void settleFarmEvent();
     if (ready.value && !busy.value && !quiz.value && utilitySlot(now.value) > farm.value.utilityLastSlot) void settleUtilities();
     if (ready.value && farm.value.workerAuto && (farm.value.workers.length || familyWorkerCount.value) && !busy.value && !quiz.value
-      && workerActiveMs.value >= WORKER_SHIFT_MS) void runWorkerRound(true);
+      && workerActiveMs.value >= WORKER_SHIFT_MS) void runWorkerRound();
+    else if (ready.value && !busy.value && !quiz.value && !visiting.value && ((farm.value.workers.length || familyWorkerCount.value) && !farm.value.workerAuto && workerRestWait.value <= 0
+      || !(farm.value.workers.length || familyWorkerCount.value) && (farm.value.workerAuto || farm.value.workerActiveMs || farm.value.workerRestUntil))) void syncWorkerCycle();
     else if (ready.value && farm.value.workerAuto && workerActiveMs.value - (farm.value.workerActiveMs || 0) >= 5 * 60000
       && !busy.value && !quiz.value && now.value - lastWorkerProgressSaveAt >= 30000) {
       lastWorkerProgressSaveAt = now.value;
@@ -986,7 +994,8 @@ onMounted(async () => {
     ready.value = true;
     if (notice.value === previousNotice) notice.value = '一般操作約每 35 秒問一次單字；建設與購地等重要操作每次都問。';
     await settleUtilities();
-    if (farm.value.workerAuto && (farm.value.workers.length || familyWorkerCount.value) && workerActiveMs.value >= WORKER_SHIFT_MS) void runWorkerRound(true);
+    if (farm.value.workerAuto && (farm.value.workers.length || familyWorkerCount.value) && workerActiveMs.value >= WORKER_SHIFT_MS) void runWorkerRound();
+    else void syncWorkerCycle();
   } catch (error) {
     notice.value = '農場無法載入：' + error.message + '。請確認新專案已執行開心農場 SQL。';
   } finally { loading.value = false; }
@@ -1144,9 +1153,9 @@ onUnmounted(() => {
               <small class="worker-disclaimer">宿舍與通勤級距為遊戲設定，非實際距離或勞動法規。選定地格可在「經營 → 住居」建宿舍。</small>
             </div>
             <div v-else-if="workerView === 'tasks'" class="worker-body">
-              <p class="worker-help">啟動後，累積 30 分鐘實際遊玩時間才執行一輪，雇員每人最多完成 2 項工作；閒置或切換分頁不計時。之後強制休息 30 分鐘，休息結束後可直接重新啟動。農田班預設自動賣出收成，優先選可用的最高價通路。</p>
+              <p class="worker-help">只要安排雇員或家人工作，就會自動開始值班。累積 30 分鐘有效遊玩時間完成一輪工作後，自動休息 30 分鐘，再自動開始下一輪；無須按鈕或答題。閒置與切換分頁不計入值班時間。雇員每輪最多完成 2 項工作；農田班預設選最高價通路販售收成。</p>
               <div class="worker-settings"><strong>自動播種作物（可多選）</strong><div class="worker-crop-choices"><label v-for="item in FARM_CROPS" :key="item.id"><input type="checkbox" :checked="farm.workerCropIds?.includes(item.id)" :disabled="busy || !!quiz" @change="toggleWorkerCrop(item.id, $event.target.checked)">{{ item.icon }} {{ item.name }} <small>{{ farm.seeds[item.id] || 0 }} 苗</small></label></div><small v-if="!farm.workerCropIds?.length">目前未勾選任何作物，自動播種會暫停。</small></div>
-              <div class="worker-actions"><button v-if="farm.workerAuto" type="button" :disabled="busy || !!quiz" @click="stopWorkerCycle">⏸ 停止值班並休息</button><button v-else type="button" :disabled="busy || !!quiz || !(farm.workers.length || familyWorkerCount) || workerRestWait > 0" @click="beginWorkerCycle">▶ 啟動人力值班</button><span>{{ workerWaitLabel }}</span></div>
+              <div class="worker-actions"><strong>🔄 自動值班循環</strong><span role="status" aria-live="polite">{{ workerWaitLabel }}</span></div>
               <p class="worker-report">{{ farm.workerLastReport || '尚未執行外包作業。' }}{{ farm.workerLastRunAt ? ` · 最近執行：${new Date(farm.workerLastRunAt).toLocaleString('zh-TW')}` : '' }}{{ farm.workerAuto ? ' · 自動巡田已開啟' : '' }}</p>
               <div class="worker-task-groups"><div v-for="group in WORKER_GROUPS" :key="group.id" class="worker-task-group"><strong>{{ group.name }}</strong><div class="worker-task-list"><label v-for="task in WORKER_TASKS.filter(item => item.group === group.id)" :key="task.id"><input type="checkbox" :checked="farm.workerTasks[task.id]" :disabled="busy || !!quiz" @change="toggleWorkerTask(task.id, $event.target.checked)" />{{ task.name }}</label></div></div></div>
               <small class="worker-disclaimer">販售與加工預設關閉，可勾選後由人力執行。沒有合適宿舍的既有移工會暫停工作。</small>
