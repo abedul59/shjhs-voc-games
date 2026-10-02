@@ -8,7 +8,7 @@ import {
 import { FARM_ANIMALS, animalActionError, animalById, applyAnimalAction } from '~/lib/happy-farm-animals';
 import { FACILITY_COST, FARMHOUSE_PARCEL_PLOTS, FARMHOUSE_PLOT_HA, SOLAR_SUBSIDY_LIMIT, SOLAR_UNSUBSIDIZED_COST, applyDemolition, applyEconomyAction, demolitionCost, demolitionError, economyActionError, farmDay, farmRevenueSlot, farmhouseName, farmhouseParcel, processedSale, revenueWaitMs, solarBuildCost, solarIncome, solarPanelCount, solarSite, tourismIncome } from '~/lib/happy-farm-economy';
 import { DORM_CAPACITY, DORM_COST, commuteLabel, dormName, dorms, housingAssignments, workerCommute } from '~/lib/happy-farm-housing';
-import { WORKER_GROUPS, WORKER_MIGRANT_LIMIT, WORKER_SHIFT_MS, WORKER_TASKS, WORKER_TOTAL_LIMIT, addWorkerHistory, applyWorkerAction, familyWorkerName, requiredShopLanguages, runWorkerShift, sellHarvestAtBestPrice, shopStaff, workerActionError, workerById, workerGroupName, workerWage } from '~/lib/happy-farm-workers';
+import { WORKER_GROUPS, WORKER_MIGRANT_LIMIT, WORKER_SHIFT_MS, WORKER_TASKS, WORKER_TOTAL_LIMIT, addWorkerHistory, applyWorkerAction, endWorkerShift, familyWorkerName, requiredShopLanguages, runWorkerBatch, sellHarvestAtBestPrice, shopStaff, workerActionError, workerById, workerGroupName, workerWage } from '~/lib/happy-farm-workers';
 import { POWER_UNIT_COST, UTILITY_CYCLE_MS, WATER_UNIT_COST, payUtilityDebt, settleUtilityBill, utilityPaymentError, utilityPreview, utilitySlot } from '~/lib/happy-farm-utilities';
 import { FARM_BUSINESSES, agricultureLesson, applyBusinessAction, businessActionError, businessById, businessIncome, marketUnitPrice, populationSource, villagePopulation } from '~/lib/happy-farm-businesses';
 import { GOVERNMENT_LOAN_AMOUNT, SEED_RESERVE, applyGovernmentLoan, collectOverdueGovernmentLoan, governmentLoanBalance, governmentLoanError } from '~/lib/happy-farm-finance';
@@ -146,12 +146,11 @@ const workerDorm = personId => {
 const dormOccupants = index => Object.values(workerHousing.value.assignments).filter(value => value === index).length;
 const selectedFarmhouseParcel = computed(() => farm.value.plots[selectedPlot.value] === null && !farmhouseKind(farm.value)
   ? farmhouseParcel(farm.value, selectedPlot.value) : null);
-const workerShiftWait = computed(() => Math.max(0, WORKER_SHIFT_MS - workerActiveMs.value));
 const workerRestWait = computed(() => Math.max(0, (farm.value.workerRestUntil || 0) - now.value));
 const workerContract = personId => farm.value.workers.find(item => item.id === personId);
 const workerWaitLabel = computed(() => !(farm.value.workers.length || familyWorkerCount.value) ? '尚未安排人力'
   : workerRestWait.value ? `休息中，還有 ${Math.ceil(workerRestWait.value / 60000)} 分鐘`
-    : farm.value.workerAuto ? `自動值班中 ${Math.floor(workerActiveMs.value / 60000)}/30 分鐘` : '準備自動開始值班');
+    : farm.value.workerAuto ? `自動值班中 ${Math.floor(workerActiveMs.value / 60000)}/30 分鐘 · 已執行 ${farm.value.workerTaskPhase || 0}/2 批` : '準備自動開始值班');
 const utilityEstimate = computed(() => utilityPreview(farm.value, now.value));
 const utilityNextWait = computed(() => (farm.value.utilityLastSlot + 1) * UTILITY_CYCLE_MS - 8 * 60 * 60 * 1000 - now.value);
 const utilitySiteLabel = index => farm.value.plots[index]?.crop ? `${plotLabel(index)} · ${crop(farm.value.plots[index].crop)?.name}` : `${plotLabel(index)} · ${facilityLabel(farm.value.plots[index])}`;
@@ -587,12 +586,14 @@ async function beginWorkerCycle() {
   if (!ready.value || busy.value || quiz.value || visiting.value || farm.value.workerAuto || workerRestWait.value > 0 || !(farm.value.workers.length || familyWorkerCount.value)) return;
   busy.value = true;
   try {
-    const next = { ...farm.value, workerAuto: true, workerActiveMs: 0, workerRestUntil: 0, workerCycleVersion: 2 };
+    const now = Date.now();
+    const next = { ...farm.value, workerAuto: true, workerActiveMs: 0, workerRestUntil: 0, workerCycleVersion: 2, workerTaskPhase: 0, workerCycleStartedAt: now };
     addWorkerHistory(next, { at: Date.now(), personId: 'system', group: 'agency', detail: '人力自動開始值班；本輪持續 30 分鐘有效遊玩時間' });
-    await saveFarm(next);
+    const firstBatch = runWorkerBatch({ ...next, familyActiveMs: familyActiveMs.value }, now);
+    await saveFarm(firstBatch?.farm || next);
     workerActiveMs.value = 0;
     lastWorkerProgressSaveAt = Date.now();
-    notice.value = '人力已自動開始值班；累積 30 分鐘有效遊玩時間後完成本輪工作，再休息 30 分鐘。';
+    notice.value = `人力已自動開始值班並完成第一批工作：${firstBatch?.detail || '目前沒有可執行的工作'}。`;
   } catch (error) { notice.value = '人力啟動失敗：' + error.message; }
   finally { busy.value = false; }
 }
@@ -603,7 +604,7 @@ async function syncWorkerCycle() {
   if (farm.value.workers.length || familyWorkerCount.value) {
     if (!farm.value.workerAuto && workerRestWait.value <= 0) await beginWorkerCycle();
   } else if (farm.value.workerAuto || farm.value.workerActiveMs || farm.value.workerRestUntil) {
-    await changeWorkerSettings({ workerAuto: false, workerActiveMs: 0, workerRestUntil: 0 });
+    await changeWorkerSettings({ workerAuto: false, workerActiveMs: 0, workerRestUntil: 0, workerTaskPhase: 0, workerCycleStartedAt: 0 });
     workerActiveMs.value = 0;
   }
 }
@@ -745,13 +746,16 @@ async function settleUtilities() {
   finally { busy.value = false; settlingUtilities.value = false; }
 }
 async function runWorkerRound() {
-  if (!ready.value || busy.value || quiz.value || visiting.value || !(farm.value.workers.length || familyWorkerCount.value) || !farm.value.workerAuto || workerShiftWait.value > 0) return;
+  if (!ready.value || busy.value || quiz.value || visiting.value || !(farm.value.workers.length || familyWorkerCount.value) || !farm.value.workerAuto) return;
   busy.value = true;
   try {
-    const result = runWorkerShift({ ...farm.value, workerActiveMs: workerActiveMs.value, familyActiveMs: familyActiveMs.value }, Date.now());
+    const state = { ...farm.value, workerActiveMs: workerActiveMs.value, familyActiveMs: familyActiveMs.value };
+    const phase = state.workerTaskPhase || 0;
+    const result = phase < 2 ? runWorkerBatch(state, Date.now()) : endWorkerShift(state, Date.now());
     if (!result) return;
     await saveFarm(result.farm);
-    notice.value = `人力已結束本輪值班：${result.detail}。現在自動休息 30 分鐘，之後會自動開始下一輪。`;
+    notice.value = phase < 2 ? `人力自動工作：${result.detail}。`
+      : `人力已結束本輪值班，現在自動休息 30 分鐘；休息後會自動開始下一輪。`;
   } catch (error) { notice.value = '外包作業未完成：' + error.message; }
   finally { busy.value = false; }
 }
@@ -957,7 +961,8 @@ onMounted(async () => {
     if (ready.value && !busy.value && !quiz.value && farm.value.lastEventDay !== farmDay(now.value).date) void settleFarmEvent();
     if (ready.value && !busy.value && !quiz.value && utilitySlot(now.value) > farm.value.utilityLastSlot) void settleUtilities();
     if (ready.value && farm.value.workerAuto && (farm.value.workers.length || familyWorkerCount.value) && !busy.value && !quiz.value
-      && workerActiveMs.value >= WORKER_SHIFT_MS) void runWorkerRound();
+      && ((farm.value.workerTaskPhase || 0) === 0 || (farm.value.workerTaskPhase || 0) === 1 && workerActiveMs.value >= WORKER_SHIFT_MS / 2
+        || (farm.value.workerTaskPhase || 0) === 2 && workerActiveMs.value >= WORKER_SHIFT_MS)) void runWorkerRound();
     else if (ready.value && !busy.value && !quiz.value && !visiting.value && ((farm.value.workers.length || familyWorkerCount.value) && !farm.value.workerAuto && workerRestWait.value <= 0
       || !(farm.value.workers.length || familyWorkerCount.value) && (farm.value.workerAuto || farm.value.workerActiveMs || farm.value.workerRestUntil))) void syncWorkerCycle();
     else if (ready.value && farm.value.workerAuto && workerActiveMs.value - (farm.value.workerActiveMs || 0) >= 5 * 60000
@@ -994,7 +999,7 @@ onMounted(async () => {
     ready.value = true;
     if (notice.value === previousNotice) notice.value = '一般操作約每 35 秒問一次單字；建設與購地等重要操作每次都問。';
     await settleUtilities();
-    if (farm.value.workerAuto && (farm.value.workers.length || familyWorkerCount.value) && workerActiveMs.value >= WORKER_SHIFT_MS) void runWorkerRound();
+    if (farm.value.workerAuto && (farm.value.workers.length || familyWorkerCount.value)) void runWorkerRound();
     else void syncWorkerCycle();
   } catch (error) {
     notice.value = '農場無法載入：' + error.message + '。請確認新專案已執行開心農場 SQL。';
@@ -1153,7 +1158,7 @@ onUnmounted(() => {
               <small class="worker-disclaimer">宿舍與通勤級距為遊戲設定，非實際距離或勞動法規。選定地格可在「經營 → 住居」建宿舍。</small>
             </div>
             <div v-else-if="workerView === 'tasks'" class="worker-body">
-              <p class="worker-help">只要安排雇員或家人工作，就會自動開始值班。累積 30 分鐘有效遊玩時間完成一輪工作後，自動休息 30 分鐘，再自動開始下一輪；無須按鈕或答題。閒置與切換分頁不計入值班時間。雇員每輪最多完成 2 項工作；農田班預設選最高價通路販售收成。</p>
+              <p class="worker-help">只要安排雇員或家人工作，就會自動開始值班並執行第一批工作；累積 15 分鐘有效遊玩時間執行第二批，滿 30 分鐘後自動休息 30 分鐘，再自動開始下一輪。全程無須按鈕或答題；閒置與切換分頁不計入值班時間。雇員每輪最多完成 2 項工作；農田班預設選最高價通路販售收成。</p>
               <div class="worker-settings"><strong>自動播種作物（可多選）</strong><div class="worker-crop-choices"><label v-for="item in FARM_CROPS" :key="item.id"><input type="checkbox" :checked="farm.workerCropIds?.includes(item.id)" :disabled="busy || !!quiz" @change="toggleWorkerCrop(item.id, $event.target.checked)">{{ item.icon }} {{ item.name }} <small>{{ farm.seeds[item.id] || 0 }} 苗</small></label></div><small v-if="!farm.workerCropIds?.length">目前未勾選任何作物，自動播種會暫停。</small></div>
               <div class="worker-actions"><strong>🔄 自動值班循環</strong><span role="status" aria-live="polite">{{ workerWaitLabel }}</span></div>
               <p class="worker-report">{{ farm.workerLastReport || '尚未執行外包作業。' }}{{ farm.workerLastRunAt ? ` · 最近執行：${new Date(farm.workerLastRunAt).toLocaleString('zh-TW')}` : '' }}{{ farm.workerAuto ? ' · 自動巡田已開啟' : '' }}</p>
