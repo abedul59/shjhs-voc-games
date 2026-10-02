@@ -597,7 +597,7 @@ async function stopWorkerCycle() {
   busy.value = true;
   try {
     await saveFarm({ ...farm.value, workerAuto: false, workerActiveMs: 0, workerRestUntil: Date.now() + WORKER_REST_MS });
-    notice.value = '人力已停止值班，休息 30 分鐘後可答題重新啟動。';
+    notice.value = '人力已停止值班，休息 30 分鐘後可直接按鈕重新啟動，無須答題。';
   } catch (error) { notice.value = '無法停止值班：' + error.message; }
   finally { busy.value = false; }
 }
