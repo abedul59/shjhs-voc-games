@@ -8,7 +8,9 @@ import {
 import { FARM_ANIMALS, animalActionError, animalById, applyAnimalAction } from '~/lib/happy-farm-animals';
 import { FACILITY_COST, FARMHOUSE_PARCEL_PLOTS, FARMHOUSE_PLOT_HA, SOLAR_SUBSIDY_LIMIT, SOLAR_UNSUBSIDIZED_COST, applyDemolition, applyEconomyAction, demolitionCost, demolitionError, economyActionError, farmDay, farmRevenueSlot, farmhouseName, farmhouseParcel, processedSale, revenueWaitMs, solarBuildCost, solarIncome, solarPanelCount, solarSite, tourismIncome } from '~/lib/happy-farm-economy';
 import { DORM_CAPACITY, DORM_COST, commuteLabel, dormName, dorms, housingAssignments, workerCommute } from '~/lib/happy-farm-housing';
-import { WORKER_GROUPS, WORKER_MIGRANT_LIMIT, WORKER_SHIFT_MS, WORKER_TASKS, WORKER_TOTAL_LIMIT, addWorkerHistory, applyWorkerAction, requiredShopLanguages, runWorkerShift, shopStaff, workerActionError, workerById, workerGroupName, workerWage } from '~/lib/happy-farm-workers';
+import { WORKER_ACTION_INTERVAL_MS, WORKER_GROUPS, WORKER_MIGRANT_LIMIT, WORKER_SHIFT_MS, WORKER_TASKS, WORKER_TOTAL_LIMIT, addWorkerHistory, applyWorkerAction, endWorkerShift, familyAllowedTasks, familyTaskSelected, familyWorkerName, requiredShopLanguages, runWorkerBatch, sellHarvestAtBestPrice, shopStaff, workerActionError, workerById, workerGroupName, workerWage } from '~/lib/happy-farm-workers';
+import { SPECIALIST_ROLES, applySpecialistAction, hasSpecialist, specialistActionError, specialistById, specialistMarket } from '~/lib/happy-farm-specialists';
+import { accountUnrecorded, plotAccountSource } from '~/lib/happy-farm-accounting';
 import { POWER_UNIT_COST, UTILITY_CYCLE_MS, WATER_UNIT_COST, payUtilityDebt, settleUtilityBill, utilityPaymentError, utilityPreview, utilitySlot } from '~/lib/happy-farm-utilities';
 import { FARM_BUSINESSES, agricultureLesson, applyBusinessAction, businessActionError, businessById, businessIncome, marketUnitPrice, populationSource, villagePopulation } from '~/lib/happy-farm-businesses';
 import { GOVERNMENT_LOAN_AMOUNT, SEED_RESERVE, applyGovernmentLoan, collectOverdueGovernmentLoan, governmentLoanBalance, governmentLoanError } from '~/lib/happy-farm-finance';
@@ -16,6 +18,7 @@ import { FARM_PROTAGONISTS, REINCARNATION_COST, chooseProtagonist, protagonistBy
 import { DISASTER_PREP_COST, prepareDisaster, settleSeasonalEvent } from '~/lib/happy-farm-events';
 import { farmLessonAllowed, farmPolicyTableMissing } from '~/lib/happy-farm-access';
 import { workerMarket } from '~/lib/happy-farm-worker-roster';
+import { FAMILY_ABILITIES, FAMILY_ACTIVITY_COST, FAMILY_ADULT_AGE, FAMILY_AFTER_SCHOOL_AGE, FAMILY_DATE_COST, FAMILY_HOBBIES, FAMILY_MARRIAGE_COST, FAMILY_MARRIAGE_MIN_COINS, FAMILY_MATCH_COST, FAMILY_PROFESSIONS, applyFamilyAction, collectDivorceSettlement, familyActionError, familyAssetValue, familyCandidates, familyChildAge, familyPartnerById, familySchoolLevel } from '~/lib/happy-farm-family';
 
 const db = useSupabaseClient();
 const route = useRoute();
@@ -35,7 +38,11 @@ const selectedDistrict = ref('新化區');
 const selectedCrop = ref('carrot');
 const seedQuantities = ref(Object.fromEntries(FARM_CROPS.map(item => [item.id, 1])));
 const workerPayPeriod = ref('day');
+const selectedFamilyProfession = ref('agronomist');
+const selectedFamilyAbility = ref('crops');
+const selectedFamilyMember = ref('spouse');
 const workerView = ref('hire');
+const professionalView = ref('accountant');
 const selectedAnimalId = ref('chicken');
 const animalCategory = ref('livestock');
 const animalCategories = [{ id: 'livestock', label: '🐄 家畜' }, { id: 'aquatic', label: '🐟 水域' }, { id: 'companions', label: '🐈 伴侶動物' }, { id: 'experience', label: '🦌 體驗動物' }];
@@ -63,8 +70,12 @@ const loading = ref(true), busy = ref(false), ready = ref(false);
 const notice = ref('載入農場與單字中…'), saveNotice = ref('');
 const quiz = ref(null), answer = ref(''), quizError = ref(''), session = ref(null);
 const lastRoutineQuizAt = ref(0);
+const workerActiveMs = ref(0);
+const familyActiveMs = ref(0);
 const ROUTINE_QUIZ_INTERVAL_MS = 35000;
 let clock = null, lastWordId = null, lastUtilityFailureAt = 0;
+let lastFarmInteractionAt = 0, lastFarmTickAt = 0, lastWorkerProgressSaveAt = 0, lastWorkerCycleSyncAt = 0;
+const rememberFarmInteraction = () => { lastFarmInteractionAt = Date.now(); };
 
 const crop = id => cropById(id);
 const cropSalePreview = item => Math.round((farm.value.produce[item.id] || 0) * item.sale * (farmhouseKind(farm.value) === 'headquarters' ? 1.1 : 1));
@@ -105,6 +116,22 @@ const ownedAnimals = computed(() => FARM_ANIMALS.filter(item => farm.value.anima
 const totalAnimalProducts = computed(() => Object.values(farm.value.animalProducts || {}).reduce((sum, count) => sum + Number(count || 0), 0));
 const visibleAnimals = computed(() => FARM_ANIMALS.filter(item => item.category ? item.category === animalCategory.value : animalCategory.value === (['frog', 'goldfish', 'crocodile', 'milkfish', 'tilapia'].includes(item.id) ? 'aquatic' : 'livestock')));
 const marketWorkers = computed(() => workerMarket(now.value, farm.value.workers));
+const marketSpecialists = computed(() => specialistMarket(now.value));
+const familyAssignments = computed(() => [
+  ...(farm.value.spouse ? [{ id: 'spouse', name: spouseProfile.value?.name || '配偶', member: farm.value.spouse, age: 18, wage: 24 }] : []),
+  ...farm.value.children.filter(child => familyChildAge(child, familyActiveMs.value) >= FAMILY_AFTER_SCHOOL_AGE)
+    .map(child => ({ id: child.id, name: child.name, member: child, age: familyChildAge(child, familyActiveMs.value), wage: familyChildAge(child, familyActiveMs.value) < FAMILY_ADULT_AGE ? 6 : 16 }))
+]);
+const accountingRows = computed(() => Object.entries(farm.value.accountingTotals || {})
+  .map(([id, total]) => ({ id, ...total, net: total.income - total.expense }))
+  .sort((a, b) => (a.id === 'shared') - (b.id === 'shared') || b.income + b.expense - a.income - a.expense));
+const accountingSummary = computed(() => accountingRows.value.filter(row => row.id !== 'financing').reduce((sum, row) => ({ income: sum.income + row.income, expense: sum.expense + row.expense, net: sum.net + row.net }), { income: 0, expense: 0, net: 0 }));
+const availableFamilyPartners = computed(() => familyCandidates(farm.value));
+const courtshipPartner = computed(() => familyPartnerById(farm.value.courtship?.partnerId));
+const spouseProfile = computed(() => familyPartnerById(farm.value.spouse?.partnerId));
+const familyWorkerCount = computed(() => Number(!!(farm.value.spouse?.workEnabled && farm.value.spouse.professionId && farm.value.spouse.abilityId))
+  + farm.value.children.filter(child => child.workEnabled && familyChildAge(child, familyActiveMs.value) >= FAMILY_AFTER_SCHOOL_AGE
+    && (familyChildAge(child, familyActiveMs.value) < FAMILY_ADULT_AGE || child.professionId && child.abilityId)).length);
 const marketNextRefresh = computed(() => new Date((Math.floor((now.value + 8 * 3600000) / (3 * 3600000)) + 1) * 3 * 3600000 - 8 * 3600000).toLocaleString('zh-TW'));
 const protagonist = computed(() => protagonistById(farm.value.protagonistId));
 const emptyPlots = computed(() => farm.value.plots.map((plot, index) => ({ plot, index })).filter(item => item.plot === null && farm.value.ownedVillages?.includes(farm.value.plotVillages?.[item.index])));
@@ -132,9 +159,11 @@ const workerDorm = personId => {
 const dormOccupants = index => Object.values(workerHousing.value.assignments).filter(value => value === index).length;
 const selectedFarmhouseParcel = computed(() => farm.value.plots[selectedPlot.value] === null && !farmhouseKind(farm.value)
   ? farmhouseParcel(farm.value, selectedPlot.value) : null);
-const workerShiftWait = computed(() => Math.max(0, WORKER_SHIFT_MS - (now.value - farm.value.workerLastRunAt)));
+const workerRestWait = computed(() => Math.max(0, (farm.value.workerRestUntil || 0) - now.value));
 const workerContract = personId => farm.value.workers.find(item => item.id === personId);
-const workerWaitLabel = computed(() => workerShiftWait.value ? `約 ${Math.ceil(workerShiftWait.value / 1000)} 秒後可執行` : '現在可執行');
+const workerWaitLabel = computed(() => !(farm.value.workers.length || familyWorkerCount.value) ? '尚未安排人力'
+  : workerRestWait.value ? `休息中，還有 ${Math.ceil(workerRestWait.value / 60000)} 分鐘`
+    : farm.value.workerAuto ? `自動值班中 ${Math.floor(workerActiveMs.value / 60000)}/30 分鐘 · 已巡查 ${farm.value.workerRunCount || 0} 次` : '準備自動開始值班');
 const utilityEstimate = computed(() => utilityPreview(farm.value, now.value));
 const utilityNextWait = computed(() => (farm.value.utilityLastSlot + 1) * UTILITY_CYCLE_MS - 8 * 60 * 60 * 1000 - now.value);
 const utilitySiteLabel = index => farm.value.plots[index]?.crop ? `${plotLabel(index)} · ${crop(farm.value.plots[index].crop)?.name}` : `${plotLabel(index)} · ${facilityLabel(farm.value.plots[index])}`;
@@ -328,8 +357,16 @@ async function loadFarm() {
   revision.value = created.revision;
   chooseVillage(startVillage);
 }
-async function saveFarm(next) {
+async function saveFarm(next, account = {}) {
+  if (next.workerAuto && farm.value.workerAuto) next.workerActiveMs = Math.max(Number(next.workerActiveMs) || 0, workerActiveMs.value);
+  if (next.gender && farm.value.gender) next.familyActiveMs = Math.max(Number(next.familyActiveMs) || 0, familyActiveMs.value);
   next = collectOverdueGovernmentLoan(next, Date.now());
+  next = collectDivorceSettlement(next, farm.value);
+  const index = account.plotIndex;
+  const site = Number.isInteger(index) && index >= 0 ? next.plots?.[index] || farm.value.plots?.[index] : null;
+  const source = account.source || (site ? plotAccountSource(index, site) : 'shared');
+  const label = account.source ? account.label || '農場共同收支' : site ? `${plotLabel(index)} · ${site.crop ? crop(site.crop)?.name || '作物' : facilityLabel(site) || '農地'}` : account.label || '農場共同收支';
+  accountUnrecorded(farm.value, next, source, label, account.detail || '農場操作');
   const { data, error } = await db.from('happy_farm_states')
     .update({ farm: next, revision: revision.value + 1, updated_at: new Date().toISOString() })
     .eq('student_id', studentId.value).eq('revision', revision.value).select('revision').maybeSingle();
@@ -340,6 +377,8 @@ async function saveFarm(next) {
   }
   farm.value = next;
   revision.value = data.revision;
+  if (!next.workerAuto) workerActiveMs.value = 0;
+  if (!next.gender) familyActiveMs.value = 0;
 }
 async function loadClassmates() {
   if (student.value?.isAnon || !student.value?.class) return;
@@ -471,11 +510,10 @@ function buildQuiz() {
   lastWordId = word.id;
   const english = String(word.en_us).trim();
   const chinese = String(word.zh_tw).trim();
-  const direction = Math.random() < .5 ? 'enToZh' : 'zhToEn';
-  const target = direction === 'enToZh' ? chinese : english;
-  const others = [...new Set(shuffle(words.value).map(item => String(direction === 'enToZh' ? item.zh_tw : item.en_us).trim()).filter(value => value && value !== target))].slice(0, 3);
+  const target = english;
+  const others = [...new Set(shuffle(words.value).map(item => String(item.en_us).trim()).filter(value => value && value !== target))].slice(0, 3);
   if (others.length >= 2) return {
-    word, mode: 'choice', prompt: direction === 'enToZh' ? '「' + english + '」的中文意思是？' : '「' + chinese + '」的英文是？',
+    word, mode: 'choice', prompt: '「' + chinese + '」的英文是？',
     choices: shuffle([target, ...others]), target
   };
   const letters = [...english].map((letter, index) => /[a-z]/i.test(letter) ? index : -1).filter(index => index >= 0);
@@ -562,8 +600,53 @@ async function changeWorkerSettings(changes) {
   catch (error) { notice.value = '人力設定未儲存：' + error.message; }
   finally { busy.value = false; }
 }
+async function beginWorkerCycle() {
+  if (!ready.value || busy.value || quiz.value || visiting.value || farm.value.workerAuto || workerRestWait.value > 0 || !(farm.value.workers.length || familyWorkerCount.value)) return;
+  busy.value = true;
+  try {
+    const now = Date.now();
+    const next = { ...farm.value, workerAuto: true, workerActiveMs: 0, workerRestUntil: 0, workerCycleVersion: 3,
+      workerRunCount: 0, workerLastActionMs: 0, workerCycleStartedAt: now };
+    addWorkerHistory(next, { at: Date.now(), personId: 'system', group: 'agency', detail: '人力自動開始值班；本輪持續 30 分鐘有效遊玩時間' });
+    const firstRun = runWorkerBatch({ ...next, familyActiveMs: familyActiveMs.value }, now);
+    await saveFarm(firstRun?.farm || next);
+    workerActiveMs.value = 0;
+    lastWorkerProgressSaveAt = Date.now();
+    notice.value = `人力已自動開始值班：${firstRun?.detail || '目前沒有可執行的工作'}。`;
+  } catch (error) { notice.value = '人力啟動失敗：' + error.message; }
+  finally { busy.value = false; }
+}
+async function syncWorkerCycle() {
+  if (!ready.value || busy.value || quiz.value || visiting.value) return;
+  if (Date.now() - lastWorkerCycleSyncAt < 10000) return;
+  lastWorkerCycleSyncAt = Date.now();
+  if (farm.value.workers.length || familyWorkerCount.value) {
+    if (!farm.value.workerAuto && workerRestWait.value <= 0) await beginWorkerCycle();
+  } else if (farm.value.workerAuto || farm.value.workerActiveMs || farm.value.workerRestUntil) {
+    await changeWorkerSettings({ workerAuto: false, workerActiveMs: 0, workerRestUntil: 0, workerRunCount: 0,
+      workerLastActionMs: 0, workerCycleStartedAt: 0 });
+    workerActiveMs.value = 0;
+  }
+}
 function toggleWorkerTask(taskId, enabled) {
   changeWorkerSettings({ workerTasks: { ...farm.value.workerTasks, [taskId]: enabled } });
+}
+async function toggleFamilyTask(memberId, taskId, enabled) {
+  const assignment = familyAssignments.value.find(item => item.id === memberId);
+  if (!assignment || !familyAllowedTasks(assignment.age).includes(taskId)) return;
+  const next = JSON.parse(JSON.stringify(farm.value));
+  const member = memberId === 'spouse' ? next.spouse : next.children.find(child => child.id === memberId);
+  const current = Array.isArray(member.taskIds) ? member.taskIds : familyAllowedTasks(assignment.age);
+  member.taskIds = enabled ? [...new Set([...current, taskId])] : current.filter(id => id !== taskId);
+  await changeWorkerSettings(next);
+}
+function beginSpecialistAction(action, personId) {
+  if (!ready.value || visiting.value || busy.value || quiz.value) return;
+  const problem = specialistActionError(farm.value, action, personId, Date.now());
+  if (problem) { notice.value = problem; return; }
+  const person = specialistById(personId);
+  queueFarmOperation({ action, personId, specialistAction: true,
+    actionText: `${action === 'hireSpecialist' ? '聘請' : action === 'renewSpecialist' ? '續聘' : '解約'}${person.name}${action === 'dismissSpecialist' ? '' : `，支付 ${person.fee} 金幣`}` }, action !== 'dismissSpecialist');
 }
 function assignWorker(personId, focus) {
   if (!workerById(personId)?.roles.includes(focus)) return;
@@ -583,10 +666,40 @@ async function selectProtagonist(id) {
   catch (error) { notice.value = '主角選擇未儲存：' + error.message; }
   finally { busy.value = false; }
 }
+async function selectFarmGender(gender) {
+  if (!ready.value || busy.value || farm.value.gender) return;
+  const problem = familyActionError(farm.value, 'chooseGender', gender);
+  if (problem) { notice.value = problem; return; }
+  busy.value = true;
+  try {
+    const result = applyFamilyAction(farm.value, 'chooseGender', gender);
+    await saveFarm(result.farm);
+    notice.value = result.detail + '。接著選擇主角職業。';
+  } catch (error) { notice.value = '性別選擇未儲存：' + error.message; }
+  finally { busy.value = false; }
+}
+function beginFamilyAction(action, partnerId = '', hobbyId = '') {
+  if (!ready.value || busy.value || quiz.value || visiting.value) return;
+  const problem = familyActionError(farm.value, action, partnerId, hobbyId, familyActiveMs.value);
+  if (problem) { notice.value = problem; return; }
+  const person = familyPartnerById(partnerId || farm.value.courtship?.partnerId || farm.value.spouse?.partnerId);
+  const labels = {
+    activity: `${FAMILY_HOBBIES.find(item => item.id === hobbyId)?.activity}（${FAMILY_ACTIVITY_COST} 金幣）`,
+    meet: `在興趣活動認識${person?.name}`, match: `請相親市場介紹${person?.name}（${FAMILY_MATCH_COST} 金幣）`,
+    date: `與${courtshipPartner.value?.name}約會（${FAMILY_DATE_COST} 金幣）`, breakup: `與${courtshipPartner.value?.name}結束交往`,
+    propose: `向${courtshipPartner.value?.name}求婚`, marry: `與${courtshipPartner.value?.name}舉辦婚禮（${FAMILY_MARRIAGE_COST} 金幣）`,
+    divorce: `與${spouseProfile.value?.name}協議離婚並分產`, child: '迎接新家庭成員',
+    familyCareer: '為家人選擇職業與能力', familyWork: '調整家人帶薪排班'
+  };
+  queueFarmOperation({ action, partnerId, hobbyId, familyAction: true, actionText: labels[action] || '家庭操作' }, true);
+}
+function configureFamilyCareer() {
+  beginFamilyAction('familyCareer', selectedFamilyMember.value, `${selectedFamilyProfession.value}:${selectedFamilyAbility.value}`);
+}
 async function reincarnate() {
   if (!ready.value || busy.value || quiz.value || !farm.value.protagonistId) return;
   if (farm.value.coins < REINCARNATION_COST) { notice.value = `轉生需要 ${REINCARNATION_COST} 金幣。`; return; }
-  if (governmentBalance.value || farm.value.utilityDebt || relevantLoans.value.length) { notice.value = '請先結清政府借款、水電欠費及同學借款，再轉生。'; return; }
+  if (governmentBalance.value || farm.value.utilityDebt || relevantLoans.value.length || farm.value.divorceSettlementDue) { notice.value = '請先結清政府借款、水電欠費、同學借款及家庭財產分配，再轉生。'; return; }
   if (!confirm(`轉生需 ${REINCARNATION_COST} 金幣，整座農場會從頭開始，土地、設施、庫存及金幣都會重置。學習成績保留。確定嗎？`)) return;
   busy.value = true;
   try {
@@ -669,14 +782,16 @@ async function settleUtilities() {
   } catch (error) { lastUtilityFailureAt = Date.now(); notice.value = '水電帳單尚未結算：' + error.message; }
   finally { busy.value = false; settlingUtilities.value = false; }
 }
-async function runWorkerRound(automatic = false) {
-  if (!ready.value || busy.value || quiz.value || visiting.value || !farm.value.workers.length) return;
+async function runWorkerRound() {
+  if (!ready.value || busy.value || quiz.value || visiting.value || !(farm.value.workers.length || familyWorkerCount.value) || !farm.value.workerAuto) return;
   busy.value = true;
   try {
-    const result = runWorkerShift(farm.value, Date.now());
+    const state = { ...farm.value, workerActiveMs: workerActiveMs.value, familyActiveMs: familyActiveMs.value };
+    const shiftComplete = workerActiveMs.value >= WORKER_SHIFT_MS && (state.workerRunCount || 0) > 0;
+    const result = shiftComplete ? endWorkerShift(state, Date.now()) : runWorkerBatch(state, Date.now());
     if (!result) return;
     await saveFarm(result.farm);
-    if (!automatic) notice.value = `人力仲介：${result.detail}。`;
+    if (shiftComplete) notice.value = '人力已結束本輪值班，現在自動休息 30 分鐘；休息後會自動開始下一輪。';
   } catch (error) { notice.value = '外包作業未完成：' + error.message; }
   finally { busy.value = false; }
 }
@@ -735,7 +850,7 @@ function beginFinanceAction(action, loan = null) {
 async function applyFinanceQuiz(q) {
   if (q.action === 'borrowGovernment' || q.action === 'repayGovernment') {
     const result = applyGovernmentLoan(farm.value, q.action, Date.now());
-    await saveFarm(result.farm);
+    await saveFarm(result.farm, { source: 'financing', label: '借款與還款（不計營業損益）', detail: result.detail });
     return result;
   }
   const { data, error } = await db.rpc('happy_farm_loan_action', {
@@ -754,6 +869,8 @@ function operationProblem(q) {
     : q.ownerId ? visitProblem(q.action, q.plotIndex)
       : q.demolition ? demolitionError(farm.value, q.plotIndex, q.mode)
       : q.utilityAction ? utilityPaymentError(farm.value)
+      : q.familyAction ? familyActionError(farm.value, q.action, q.partnerId, q.hobbyId, familyActiveMs.value)
+      : q.specialistAction ? specialistActionError(farm.value, q.action, q.personId, Date.now())
       : q.workerAction ? workerActionError(farm.value, q.action, q.personId, q.period)
       : q.animalId ? animalActionError(farm.value, q.action, q.animalId, q.careId, Date.now(), q.plotIndex)
         : q.businessAction ? businessActionError(farm.value, q.action, q.plotIndex, q.businessId, q.cropId, q.productKind, Date.now())
@@ -769,7 +886,7 @@ async function applyOperation(q) {
   else if (q.ownerId) result = await applyVisit(q);
   else if (q.demolition) {
     result = applyDemolition(farm.value, q.plotIndex, q.mode);
-    await saveFarm(result.farm);
+    await saveFarm(result.farm, { plotIndex: q.plotIndex, detail: result.detail });
     selectFarmPlot({ index: q.plotIndex, plot: farm.value.plots[q.plotIndex] });
   }
   else if (q.utilityAction) {
@@ -778,28 +895,43 @@ async function applyOperation(q) {
   }
   else if (q.workerAction) {
     result = applyWorkerAction(farm.value, q.action, q.personId, q.period, Date.now());
+    await saveFarm(result.farm, { source: 'staff', label: '人力薪資與契約', detail: result.detail });
+  }
+  else if (q.specialistAction) {
+    result = applySpecialistAction(farm.value, q.action, q.personId, Date.now());
+    await saveFarm(result.farm, { source: 'specialists', label: '高階專業服務', detail: result.detail });
+  }
+  else if (q.familyAction) {
+    result = applyFamilyAction({ ...farm.value, familyActiveMs: familyActiveMs.value }, q.action, q.partnerId, q.hobbyId, familyActiveMs.value, Date.now());
     await saveFarm(result.farm);
   }
   else if (q.animalId) {
     result = applyAnimalAction(farm.value, q.action, q.animalId, q.careId, Date.now(), q.plotIndex);
-    await saveFarm(result.farm);
+    await saveFarm(result.farm, { plotIndex: Number.isInteger(q.plotIndex) && q.plotIndex >= 0 ? q.plotIndex : farm.value.animals?.[q.animalId]?.plotIndex, detail: result.detail });
     if (q.action === 'buyAnimal' || q.action === 'placeAnimal') {
       chooseVillage(farm.value.plotVillages[q.plotIndex]);
       selectFarmPlot({ index: q.plotIndex, plot: farm.value.plots[q.plotIndex] });
     }
   } else if (q.economy) {
     result = applyEconomyAction(farm.value, q.action, q.plotIndex, q.cropId, q.mode, Date.now());
-    await saveFarm(result.farm);
+    await saveFarm(result.farm, { plotIndex: q.plotIndex, detail: result.detail,
+      ...(q.action === 'sellProcessed' ? { source: 'crop-inventory', label: '種苗與作物庫存' } : {}) });
   } else if (q.businessAction) {
     result = applyBusinessAction(farm.value, q.action, q.plotIndex, q.businessId, q.cropId, q.productKind, Date.now());
     if (['collectBusiness', 'sellAtMarket'].includes(q.action)) {
       const staffed = shopStaff(farm.value, q.businessId, Date.now(), q.plotIndex);
       if (staffed) addWorkerHistory(result.farm, { at: Date.now(), personId: staffed.id, group: 'service', detail: `協助玩家操作：${result.detail}` });
     }
-    await saveFarm(result.farm);
+    await saveFarm(result.farm, { plotIndex: q.plotIndex, detail: result.detail });
   } else {
     result = applyFarmAction(farm.value, q.action, q.cropId, q.plotIndex, Date.now(), q.villageId, q.quantity ?? 1);
-    await saveFarm(result.farm);
+    if (q.action === 'harvest') {
+      const sale = sellHarvestAtBestPrice(result.farm, Date.now(), () => true, q.cropId, 'fresh');
+      if (sale) result = { farm: sale.farm, detail: `${result.detail}；${sale.detail}` };
+    }
+    await saveFarm(result.farm, { plotIndex: q.plotIndex, detail: result.detail,
+      ...(q.action === 'buy' || q.action === 'sell' ? { source: 'crop-inventory', label: '種苗與作物庫存' }
+        : q.action === 'buyLand' || q.action === 'sellLand' ? { source: 'land', label: '農地買賣' } : {}) });
     if (['buyLand', 'sellLand', 'expand'].includes(q.action)) chooseVillage(q.villageId);
   }
   if (pulseIcon(q.action)) lastAction.value = { plotIndex: q.plotIndex, action: q.action, at: Date.now() };
@@ -830,7 +962,7 @@ async function submitAnswer() {
     await syncRecord();
     rememberRoutineQuiz();
     notice.value = correct
-      ? '答對 ' + q.word.en_us + '！已完成「' + q.actionText + '」' + (q.action === 'harvest' || q.action === 'sell' || q.ownerId || q.animalId || q.economy || q.businessAction || q.financeAction || q.workerAction || q.demolition || q.utilityAction || q.eventAction ? '，' + result.detail : '') + '。'
+      ? '答對 ' + q.word.en_us + '！已完成「' + q.actionText + '」' + (q.action === 'harvest' || q.action === 'sell' || q.ownerId || q.animalId || q.economy || q.businessAction || q.financeAction || q.workerAction || q.familyAction || q.demolition || q.utilityAction || q.eventAction ? '，' + result.detail : '') + '。'
       : '答錯了：' + q.word.en_us + '＝' + q.word.zh_tw + '。這次沒有執行「' + q.actionText + '」。';
     quiz.value = null;
     now.value = Date.now();
@@ -851,17 +983,42 @@ async function finishVisit() {
 }
 
 onMounted(async () => {
+  lastFarmTickAt = Date.now();
+  lastFarmInteractionAt = Date.now();
+  window.addEventListener('pointerdown', rememberFarmInteraction);
+  window.addEventListener('keydown', rememberFarmInteraction);
+  window.addEventListener('touchstart', rememberFarmInteraction);
   try {
     const saved = Number(localStorage.getItem(routineQuizKey.value) || 0);
     if (saved > 0 && saved <= Date.now()) lastRoutineQuizAt.value = saved;
   } catch { /* Storage may be unavailable. */ }
   clock = window.setInterval(() => {
     now.value = Date.now();
+    const elapsed = Math.min(1500, Math.max(0, now.value - lastFarmTickAt));
+    lastFarmTickAt = now.value;
+    if (ready.value && farm.value.gender && farm.value.protagonistId && document.visibilityState === 'visible'
+      && now.value - lastFarmInteractionAt <= 60000 && !visiting.value) {
+      familyActiveMs.value += elapsed;
+      if (farm.value.workerAuto) workerActiveMs.value = Math.min(WORKER_SHIFT_MS, workerActiveMs.value + elapsed);
+    }
     if (ready.value && now.value - lastAccessCheckAt > 60000) void checkFarmAccess();
     if (ready.value && !busy.value && !quiz.value && farm.value.lastEventDay !== farmDay(now.value).date) void settleFarmEvent();
     if (ready.value && !busy.value && !quiz.value && utilitySlot(now.value) > farm.value.utilityLastSlot) void settleUtilities();
-    if (ready.value && farm.value.workerAuto && farm.value.workers.length && !busy.value && !quiz.value
-      && now.value - farm.value.workerLastRunAt >= WORKER_SHIFT_MS) void runWorkerRound(true);
+    if (ready.value && farm.value.workerAuto && (farm.value.workers.length || familyWorkerCount.value) && !busy.value && !quiz.value
+      && (workerActiveMs.value >= WORKER_SHIFT_MS || !(farm.value.workerRunCount || 0)
+        || workerActiveMs.value - (farm.value.workerLastActionMs || 0) >= WORKER_ACTION_INTERVAL_MS)) void runWorkerRound();
+    else if (ready.value && !busy.value && !quiz.value && !visiting.value && ((farm.value.workers.length || familyWorkerCount.value) && !farm.value.workerAuto && workerRestWait.value <= 0
+      || !(farm.value.workers.length || familyWorkerCount.value) && (farm.value.workerAuto || farm.value.workerActiveMs || farm.value.workerRestUntil))) void syncWorkerCycle();
+    else if (ready.value && farm.value.workerAuto && workerActiveMs.value - (farm.value.workerActiveMs || 0) >= 5 * 60000
+      && !busy.value && !quiz.value && now.value - lastWorkerProgressSaveAt >= 30000) {
+      lastWorkerProgressSaveAt = now.value;
+      void changeWorkerSettings({ workerActiveMs: workerActiveMs.value });
+    }
+    else if (ready.value && farm.value.gender && familyActiveMs.value - (farm.value.familyActiveMs || 0) >= 5 * 60000
+      && !busy.value && !quiz.value && now.value - lastWorkerProgressSaveAt >= 30000) {
+      lastWorkerProgressSaveAt = now.value;
+      void changeWorkerSettings({ familyActiveMs: familyActiveMs.value });
+    }
     if (ready.value && !busy.value && !quiz.value && !settlingLoans.value && !loanError.value
       && loans.value.some(item => item.status === 'active' && Date.parse(item.due_at) <= now.value)) loadLoans(true);
   }, 1000);
@@ -878,18 +1035,26 @@ onMounted(async () => {
     words.value = (data || []).filter(item => String(item.en_us || '').trim() && String(item.zh_tw || '').trim());
     if (words.value.length < 2) { notice.value = '這個單元需要至少兩筆中英對照單字，請改選其他單元。'; return; }
     await loadFarm();
+    workerActiveMs.value = farm.value.workerActiveMs || 0;
+    familyActiveMs.value = farm.value.familyActiveMs || 0;
     await loadSession();
     const previousNotice = notice.value;
     await Promise.all([loadClassmates(), loadVisitActivity(), loadLoans(true)]);
     ready.value = true;
     if (notice.value === previousNotice) notice.value = '一般操作約每 35 秒問一次單字；建設與購地等重要操作每次都問。';
     await settleUtilities();
-    if (farm.value.workerAuto && farm.value.workers.length) void runWorkerRound(true);
+    if (farm.value.workerAuto && (farm.value.workers.length || familyWorkerCount.value)) void runWorkerRound();
+    else void syncWorkerCycle();
   } catch (error) {
     notice.value = '農場無法載入：' + error.message + '。請確認新專案已執行開心農場 SQL。';
   } finally { loading.value = false; }
 });
-onUnmounted(() => { if (clock) window.clearInterval(clock); });
+onUnmounted(() => {
+  if (clock) window.clearInterval(clock);
+  window.removeEventListener('pointerdown', rememberFarmInteraction);
+  window.removeEventListener('keydown', rememberFarmInteraction);
+  window.removeEventListener('touchstart', rememberFarmInteraction);
+});
 </script>
 
 <template>
@@ -984,6 +1149,8 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
             <button type="button" :class="{ active: productionPanel }" :disabled="!!visiting" @click="activePanel = 'tools'">🌱 生產</button>
             <button type="button" :class="{ active: activePanel === 'economy' }" :disabled="!!visiting" @click="activePanel = 'economy'">🏪 經營</button>
             <button type="button" :class="{ active: activePanel === 'finance' }" :disabled="!!visiting" @click="activePanel = 'finance'">💰 資金</button>
+            <button type="button" :class="{ active: activePanel === 'professionals' }" :disabled="!!visiting" @click="activePanel = 'professionals'">📊 專業顧問</button>
+            <button type="button" :class="{ active: activePanel === 'family' }" :disabled="!!visiting" @click="activePanel = 'family'">💞 家庭</button>
             <button type="button" :class="{ active: activePanel === 'events' }" :disabled="!!visiting" @click="activePanel = 'events'">🌀 事件</button>
             <button type="button" :class="{ active: activePanel === 'visitors' }" @click="activePanel = 'visitors'">🏘️ 同學</button>
           </nav>
@@ -1023,7 +1190,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
           <section v-if="activePanel === 'workers' && !visiting" class="worker-card">
             <h2>👷 人力仲介</h2>
             <div class="worker-summary"><strong>已雇 {{ farm.workers.length }}/{{ WORKER_TOTAL_LIMIT }} 人</strong><span>移工名額 {{ workerMigrantCount }}/{{ WORKER_MIGRANT_LIMIT }}</span><span>{{ workerWaitLabel }}</span></div>
-            <nav class="worker-view-tabs" aria-label="人力仲介頁面"><button type="button" :class="{ active: workerView === 'hire' }" @click="workerView = 'hire'">👥 雇用</button><button type="button" :class="{ active: workerView === 'tasks' }" @click="workerView = 'tasks'">🧤 排班與任務</button><button type="button" :class="{ active: workerView === 'history' }" @click="workerView = 'history'">📋 紀錄 {{ farm.workerHistory?.length || 0 }}</button></nav>
+            <nav class="worker-view-tabs" aria-label="人力仲介頁面"><button type="button" :class="{ active: workerView === 'hire' }" @click="workerView = 'hire'">👥 雇用</button><button type="button" :class="{ active: workerView === 'tasks' }" @click="workerView = 'tasks'">🧤 排班與任務</button><button type="button" :class="{ active: workerView === 'family' }" @click="workerView = 'family'">👨‍👩‍👧 家人工作</button><button type="button" :class="{ active: workerView === 'history' }" @click="workerView = 'history'">📋 紀錄</button></nav>
             <div v-if="workerView === 'hire'" class="worker-body">
               <div class="worker-hiring-head"><label>計薪方式 <select v-model="workerPayPeriod"><option value="day">日薪</option><option value="week">周薪</option></select></label><button type="button" @click="activePanel = 'economy'; economySection = 'housing'">🛏️ 建移工宿舍</button></div>
               <p class="worker-help">本輪 {{ marketWorkers.length }} 位候選人，每 3 小時換檔（下次 {{ marketNextRefresh }}）；已雇用者會保留。移工需先有同性別空床位才可雇用；台灣人免住宿舍。</p>
@@ -1036,14 +1203,15 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
               <small class="worker-disclaimer">宿舍與通勤級距為遊戲設定，非實際距離或勞動法規。選定地格可在「經營 → 住居」建宿舍。</small>
             </div>
             <div v-else-if="workerView === 'tasks'" class="worker-body">
-              <p class="worker-help">每人指定一種班別，每分鐘最多完成 2 項該班工作。離線只補一輪；購地、建設、拆除與借款由玩家答題決定。</p>
+              <p class="worker-help">只要安排雇員或家人工作，就會自動開始值班並立即巡查；值班期間每累積 1 分鐘有效遊玩時間，會再巡查並執行可做的工作。累積值班 30 分鐘後自動休息 30 分鐘，再自動開始下一輪。休息使用實際時間，關閉網站期間也會倒數；離線不累積值班時間。全程無須按鈕或答題。農田班預設選最高價通路販售收成。</p>
               <div class="worker-settings"><strong>自動播種作物（可多選）</strong><div class="worker-crop-choices"><label v-for="item in FARM_CROPS" :key="item.id"><input type="checkbox" :checked="farm.workerCropIds?.includes(item.id)" :disabled="busy || !!quiz" @change="toggleWorkerCrop(item.id, $event.target.checked)">{{ item.icon }} {{ item.name }} <small>{{ farm.seeds[item.id] || 0 }} 苗</small></label></div><small v-if="!farm.workerCropIds?.length">目前未勾選任何作物，自動播種會暫停。</small></div>
-              <div class="worker-actions"><button type="button" :disabled="busy || !!quiz || !farm.workers.length || workerShiftWait > 0" @click="runWorkerRound()">🧤 一鍵執行一輪</button><button type="button" :disabled="busy || !!quiz" @click="changeWorkerSettings({ workerAuto: !farm.workerAuto })">{{ farm.workerAuto ? '⏸ 關閉自動巡田' : '▶ 開啟自動巡田' }}</button></div>
+              <div class="worker-actions"><strong>🔄 自動值班循環</strong><span role="status" aria-live="polite">{{ workerWaitLabel }}</span></div>
               <p class="worker-report">{{ farm.workerLastReport || '尚未執行外包作業。' }}{{ farm.workerLastRunAt ? ` · 最近執行：${new Date(farm.workerLastRunAt).toLocaleString('zh-TW')}` : '' }}{{ farm.workerAuto ? ' · 自動巡田已開啟' : '' }}</p>
               <div class="worker-task-groups"><div v-for="group in WORKER_GROUPS" :key="group.id" class="worker-task-group"><strong>{{ group.name }}</strong><div class="worker-task-list"><label v-for="task in WORKER_TASKS.filter(item => item.group === group.id)" :key="task.id"><input type="checkbox" :checked="farm.workerTasks[task.id]" :disabled="busy || !!quiz" @change="toggleWorkerTask(task.id, $event.target.checked)" />{{ task.name }}</label></div></div></div>
               <small class="worker-disclaimer">販售與加工預設關閉，可勾選後由人力執行。沒有合適宿舍的既有移工會暫停工作。</small>
             </div>
-            <div v-else class="worker-body worker-history"><p v-if="!farm.workerHistory?.length">尚無雇用或工作紀錄。</p><div v-for="(entry, index) in farm.workerHistory" :key="index"><strong>{{ new Date(entry.at).toLocaleString('zh-TW') }} · {{ workerById(entry.personId)?.name || '系統' }}</strong><span>{{ workerGroupName(entry.group) || '👥 人力仲介' }} · {{ entry.detail }}</span></div></div>
+            <div v-else-if="workerView === 'family'" class="worker-body"><p class="worker-help">先在「家庭」選職業、能力並加入排班，再為每位家人勾選可做的工作。這些個人勾選還會受到「排班與任務」的總開關限制。未成年子女只做放學後可做的農田工作。</p><p v-if="!familyAssignments.length">尚無可排班的配偶或滿 6 歲子女。</p><article v-for="person in familyAssignments" :key="person.id" class="family-assignment"><strong>{{ person.name }} · {{ person.age < 18 ? `${person.age} 歲／課後打工` : '成年' }} · 每輪薪資 {{ person.wage }}</strong><span>{{ person.member.workEnabled ? '已加入排班' : '未排班' }} · {{ FAMILY_PROFESSIONS.find(item => item.id === person.member.professionId)?.name || '未選職業' }} · {{ FAMILY_ABILITIES.find(item => item.id === person.member.abilityId)?.name || '未選能力' }}</span><div class="worker-task-list"><label v-for="task in WORKER_TASKS.filter(item => familyAllowedTasks(person.age).includes(item.id))" :key="task.id"><input type="checkbox" :checked="familyTaskSelected(person.member, task.id, person.age)" :disabled="busy || !!quiz" @change="toggleFamilyTask(person.id, task.id, $event.target.checked)">{{ task.name }}</label></div><small v-if="!person.member.workEnabled">到「家庭」頁加入排班後才會執行。</small></article></div>
+            <div v-else class="worker-body worker-history"><p v-if="!farm.workerHistory?.length">尚無雇用或工作紀錄。</p><div v-for="(entry, index) in farm.workerHistory" :key="index"><strong>{{ new Date(entry.at).toLocaleString('zh-TW') }} · {{ workerById(entry.personId)?.name || familyWorkerName(farm, entry.personId) || '系統' }}</strong><span>{{ workerGroupName(entry.group) || '👥 人力仲介' }} · {{ entry.detail }}</span></div></div>
           </section>
           <section v-if="activePanel === 'animals' && !visiting" class="animal-card">
             <h2>{{ selectedAnimal.icon }} {{ selectedAnimal.name }} <small>產品：{{ selectedAnimal.productIcon }} {{ selectedAnimal.product }}</small></h2>
@@ -1100,7 +1268,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
               <p><strong>{{ business.icon }} {{ business.name }}</strong> · {{ business.description }}</p>
               <small>設備：{{ business.equipment }} · 建設 {{ business.cost }} 金幣 · 每里此類設施限一間。</small>
               <small v-if="business.requiredAnimal">先在同一里養 {{ animal(business.requiredAnimal)?.name }} 才能建設與營業；設施另佔一格地。</small>
-              <p class="staffing-state">👷 營業人力：{{ shopStaff(farm, selectedBusiness, now, selectedPlot) ? workerById(shopStaff(farm, selectedBusiness, now, selectedPlot).id)?.name + ' 可值班' : '尚無可值班人員' }} · 需要 {{ requiredShopLanguages(selectedBusiness).join('、') }}。請至「生產 → 人力仲介」安排店鋪與觀光班；每位人員每輪最多處理 2 項工作。</p>
+              <p class="staffing-state">👷 營業人力：{{ shopStaff(farm, selectedBusiness, now, selectedPlot) ? (workerById(shopStaff(farm, selectedBusiness, now, selectedPlot).id)?.name || familyWorkerName(farm, shopStaff(farm, selectedBusiness, now, selectedPlot).id)) + ' 可值班' : '尚無可值班人員' }} · 需要 {{ requiredShopLanguages(selectedBusiness).join('、') }}。請至「生產 → 人力仲介」安排店鋪與觀光班；每位人員每輪最多處理 2 項工作。</p>
               <p>📍 {{ plotLabel(selectedPlot) }} · {{ selectedSite?.facility ? facilityLabel(selectedSite) : selected ? crop(selected.crop)?.name : '空地' }}</p>
               <div class="economy-actions"><button type="button" :disabled="!canBusiness('buildBusiness')" @click="beginBusinessAction('buildBusiness')">答題建造 {{ business.name }}</button><button type="button" :disabled="!canBusiness('collectBusiness')" @click="beginBusinessAction('collectBusiness')">結算本輪 {{ businessIncome(farm, selectedBusiness, farm.plotVillages?.[selectedPlot], now) }} 金幣</button></div>
               <small v-if="selectedSite?.facility === selectedBusiness">{{ waitLabel(businessWait) }}</small>
@@ -1145,7 +1313,31 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
             <p>目前 {{ today.season }} · {{ today.weatherIcon }} {{ today.weatherName }}。每天最多一件季節事件；沒有事件的日子也會留下平安日報。事件機率及金幣為遊戲設定。</p>
             <div class="finance-block"><strong>🛠️ 防災整備</strong><p>支付 {{ DISASTER_PREP_COST }} 金幣並答對單字，可免除下一次負面事件。{{ farm.disasterShield ? '目前已啟用。' : '目前尚未啟用。' }}</p><button type="button" :disabled="busy || !!quiz || farm.disasterShield || farm.coins < DISASTER_PREP_COST" @click="beginDisasterPrep">答題完成防災整備</button></div>
             <div class="event-list"><strong>📋 最近事件</strong><p v-if="!farm.eventHistory?.length">尚無事件，下一個農場日開始出現。</p><article v-for="(event, index) in farm.eventHistory" :key="index"><b>{{ event.icon }} {{ event.name }} · {{ event.season }}</b><span>{{ event.detail }}</span><small>{{ new Date(event.at).toLocaleString('zh-TW') }}</small></article></div>
-            <div class="finance-block"><strong>♻️ 轉生重來</strong><p>轉生需有 {{ REINCARNATION_COST }} 金幣且清償借款與水電。整座農場、主角、土地、設施及庫存重置；學習成績保留，之後可重新選主角。</p><button type="button" :disabled="busy || !!quiz || farm.coins < REINCARNATION_COST || governmentBalance > 0 || farm.utilityDebt > 0 || relevantLoans.length > 0" @click="reincarnate">花 {{ REINCARNATION_COST }} 金幣轉生</button></div>
+            <div class="finance-block"><strong>♻️ 轉生重來</strong><p>轉生需有 {{ REINCARNATION_COST }} 金幣且清償借款、水電及家庭財產分配。整座農場、主角、土地、設施及庫存重置；學習成績保留，之後可重新選主角。</p><button type="button" :disabled="busy || !!quiz || farm.coins < REINCARNATION_COST || governmentBalance > 0 || farm.utilityDebt > 0 || relevantLoans.length > 0 || farm.divorceSettlementDue > 0" @click="reincarnate">花 {{ REINCARNATION_COST }} 金幣轉生</button></div>
+          </section>
+          <section v-if="activePanel === 'family' && !visiting" class="finance-card family-card">
+            <h2>💞 家庭與人際</h2>
+            <p class="worker-help">角色性別：{{ farm.gender === 'male' ? '男' : '女' }}。可與同性或異性對象交往、結婚。參加興趣活動可自然認識對象，也可付費由相親市場介紹。交往對象均為虛構成人；子女未滿 18 歲不能結婚，須就學，滿 6 歲可在放學後打工。</p>
+            <div class="finance-block"><strong>🎨 培養興趣與參加活動</strong><div class="family-grid"><article v-for="hobby in FAMILY_HOBBIES" :key="hobby.id"><b>{{ hobby.icon }} {{ hobby.name }}</b><small>參加 {{ farm.familyHobbies[hobby.id] || 0 }} 次</small><button type="button" :disabled="busy || !!quiz || farm.coins < FAMILY_ACTIVITY_COST" @click="beginFamilyAction('activity', '', hobby.id)">答題{{ hobby.activity }} · {{ FAMILY_ACTIVITY_COST }}</button></article></div></div>
+            <div v-if="!farm.courtship && !farm.spouse" class="finance-block"><strong>💕 自由戀愛與相親市場</strong><p>自由戀愛：先參加對方喜歡的活動 2 次；相親介紹費 {{ FAMILY_MATCH_COST }} 金幣。選擇對象後可約會培養感情。</p><div class="family-grid"><article v-for="person in availableFamilyPartners" :key="person.id"><b>{{ person.icon }} {{ person.name }} · {{ person.profession }}</b><small>喜歡{{ FAMILY_HOBBIES.find(item => item.id === person.hobby)?.name }} · {{ person.ability }}</small><button type="button" :disabled="!!familyActionError(farm, 'meet', person.id) || busy || !!quiz" @click="beginFamilyAction('meet', person.id)">答題活動相識</button><button type="button" :disabled="!!familyActionError(farm, 'match', person.id) || busy || !!quiz" @click="beginFamilyAction('match', person.id)">答題相親認識 · {{ FAMILY_MATCH_COST }}</button></article></div></div>
+            <div v-if="farm.courtship" class="finance-block"><strong>💌 交往中：{{ courtshipPartner?.icon }} {{ courtshipPartner?.name }}</strong><p>{{ farm.courtship.metBy }} · 感情 {{ farm.courtship.affection }}/100 · 喜歡{{ FAMILY_HOBBIES.find(item => item.id === courtshipPartner?.hobby)?.name }}</p><div class="economy-actions"><button type="button" :disabled="!!familyActionError(farm, 'date') || busy || !!quiz" @click="beginFamilyAction('date')">答題約會 · {{ FAMILY_DATE_COST }}</button><button v-if="!farm.courtship.engaged" type="button" :disabled="!!familyActionError(farm, 'propose') || busy || !!quiz" @click="beginFamilyAction('propose')">答題求婚 · 需感情 70／金幣 {{ FAMILY_MARRIAGE_MIN_COINS }}</button><button v-else type="button" :disabled="!!familyActionError(farm, 'marry') || busy || !!quiz" @click="beginFamilyAction('marry')">答題結婚 · 需感情 85／金幣 1500</button><button type="button" :disabled="busy || !!quiz" @click="beginFamilyAction('breakup')">答題結束交往</button></div></div>
+            <div v-if="farm.spouse" class="finance-block"><strong>💍 配偶：{{ spouseProfile?.icon }} {{ spouseProfile?.name }}</strong><p>{{ farm.spouse.professionId ? FAMILY_PROFESSIONS.find(item => item.id === farm.spouse.professionId)?.name : '尚未選擇農場職業' }} · {{ farm.spouse.abilityId ? FAMILY_ABILITIES.find(item => item.id === farm.spouse.abilityId)?.name : '尚未選擇能力' }} · {{ farm.spouse.workEnabled ? '帶薪排班中' : '未排班' }}</p><p>目前農場資產遊戲估價 {{ familyAssetValue(farm) }}；離婚後約需分配 {{ Math.floor(familyAssetValue(farm) / 2) }} 金幣等值財產。現金先分半，不足部分由未來收入分期償還。</p><div class="economy-actions"><button type="button" :disabled="!!familyActionError(farm, 'familyWork', 'spouse', '', familyActiveMs) || busy || !!quiz" @click="beginFamilyAction('familyWork', 'spouse')">答題{{ farm.spouse.workEnabled ? '停止' : '加入' }}排班 · 每輪薪資 24</button><button type="button" :disabled="!!familyActionError(farm, 'child') || busy || !!quiz" @click="beginFamilyAction('child')">答題迎接小孩 · 220</button><button type="button" :disabled="busy || !!quiz" @click="beginFamilyAction('divorce')">答題協議離婚（按財產等值分半）</button></div></div>
+            <div v-if="farm.spouse || farm.children.length" class="finance-block"><strong>👨‍👩‍👧 家人職業與能力</strong><div class="family-pickers"><label>家人<select v-model="selectedFamilyMember"><option v-if="farm.spouse" value="spouse">{{ spouseProfile?.name }}（配偶）</option><option v-else value="spouse" disabled>選擇成年家人</option><option v-for="child in farm.children.filter(item => familyChildAge(item, familyActiveMs) >= FAMILY_ADULT_AGE)" :key="child.id" :value="child.id">{{ child.name }}（成年子女）</option></select></label><label>職業<select v-model="selectedFamilyProfession"><option v-for="job in FAMILY_PROFESSIONS" :key="job.id" :value="job.id">{{ job.icon }} {{ job.name }} · {{ job.detail }}</option></select></label><label>能力<select v-model="selectedFamilyAbility"><option v-for="ability in FAMILY_ABILITIES" :key="ability.id" :value="ability.id">{{ ability.name }} · {{ ability.detail }}</option></select></label><button type="button" :disabled="!!familyActionError(farm, 'familyCareer', selectedFamilyMember, `${selectedFamilyProfession}:${selectedFamilyAbility}`, familyActiveMs) || busy || !!quiz" @click="configureFamilyCareer">答題確認職業與能力</button></div><small>家人可參與所有類別工作；職業決定工作優先順序，能力讓指定類別多做一項。配偶每輪薪資 24、成年子女 16 金幣；農場經理可服務需要英語的店鋪。</small></div>
+            <div v-if="farm.children.length" class="finance-block"><strong>🧒 子女成長</strong><div class="family-grid"><article v-for="child in farm.children" :key="child.id"><b>{{ child.gender === 'male' ? '👦' : '👧' }} {{ child.name }} · {{ familyChildAge(child, familyActiveMs) }} 歲</b><small>天賦：{{ workerGroupName(child.trait) }} · {{ familyChildAge(child, familyActiveMs) >= FAMILY_ADULT_AGE ? '已成年' : `${familySchoolLevel(familyChildAge(child, familyActiveMs))}就學中 · 累積實際遊玩一週成長 1 歲` }}</small><small v-if="familyChildAge(child, familyActiveMs) >= FAMILY_ADULT_AGE">{{ child.professionId ? FAMILY_PROFESSIONS.find(item => item.id === child.professionId)?.name : '尚未選職業' }} · {{ child.workEnabled ? '帶薪排班中' : '未排班' }}</small><button v-if="familyChildAge(child, familyActiveMs) >= FAMILY_AFTER_SCHOOL_AGE" type="button" :disabled="!!familyActionError(farm, 'familyWork', child.id, '', familyActiveMs) || busy || !!quiz" @click="beginFamilyAction('familyWork', child.id)">答題{{ child.workEnabled ? '停止' : '加入' }}{{ familyChildAge(child, familyActiveMs) < FAMILY_ADULT_AGE ? '課後打工 · 每輪薪資 6' : '排班 · 每輪薪資 16' }}</button></article></div></div>
+            <div v-if="farm.divorceSettlementDue" class="finance-block"><strong>📜 財產分配紀錄</strong><p>尚有 {{ farm.divorceSettlementDue }} 金幣等值分產待支付；往後新增收入的一半會用來償還，保留至少 12 金幣買種苗。</p></div>
+            <div class="finance-block"><strong>📋 家庭紀錄</strong><p v-if="!farm.familyHistory.length">尚無家庭事件。</p><div class="family-history"><p v-for="(entry, index) in farm.familyHistory" :key="index">{{ new Date(entry.at).toLocaleString('zh-TW') }} · {{ entry.detail }}</p></div></div>
+          </section>
+          <section v-if="activePanel === 'professionals' && !visiting" class="finance-card professional-card">
+            <h2>📊 高階人力仲介</h2>
+            <p>會計、法律顧問、獸醫各自聘用，與農務雇員名額及宿舍分開。每份合約預付 3 小時服務費；候選名單每 3 小時更新。合約到期後服務停止，可再續聘。</p>
+            <nav class="worker-view-tabs" aria-label="專業顧問職位"><button v-for="role in SPECIALIST_ROLES" :key="role.id" type="button" :class="{ active: professionalView === role.id }" @click="professionalView = role.id">{{ role.icon }} {{ role.name }}</button></nav>
+            <div v-for="role in SPECIALIST_ROLES.filter(item => item.id === professionalView)" :key="role.id" class="professional-content">
+              <div class="finance-block"><strong>{{ role.icon }} {{ role.name }}</strong><p>{{ role.effect }}</p><p v-if="farm.specialistContracts?.[role.id]">目前合約：{{ specialistById(farm.specialistContracts[role.id].personId)?.name }} · {{ hasSpecialist(farm, role.id, now) ? '服務中' : '已到期' }} · 至 {{ new Date(farm.specialistContracts[role.id].paidUntil).toLocaleString('zh-TW') }}</p><p v-else>目前未聘用。</p></div>
+              <div class="worker-roster"><div v-for="person in marketSpecialists.filter(item => item.role === role.id)" :key="person.id" class="worker-person"><div><strong>{{ person.name }}</strong><span>{{ person.note }}</span><small>3 小時服務費 {{ person.fee }} 金幣</small></div><button type="button" :disabled="busy || !!quiz || !!specialistActionError(farm, 'hireSpecialist', person.id, now)" @click="beginSpecialistAction('hireSpecialist', person.id)">答題聘請</button></div></div>
+              <div v-if="farm.specialistContracts?.[role.id]" class="economy-actions"><button v-if="!hasSpecialist(farm, role.id, now)" type="button" :disabled="busy || !!quiz || !!specialistActionError(farm, 'renewSpecialist', farm.specialistContracts[role.id].personId, now)" @click="beginSpecialistAction('renewSpecialist', farm.specialistContracts[role.id].personId)">答題續聘原顧問</button><button type="button" :disabled="busy || !!quiz" @click="beginSpecialistAction('dismissSpecialist', farm.specialistContracts[role.id].personId)">解約</button></div>
+              <template v-if="role.id === 'accountant'"><div class="finance-block"><strong>📒 設施損益</strong><p>自本功能啟用後開始記帳。正數是入帳，負數是實付；借款、未付水電及庫存不算營業淨利。共同薪資與其他支出另列，避免誤算到單一設施。</p><p>總收入 {{ accountingSummary.income }} · 總支出 {{ accountingSummary.expense }} · 淨額 {{ accountingSummary.net }} 金幣</p><p v-if="!hasSpecialist(farm, 'accountant', now)">聘用有效會計後，可檢視各設施與最近交易。</p><template v-else><div class="accounting-table"><div class="accounting-head"><b>設施／項目</b><b>收入</b><b>支出</b><b>淨額</b></div><div v-for="row in accountingRows" :key="row.id"><span>{{ row.label }}</span><span>{{ row.income }}</span><span>{{ row.expense }}</span><strong :class="{ loss: row.net < 0 }">{{ row.net }}</strong></div><p v-if="!accountingRows.length">尚無收支紀錄。</p></div><strong>最近交易</strong><div class="accounting-entries"><p v-for="entry in farm.accountingEntries" :key="entry.id">{{ new Date(entry.at).toLocaleString('zh-TW') }} · {{ entry.label }} · {{ entry.delta > 0 ? '+' : '' }}{{ entry.delta }} · {{ entry.detail }}</p></div></template></div></template>
+            </div>
+            <div class="finance-block"><strong>📋 顧問合約紀錄</strong><p v-if="!farm.specialistHistory?.length">尚無合約紀錄。</p><p v-for="(entry, index) in farm.specialistHistory" :key="index">{{ new Date(entry.at).toLocaleString('zh-TW') }} · {{ entry.detail }}</p></div>
           </section>
           <section v-if="activePanel === 'finance' && !visiting" class="finance-card">
             <h2>💰 農場資金</h2>
@@ -1206,7 +1398,8 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
       </div>
     </template>
     <section v-else-if="!loading" class="start-help"><NuxtLink to="/">返回首頁選擇單元</NuxtLink></section>
-    <div v-if="ready && !farm.protagonistId" class="hero-shade">
+    <div v-if="ready && !farm.gender" class="hero-shade"><section class="hero-dialog gender-dialog" role="dialog" aria-modal="true" aria-labelledby="gender-title"><h2 id="gender-title">👤 建立農場角色</h2><p>選擇遊戲角色性別，之後可認識對象並建立家庭。選定後直到轉生前不能更換。</p><div class="economy-actions"><button type="button" :disabled="busy" @click="selectFarmGender('male')">👨 男</button><button type="button" :disabled="busy" @click="selectFarmGender('female')">👩 女</button></div></section></div>
+    <div v-if="ready && farm.gender && !farm.protagonistId" class="hero-shade">
       <section class="hero-dialog" role="dialog" aria-modal="true" aria-labelledby="hero-title">
         <h2 id="hero-title">🎭 選擇你的主角</h2>
         <p>你有自己的本業，農夫是兼職。選定後不能更換；付費轉生會讓農場從頭開始。</p>
@@ -1285,6 +1478,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
 .farm-controls{display:grid;gap:14px}
 .panel-tabs{display:flex;gap:6px}
 .panel-tabs button{flex:1;border:2px solid #74a65d;border-radius:10px;background:#fffdf0;color:#315b39;padding:8px 5px;font-weight:850}
+.panel-tabs{overflow-x:auto}.panel-tabs button{min-width:64px;white-space:nowrap}
 .panel-tabs button.active{background:#d8f1a9;border-color:#3d8451}
 .panel-subtabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}.panel-subtabs button{min-width:0;border:1px solid #78a465;border-radius:9px;background:#f8ffe7;color:#315b39;padding:8px 3px;font-size:.78rem;font-weight:800}.panel-subtabs button.active{background:#d8f1a9;border-width:2px}
 .quiz-cadence{flex:none;margin:0;padding:5px 8px;border-radius:8px;background:#edf7d5;color:#315b39;font-size:.72rem;font-weight:750;line-height:1.35}
@@ -1564,6 +1758,10 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); });
 .worker-crop-choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(115px,1fr));gap:5px;max-height:145px;overflow:auto;width:100%}.worker-crop-choices label{display:flex;justify-content:flex-start;gap:5px;border:1px solid #a5c58e;border-radius:7px;padding:4px;background:#f7ffe9;min-width:0}.worker-crop-choices label small{margin-left:auto}.worker-settings{display:block}.worker-settings>strong{display:block;margin-bottom:5px;font-size:.81rem}.worker-settings>small{font-size:.74rem;color:#8a4a31}
 .event-card{overflow:auto}.event-hero{display:flex;align-items:center;gap:12px;border-radius:14px;padding:12px}.event-hero>span{font-size:3rem}.event-hero p{margin:3px 0}.event-list{display:grid;gap:6px}.event-list article{display:grid;gap:3px;border:1px solid #a9bf9c;border-radius:8px;background:#fffef1;padding:8px}.event-list small{color:#60745b}
 .hero-shade{position:fixed;inset:0;z-index:1005;display:grid;place-items:center;padding:16px;background:#163421dc}.hero-dialog{width:min(980px,100%);max-height:92vh;overflow:auto;border:4px solid #79aa5e;border-radius:20px;background:#fffcdd;padding:18px;box-shadow:0 14px 40px #14241966}.hero-dialog h2{margin:0 0 7px;color:#275538}.hero-dialog p{margin:0 0 12px}.hero-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px}.hero-choice{display:flex;flex-direction:column;align-items:center;gap:5px;min-height:155px;border:2px solid #66945b;border-radius:14px;padding:9px;color:#244735;text-align:center}.hero-choice>span{font-size:2.3rem;line-height:1.1}.hero-choice strong{font-size:1rem}.hero-choice small,.hero-choice em{font-size:.75rem;line-height:1.3}.hero-choice em{font-style:normal;font-weight:800}.hero-choice:hover{outline:3px solid #f6b747}
+.gender-dialog{width:min(430px,100%)}.gender-dialog .economy-actions button{font-size:1.1rem;padding:14px}
+.family-card{overflow:auto}.family-card>.worker-help{margin:0 0 8px}.family-card .finance-block{margin-bottom:8px}.family-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.family-grid article{display:grid;gap:5px;align-content:start;border:1px solid #b5c99d;border-radius:9px;background:#fffef4;padding:8px;min-width:0}.family-grid article b{font-size:.84rem}.family-grid article small{font-size:.74rem;color:#4a6454}.family-grid article button,.family-pickers button{border:1px solid #55946a;border-radius:8px;background:#e3f4cf;color:#25523d;padding:6px;font-size:.77rem;font-weight:800}.family-grid article button:disabled{opacity:.55}.family-pickers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.family-pickers label{display:grid;gap:3px;font-size:.76rem;font-weight:800}.family-pickers select{min-width:0;width:100%;padding:5px;border:1px solid #83a67b;border-radius:7px;background:white}.family-history{max-height:160px;overflow:auto}.family-history p{margin:4px 0;padding:4px;border-bottom:1px solid #d1dfc4}
+.family-assignment{display:grid;gap:6px;border:1px solid #a7c79b;border-radius:10px;background:#f7fce9;padding:9px}.family-assignment>span,.family-assignment>small{font-size:.76rem}.family-assignment .worker-task-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.family-assignment .worker-task-list label{min-width:0;white-space:normal}.professional-card{overflow:auto}.professional-card>p{font-size:.78rem;line-height:1.5}.professional-content{display:grid;gap:8px}.professional-card .worker-roster{grid-template-columns:1fr;overflow:visible}.professional-card .worker-person{min-height:0}.professional-card .worker-view-tabs{margin:8px 0}.professional-card .economy-actions{display:flex;flex-wrap:wrap;gap:7px}.accounting-table{display:grid;max-height:270px;overflow:auto;border:1px solid #bdd1ab;border-radius:8px}.accounting-table>div{display:grid;grid-template-columns:minmax(120px,2fr) repeat(3,minmax(48px,1fr));gap:4px;padding:6px;border-bottom:1px solid #d7e2cd;font-size:.75rem;align-items:center}.accounting-table>div:nth-child(odd){background:#f4f9e9}.accounting-table>div span:first-child{overflow-wrap:anywhere}.accounting-table .accounting-head{background:#dcecc8;font-weight:900}.accounting-table .loss{color:#ab3d26}.accounting-entries{max-height:160px;overflow:auto}.accounting-entries p{border-bottom:1px dashed #c6d6ba;padding:4px 0}@media(max-width:620px){.family-assignment .worker-task-list{grid-template-columns:1fr}.professional-card .worker-view-tabs button{font-size:.73rem;padding:6px 2px}.accounting-table>div{grid-template-columns:minmax(92px,2fr) repeat(3,minmax(38px,1fr));font-size:.68rem}}
+@media(max-width:620px){.family-grid,.family-pickers{grid-template-columns:1fr}}
 @media(max-width:760px){.hero-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hero-choice{min-height:135px}.animal-categories button{min-width:70px;font-size:.72rem}.worker-crop-choices{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(prefers-reduced-motion:reduce){.action-pop,.animal-sprite{animation:none}}
 </style>
