@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { ISEKAI_ANIMALS, ISEKAI_AREAS, ISEKAI_BUILDINGS, ISEKAI_CROPS, ISEKAI_GAME_TYPE, ISEKAI_GENDERS, ISEKAI_PROFESSIONS, ISEKAI_RACES, ISEKAI_REGIONS, ISEKAI_REINCARNATION_COST, adjustedAnimalCost, adjustedAreaCost, adjustedBuildingCost, adjustedFeedCost, adjustedRegionCost, adjustedSalePrice, adjustedSeedPrice, animalById, applyIsekaiAction, areaById, buildingById, chooseIsekaiIdentity, cropById, freshIsekaiFarm, isekaiActionError, isekaiClimate, normalizeIsekaiFarm, professionById, raceById } from '~/lib/isekai-farm';
+import { ISEKAI_ANIMALS, ISEKAI_AREAS, ISEKAI_BUILDINGS, ISEKAI_CROPS, ISEKAI_GAME_TYPE, ISEKAI_GENDERS, ISEKAI_PROFESSIONS, ISEKAI_RACES, ISEKAI_REGIONS, ISEKAI_REINCARNATION_COST, adjustedAnimalCost, adjustedAreaCost, adjustedBuildingCost, adjustedFeedCost, adjustedRegionCost, adjustedSalePrice, adjustedSeedPrice, animalById, applyIsekaiAction, areaById, buildingById, chooseIsekaiIdentity, cropById, freshIsekaiFarm, isekaiActionError, isekaiClimate, isekaiFrontierFieldCount, normalizeIsekaiFarm, professionById, raceById } from '~/lib/isekai-farm';
 import { FIELD_SHAPES, HOMESTEAD_SHAPE, LOCAL_LANDMARKS, MAP_TINTS, TERRITORY_SHAPES } from '~/lib/isekai-cartography';
 import { ISEKAI_HOBBIES, ISEKAI_PARTNERS, ISEKAI_REST_MS, ISEKAI_SHIFT_MS, ISEKAI_TASKS, ISEKAI_WORK_INTERVAL_MS, applyPeopleAction, isekaiChildAge, isekaiStaffMarket, isekaiStaffWage, normalizeIsekaiPeople, partnerById, peopleActionError, runIsekaiStaff, staffById } from '~/lib/isekai-farm-people';
 import { advanceIsekaiWorld, applyExpansionAction, expansionActionError, normalizeIsekaiExpansion } from '~/lib/isekai-farm-expansion';
@@ -26,6 +26,7 @@ const saveNotice = ref('');
 const now = ref(Date.now());
 const selectedPlot = ref(0);
 const selectedFrontier = ref(0);
+const selectedFrontierField = ref(0);
 const selectedFrontierAreaId = ref('fittoa');
 const selectedFrontierCropId = ref('wheat');
 const selectedCropId = ref('wheat');
@@ -103,10 +104,9 @@ const frontierCrops = computed(() => ISEKAI_CROPS.filter(crop => crop.region ===
 const frontierClaim = computed(() => frontiers.value.find(item => item.area_id === frontierArea.value.id && item.plot_index === selectedFrontier.value));
 const frontierUsable = computed(() => frontierClaim.value?.owner_id === studentId.value
   || (frontierClaim.value?.lease_holder_id === studentId.value && new Date(frontierClaim.value.lease_expires_at).getTime() > now.value));
-const frontierSite = computed(() => {
-  const plot = farm.value.frontierPlots?.[frontierArea.value.id]?.[selectedFrontier.value];
-  return plot?.accessAt === frontierClaim.value?.captured_at ? plot : null;
-});
+const frontierFields = computed(() => (farm.value.frontierPlots?.[frontierArea.value.id]?.[selectedFrontier.value] || [])
+  .map(plot => plot?.accessAt === frontierClaim.value?.captured_at ? plot : null));
+const frontierSite = computed(() => frontierFields.value[selectedFrontierField.value]);
 const homeFrontiersComplete = computed(() => ISEKAI_AREAS.some(area => area.id === (farm.value.profile?.startAreaId || 'fittoa')
   && Array.from({ length: 6 }, (_, index) => frontiers.value.some(item => item.area_id === area.id && item.plot_index === index && item.owner_id === studentId.value)).every(Boolean)));
 const frontierExpansionAllowed = computed(() => frontierArea.value.id === (farm.value.profile?.startAreaId || 'fittoa') || homeFrontiersComplete.value);
@@ -160,13 +160,19 @@ function selectPlot(index) {
 function selectFrontier(index) {
   selectedFrontierAreaId.value = activeArea.value.id;
   selectedFrontier.value = index;
+  selectedFrontierField.value = 0;
   operationTab.value = 'war';
 }
 function chooseFrontierArea(id) {
   selectedFrontierAreaId.value = id;
   selectedFrontier.value = 0;
+  selectedFrontierField.value = 0;
   selectedFrontierCropId.value = ISEKAI_CROPS.find(crop => crop.region === areaById(id)?.region)?.id || 'wheat';
   operationTab.value = 'war';
+}
+function frontierFarmAction(type) {
+  return { type, plotKind: 'frontier', areaId: frontierArea.value.id, plotIndex: selectedFrontier.value,
+    frontierFieldIndex: selectedFrontierField.value, cropId: selectedFrontierCropId.value, quantity: seedQuantity.value };
 }
 
 function scheduleNextQuiz() {
@@ -298,7 +304,9 @@ async function executeAction(action) {
     frontierClaimedAt = data.captured_at;
   }
   const plotAction = action.plotKind === 'frontier' ? { ...action, frontierAccess: true, frontierClaimedAt } : action;
-  const harvestedCropId = action.type === 'harvest' ? (action.plotKind === 'frontier' ? farm.value.frontierPlots : farm.value.plots)?.[action.areaId || activeArea.value.id]?.[action.plotIndex]?.cropId : null;
+  const harvestedCropId = action.type === 'harvest' ? (action.plotKind === 'frontier'
+    ? farm.value.frontierPlots?.[action.areaId]?.[action.plotIndex]?.[action.frontierFieldIndex]
+    : farm.value.plots?.[action.areaId || activeArea.value.id]?.[action.plotIndex])?.cropId : null;
   const harvestClaim = action.type === 'harvest' && action.plotKind !== 'frontier' && frontierAt(action.plotIndex)?.owner_id === studentId.value;
   const result = peopleActionTypes.has(action.type)
     ? applyPeopleAction(farm.value, action, Date.now())
@@ -314,7 +322,7 @@ async function executeAction(action) {
   if (harvestedCropId) { selectedCropId.value = harvestedCropId; ledgerOpen.value = true; }
   if (action.type === 'collect') ledgerOpen.value = true;
   if (action.type === 'reincarnate') {
-    selectedPlot.value = 0; selectedFrontier.value = 0; selectedFrontierAreaId.value = 'fittoa'; selectedCropId.value = 'wheat'; mapMode.value = 'large'; staffActiveMs.value = 0;
+    selectedPlot.value = 0; selectedFrontier.value = 0; selectedFrontierField.value = 0; selectedFrontierAreaId.value = 'fittoa'; selectedCropId.value = 'wheat'; mapMode.value = 'large'; staffActiveMs.value = 0;
     if (student.value?.class && !student.value?.isAnon) {
       const { error } = await db.rpc('isekai_frontier_relinquish', { p_actor_id: studentId.value });
       if (error) return `${result.detail}；邊境歸屬尚未清除：${error.message}`;
@@ -450,8 +458,8 @@ async function loadFrontiers() {
   frontierReady.value = true;
   frontiers.value = claims.data || [];
   for (const claim of frontiers.value) {
-    const plot = farm.value.frontierPlots?.[claim.area_id]?.[claim.plot_index];
-    if (plot && plot.accessAt !== claim.captured_at) farm.value.frontierPlots[claim.area_id][claim.plot_index] = null;
+    const fields = farm.value.frontierPlots?.[claim.area_id]?.[claim.plot_index] || [];
+    fields.forEach((plot, index) => { if (plot && plot.accessAt !== claim.captured_at) fields[index] = null; });
   }
   classmates.value = peers.data || [];
   lastFrontierRefresh = Date.now();
@@ -749,18 +757,19 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
           <IsekaiTownPanel v-else-if="operationTab === 'town'" :farm="farm" :area-id="activeArea.id" :plot-index="selectedPlot" :now="now" :classmates="classmates" :loans="peerLoans" :visits="peerVisits" :visit-preview="peerVisitPreview" :student-id="studentId" :loan-ready="peerLoanReady" :visit-ready="peerVisitReady" :disabled="loading || busy || !!quiz || !!battle" @action="askAction" />
           <div v-else class="war-panel">
             <div class="war-scene"><span>🛡️</span><strong>{{ frontierArea.name }} · 邊境土地 {{ selectedFrontier + 1 }}</strong><span>⚔️</span></div>
-            <p>勝利佔領的邊境田地不會自動到期，可播種、澆水、收成；其他同學仍可發動戰鬥奪取。也可花 60 金幣向系統租用空置田地 6 小時。租期結束或土地被奪後，原有作物無法繼續使用。</p>
+            <p>每塊邊境地有 3–6 格獨立農地。勝利佔領後不會自動到期，每格可分別播種、澆水、收成；其他同學仍可發動戰鬥奪取。也可花 60 金幣向系統租用空置邊境地 6 小時。租期結束或土地被奪後，原有作物無法繼續使用。</p>
             <label class="frontier-area-picker">選擇領地 <select :value="selectedFrontierAreaId" @change="chooseFrontierArea($event.target.value)"><option v-for="area in ISEKAI_AREAS" :key="area.id" :value="area.id">{{ area.name }}{{ area.id === (farm.profile?.startAreaId || 'fittoa') ? ' · 起始領地' : '' }}</option></select></label>
             <p v-if="!homeFrontiersComplete" class="people-note">佔滿起始領地的六塊邊境地後，可前往其他領地租地或戰鬥開拓。進度 {{ frontiers.filter(item => item.area_id === (farm.profile?.startAreaId || 'fittoa') && item.owner_id === studentId).length }}/6。</p>
             <p v-if="frontierReady && !frontierLeaseReady" class="people-note">本地邊境戰與耕種可用；租地和跨領地拓展需先在新專案 Supabase 執行 20261003_isekai_frontier_farmland.sql。</p>
-            <div class="frontier-slot-list"><button v-for="index in 6" :key="index" :class="{ chosen: selectedFrontier === index - 1, usable: frontiers.some(item => item.area_id === frontierArea.id && item.plot_index === index - 1 && (item.owner_id === studentId || (item.lease_holder_id === studentId && new Date(item.lease_expires_at).getTime() > now))) }" @click="selectedFrontier = index - 1">{{ index }} · {{ frontiers.find(item => item.area_id === frontierArea.id && item.plot_index === index - 1)?.owner_id === studentId ? '已佔領' : frontiers.find(item => item.area_id === frontierArea.id && item.plot_index === index - 1)?.lease_holder_id === studentId && new Date(frontiers.find(item => item.area_id === frontierArea.id && item.plot_index === index - 1)?.lease_expires_at).getTime() > now ? '租用中' : '待開拓' }}</button></div>
+            <div class="frontier-slot-list"><button v-for="index in 6" :key="index" :class="{ chosen: selectedFrontier === index - 1, usable: frontiers.some(item => item.area_id === frontierArea.id && item.plot_index === index - 1 && (item.owner_id === studentId || (item.lease_holder_id === studentId && new Date(item.lease_expires_at).getTime() > now))) }" @click="selectedFrontier = index - 1; selectedFrontierField = 0">{{ index }} · {{ isekaiFrontierFieldCount(frontierArea.id, index - 1) }} 格 · {{ frontiers.find(item => item.area_id === frontierArea.id && item.plot_index === index - 1)?.owner_id === studentId ? '已佔領' : frontiers.find(item => item.area_id === frontierArea.id && item.plot_index === index - 1)?.lease_holder_id === studentId && new Date(frontiers.find(item => item.area_id === frontierArea.id && item.plot_index === index - 1)?.lease_expires_at).getTime() > now ? '租用中' : '待開拓' }}</button></div>
             <p>目前守方：<b>{{ frontierOwnerName }}</b><template v-if="frontierClaim?.lease_holder_id && new Date(frontierClaim.lease_expires_at).getTime() > now">；租戶：{{ frontierClaim.lease_holder_id === studentId ? '我方' : '同班同學' }}，至 {{ new Date(frontierClaim.lease_expires_at).toLocaleString('zh-TW') }}</template></p>
             <div v-if="frontierUsable" class="frontier-farm-controls">
-              <strong>🌾 邊境農地 {{ selectedFrontier + 1 }} · {{ frontierSite?.cropId ? cropById(frontierSite.cropId)?.name : '空地' }}</strong>
-              <small v-if="frontierSite?.cropId">{{ remaining(frontierSite) }}</small>
+              <strong>🌾 {{ frontierArea.name }}第 {{ selectedFrontier + 1 }} 塊邊境地 · {{ frontierFields.length }} 格農地</strong>
+              <div class="frontier-field-grid" role="group" aria-label="邊境地的農田格子"><button v-for="(plot, fieldIndex) in frontierFields" :key="fieldIndex" class="frontier-field-tile" :class="{ chosen: selectedFrontierField === fieldIndex, grown: plot?.cropId && now >= plot.readyAt }" @click="selectedFrontierField = fieldIndex"><span>農地 {{ fieldIndex + 1 }}</span><strong>{{ plot?.cropId ? cropById(plot.cropId)?.symbol : '🌱' }}</strong><small>{{ plot?.cropId ? cropById(plot.cropId)?.name : '空地' }}</small><small v-if="plot?.cropId">{{ remaining(plot) }}</small></button></div>
+              <p class="people-note">目前選擇農地 {{ selectedFrontierField + 1 }}：{{ frontierSite?.cropId ? cropById(frontierSite.cropId)?.name : '可播種' }}。每格可分別種植與收成。</p>
               <button v-if="frontierClaim?.lease_holder_id === studentId && frontierClaim?.owner_id !== studentId" class="people-main-action" :disabled="!can({ type:'frontierRent' })" @click="askAction({ type:'frontierRent' })">續租 6 小時 · 60 金幣</button>
               <div class="crop-picker"><button v-for="crop in frontierCrops" :key="crop.id" :class="{ chosen: selectedFrontierCropId === crop.id }" @click="selectedFrontierCropId = crop.id"><span>{{ crop.symbol }}</span>{{ crop.name }}<small>種苗 {{ farm.seeds[crop.id] || 0 }}</small></button></div>
-              <div class="action-grid"><label class="seed-quantity">購買數量<input v-model.number="seedQuantity" type="number" min="1" max="50" step="1" inputmode="numeric" /></label><button :disabled="!can({ type:'buy', plotKind:'frontier', areaId:frontierArea.id, plotIndex:selectedFrontier, cropId:selectedFrontierCropId, quantity:seedQuantity })" @click="askAction({ type:'buy', plotKind:'frontier', areaId:frontierArea.id, plotIndex:selectedFrontier, cropId:selectedFrontierCropId, quantity:seedQuantity })">買種苗</button><button :disabled="!can({ type:'plant', plotKind:'frontier', areaId:frontierArea.id, plotIndex:selectedFrontier, cropId:selectedFrontierCropId })" @click="askAction({ type:'plant', plotKind:'frontier', areaId:frontierArea.id, plotIndex:selectedFrontier, cropId:selectedFrontierCropId })">播種</button><button :disabled="!can({ type:'water', plotKind:'frontier', areaId:frontierArea.id, plotIndex:selectedFrontier })" @click="askAction({ type:'water', plotKind:'frontier', areaId:frontierArea.id, plotIndex:selectedFrontier })">澆水</button><button :disabled="!can({ type:'harvest', plotKind:'frontier', areaId:frontierArea.id, plotIndex:selectedFrontier })" @click="askAction({ type:'harvest', plotKind:'frontier', areaId:frontierArea.id, plotIndex:selectedFrontier })">收成</button></div>
+              <div class="action-grid"><label class="seed-quantity">購買數量<input v-model.number="seedQuantity" type="number" min="1" max="50" step="1" inputmode="numeric" /></label><button :disabled="!can(frontierFarmAction('buy'))" @click="askAction(frontierFarmAction('buy'))">買種苗</button><button :disabled="!can(frontierFarmAction('plant'))" @click="askAction(frontierFarmAction('plant'))">播種</button><button :disabled="!can(frontierFarmAction('water'))" @click="askAction(frontierFarmAction('water'))">澆水</button><button :disabled="!can(frontierFarmAction('harvest'))" @click="askAction(frontierFarmAction('harvest'))">收成</button></div>
             </div>
             <div v-else class="frontier-acquire"><button class="people-main-action" :disabled="!can({ type:'battleStart' })" @click="askAction({ type:'battleStart' })">向{{ frontierOwnerName }}發動挑戰</button><button class="people-main-action" :disabled="!can({ type:'frontierRent' })" @click="askAction({ type:'frontierRent' })">租用空置田地 · 60 金幣／6 小時</button></div>
             <small v-if="student?.isAnon || !student?.class">請用班級學生帳號登入，才能參加邊境開拓。</small><small v-else-if="!frontierReady">邊境農地尚未啟用；請先在 Supabase 執行新版邊境土地 SQL。</small>
@@ -851,7 +860,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
 .map-toolbar .atlas-expand{grid-column:1/-1}
 .local-landmark circle{fill:#e1c280;stroke:#304e4d;stroke-width:4}.local-landmark text,.local-title,.local-farm text{fill:#fff4d5;font-size:17px;font-weight:bold;paint-order:stroke;stroke:#183139;stroke-width:4}.local-title{font-size:23px}.local-farm{cursor:pointer}.local-farm circle{fill:#315e53;stroke:#f6db9f;stroke-width:5}.local-farm:focus circle,.local-farm:hover circle{fill:#467963}.map-note a{color:#f4d58c}
 .start-area-select{width:100%;padding:10px;border:1px solid #70593b;border-radius:5px;background:#fff6dc;color:#24382f;font:inherit}.start-area-description{font-weight:bold;color:#345743}
-.frontier-area-picker{display:grid;gap:5px;margin:9px 0;color:#e6cf9f}.frontier-area-picker select{width:100%;padding:9px;background:#ead9b0;color:#22362e;border:1px solid #b49a63;border-radius:5px;font:inherit}.frontier-slot-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:8px 0}.frontier-slot-list button{min-height:38px;padding:5px;background:#26443e;color:#f0dfba;border:1px solid #8e936f;border-radius:4px;font-size:12px}.frontier-slot-list button.usable{background:#376a58}.frontier-slot-list button.chosen{border:2px solid #f5d68e;background:#8b6840}.frontier-farm-controls{display:grid;gap:6px;padding:10px;border:1px solid #c4ac79;border-radius:5px;background:#30504388}.frontier-farm-controls>small{color:#e1d3aa}.frontier-farm-controls .crop-picker{max-height:150px}.frontier-acquire{display:grid;grid-template-columns:1fr 1fr;gap:7px}.frontier-acquire .people-main-action{margin:0;min-height:46px}@media(max-width:600px){.frontier-slot-list{grid-template-columns:repeat(2,minmax(0,1fr))}.frontier-acquire{grid-template-columns:1fr}}
+.frontier-area-picker{display:grid;gap:5px;margin:9px 0;color:#e6cf9f}.frontier-area-picker select{width:100%;padding:9px;background:#ead9b0;color:#22362e;border:1px solid #b49a63;border-radius:5px;font:inherit}.frontier-slot-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:8px 0}.frontier-slot-list button{min-height:38px;padding:5px;background:#26443e;color:#f0dfba;border:1px solid #8e936f;border-radius:4px;font-size:12px}.frontier-slot-list button.usable{background:#376a58}.frontier-slot-list button.chosen{border:2px solid #f5d68e;background:#8b6840}.frontier-farm-controls{display:grid;gap:6px;padding:10px;border:1px solid #c4ac79;border-radius:5px;background:#30504388}.frontier-farm-controls>small{color:#e1d3aa}.frontier-farm-controls .crop-picker{max-height:150px}.frontier-field-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.frontier-field-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:94px;padding:7px 4px;border:1px solid #b2c48a;border-radius:8px;background:linear-gradient(145deg,#547848,#314f37);color:#fff8da;text-align:center;cursor:pointer}.frontier-field-tile strong{font-size:24px;line-height:1.1}.frontier-field-tile small{font-size:12px;color:#f4edcf}.frontier-field-tile.chosen{outline:3px solid #f6d680;outline-offset:-3px;background:linear-gradient(145deg,#77723f,#4b6036)}.frontier-field-tile.grown{border-color:#f3d475;background:linear-gradient(145deg,#68804d,#46603e)}.frontier-acquire{display:grid;grid-template-columns:1fr 1fr;gap:7px}.frontier-acquire .people-main-action{margin:0;min-height:46px}@media(max-width:600px){.frontier-slot-list{grid-template-columns:repeat(2,minmax(0,1fr))}.frontier-field-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.frontier-acquire{grid-template-columns:1fr}}
 .atlas-list-toggle{width:100%;background:#2e5149;color:#fff0cf;border:1px solid #c5a773;border-radius:5px;padding:9px;margin:4px 0 7px;font-size:13px}
 .atlas-lists{display:grid;gap:8px}
 .atlas-lists .region-list,.atlas-lists .area-list{margin:0}
