@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { ISEKAI_ANIMALS, ISEKAI_AREAS, ISEKAI_BUILDINGS, ISEKAI_CROPS, ISEKAI_GAME_TYPE, ISEKAI_GENDERS, ISEKAI_PROFESSIONS, ISEKAI_RACES, ISEKAI_REGIONS, ISEKAI_REINCARNATION_COST, adjustedAnimalCost, adjustedAreaCost, adjustedBuildingCost, adjustedFeedCost, adjustedRegionCost, adjustedSalePrice, adjustedSeedPrice, animalById, applyIsekaiAction, areaById, buildingById, chooseIsekaiIdentity, cropById, freshIsekaiFarm, isekaiActionError, isekaiClimate, normalizeIsekaiFarm, professionById, raceById } from '~/lib/isekai-farm';
-import { FIELD_SHAPES, MAP_TINTS, TERRITORY_SHAPES } from '~/lib/isekai-cartography';
+import { FIELD_SHAPES, HOMESTEAD_SHAPE, MAP_TINTS, TERRITORY_SHAPES } from '~/lib/isekai-cartography';
 import { ISEKAI_HOBBIES, ISEKAI_PARTNERS, ISEKAI_REST_MS, ISEKAI_SHIFT_MS, ISEKAI_TASKS, ISEKAI_WORK_INTERVAL_MS, applyPeopleAction, isekaiChildAge, isekaiStaffMarket, normalizeIsekaiPeople, partnerById, peopleActionError, runIsekaiStaff, staffById } from '~/lib/isekai-farm-people';
 
 const db = useSupabaseClient();
@@ -23,6 +23,7 @@ const notice = ref('正在翻開開拓日誌…');
 const saveNotice = ref('');
 const now = ref(Date.now());
 const selectedPlot = ref(0);
+const selectedFrontier = ref(0);
 const selectedCropId = ref('wheat');
 const selectedBuildingId = ref('well');
 const selectedAnimalId = ref('hen');
@@ -45,10 +46,14 @@ let staffTickBusy = false;
 let lastFrontierRefresh = 0;
 const mapMode = ref('large');
 const atlasOpen = ref(false);
+const atlasListsOpen = ref(false);
+const ledgerOpen = ref(false);
+const nextQuizAt = ref(0);
 const quiz = ref(null);
 const answer = ref('');
 const session = ref(null);
 const sessionKey = computed(() => `isekai-farm-session:${studentId.value}:${lesson.version}:${lesson.volume}:${lesson.unit}`);
+const quizClockKey = computed(() => `${sessionKey.value}:next-question`);
 const activeRegion = computed(() => ISEKAI_REGIONS.find(region => region.id === farm.value.selectedRegion) || ISEKAI_REGIONS[0]);
 const activeArea = computed(() => areaById(farm.value.selectedArea) || ISEKAI_AREAS[0]);
 const regionAreas = computed(() => ISEKAI_AREAS.filter(area => area.region === activeRegion.value.id));
@@ -57,7 +62,7 @@ const mapViewBox = computed(() => {
   return activeRegion.value.viewBox;
 });
 const mapCaption = computed(() => mapMode.value === 'large' ? '中央大陸全貌'
-  : mapMode.value === 'middle' ? activeRegion.value.name : mapMode.value === 'small' ? `${activeRegion.value.name} · 領地圖` : `${activeArea.value.name} · 田塊圖`);
+  : mapMode.value === 'middle' ? activeRegion.value.name : mapMode.value === 'small' ? `${activeRegion.value.name} · 領地圖` : `${activeArea.value.name} · 農莊與邊境`);
 const regionCrops = computed(() => ISEKAI_CROPS.filter(crop => crop.region === activeRegion.value.id));
 const categoryAnimals = computed(() => ISEKAI_ANIMALS.filter(animal => animal.group === animalCategory.value));
 const stockedCrops = computed(() => ISEKAI_CROPS.filter(crop => (farm.value.produce[crop.id] || 0) > 0));
@@ -65,10 +70,15 @@ const stockedAnimals = computed(() => ISEKAI_ANIMALS.filter(animal => (farm.valu
 const climate = computed(() => isekaiClimate(now.value, activeRegion.value.id));
 const plots = computed(() => farm.value.plots[activeArea.value.id] || []);
 const selectedSite = computed(() => plots.value[selectedPlot.value]);
+const selectedAnimal = computed(() => animalById(selectedAnimalId.value));
+const animalPurchaseCost = computed(() => (selectedAnimal.value ? adjustedAnimalCost(farm.value, selectedAnimal.value) : 0)
+  + (selectedSite.value ? 0 : adjustedBuildingCost(farm.value, buildingById('stable'))));
+const quizWaitSeconds = computed(() => Math.max(0, Math.ceil((nextQuizAt.value - now.value) / 1000)));
 const totalProduce = computed(() => [...Object.values(farm.value.produce), ...Object.values(farm.value.animalGoods || {})].reduce((sum, count) => sum + Number(count || 0), 0));
 const currentScore = computed(() => (session.value?.correct.length || 0) * 10);
 const marketStaff = computed(() => isekaiStaffMarket(now.value, farm.value.staff || []));
-const frontier = computed(() => frontiers.value.find(item => item.area_id === activeArea.value.id && item.plot_index === selectedPlot.value));
+const frontier = computed(() => frontiers.value.find(item => item.area_id === activeArea.value.id && item.plot_index === selectedFrontier.value));
+const frontierAt = index => frontiers.value.find(item => item.area_id === activeArea.value.id && item.plot_index === index);
 const frontierOwnerName = computed(() => !frontier.value?.owner_id ? '系統守衛' : frontier.value.owner_id === studentId.value ? '我方'
   : classmates.value.find(item => item.student_id === frontier.value.owner_id)?.hidden_name || '同班領主');
 const staffAvailable = computed(() => (farm.value.staff || []).filter(item => item.focus !== 'guard').length
@@ -109,6 +119,16 @@ function selectPlot(index) {
   operationTab.value = plot?.facility === 'stable' ? 'animals' : plot?.facility ? 'buildings' : 'crops';
 }
 
+function selectFrontier(index) {
+  selectedFrontier.value = index;
+  operationTab.value = 'war';
+}
+
+function scheduleNextQuiz() {
+  nextQuizAt.value = Date.now() + 30000 + Math.floor(Math.random() * 10001);
+  try { sessionStorage.setItem(quizClockKey.value, String(nextQuizAt.value)); } catch { /* Keep the timer in memory. */ }
+}
+
 async function createProfile() {
   if (busy.value || farm.value.profile) return;
   busy.value = true;
@@ -125,7 +145,7 @@ function confirmReincarnation() {
 }
 
 function actionMessage(action) {
-  if (action.type === 'battleStart') return `挑戰${activeArea.value.name}第 ${selectedPlot.value + 1} 塊邊境田地`;
+  if (action.type === 'battleStart') return `挑戰${activeArea.value.name}第 ${selectedFrontier.value + 1} 塊邊境田地`;
   if (peopleActionTypes.has(action.type)) return ({ hireStaff:'雇用人員', dismissStaff:'解雇人員', staffFocus:'安排人員工作', staffTask:'修改自動任務', activity:'參加社交活動', meet:'自然相識', match:'相親介紹', date:'約會', breakup:'和平分手', propose:'求婚', marry:'結婚', divorce:'離婚', child:'迎接孩子', familyFocus:'安排家人工作', childMeet:'孩子認識對象', childDate:'孩子約會', childMarry:'孩子結婚', childBreakup:'孩子分手' })[action.type];
   if (action.type === 'unlock') return `開拓${ISEKAI_REGIONS.find(region => region.id === action.regionId)?.name}`;
   if (action.type === 'unlockArea') return `開拓${areaById(action.areaId)?.name}`;
@@ -153,6 +173,7 @@ function askAction(action) {
     : peopleActionTypes.has(action.type) ? peopleActionError(farm.value, action, now.value) : isekaiActionError(farm.value, action, now.value);
   if (error) { notice.value = error; return; }
   if (!words.value.length) { notice.value = '本課單字尚未載入。'; return; }
+  if (Date.now() < nextQuizAt.value) { void performWithoutQuiz(action); return; }
   const candidates = words.value.filter(word => word.id !== lastWordId);
   const word = (candidates.length ? candidates : words.value)[Math.floor(Math.random() * (candidates.length || words.value.length))];
   lastWordId = word.id;
@@ -167,6 +188,44 @@ function askAction(action) {
     masked: [...english].map((letter, index) => indices.includes(index) ? '＿' : letter).join(''),
     target: type === 'fill' ? indices.map(index => english[index]).join('').toLowerCase() : english.toLowerCase() };
   answer.value = '';
+}
+
+async function executeAction(action) {
+  if (action.type === 'battleStart') {
+    await startBattle();
+    return battle.value?.message || '戰鬥開始';
+  }
+  const harvestClaim = action.type === 'harvest' && frontierAt(action.plotIndex)?.owner_id === studentId.value;
+  const result = peopleActionTypes.has(action.type)
+    ? applyPeopleAction(farm.value, action, Date.now())
+    : applyIsekaiAction(farm.value, harvestClaim ? { ...action, frontierBonus: true } : action, Date.now());
+  await saveFarm(result.farm);
+  if (action.type === 'reincarnate') {
+    selectedPlot.value = 0; selectedFrontier.value = 0; selectedCropId.value = 'wheat'; mapMode.value = 'large'; staffActiveMs.value = 0;
+    if (student.value?.class && !student.value?.isAnon) {
+      const { error } = await db.rpc('isekai_frontier_relinquish', { p_actor_id: studentId.value });
+      if (error) return `${result.detail}；邊境歸屬尚未清除：${error.message}`;
+      await loadFrontiers();
+    }
+  }
+  if (action.type === 'unlock') {
+    selectedPlot.value = 0;
+    selectedCropId.value = ISEKAI_CROPS.find(crop => crop.region === farm.value.selectedRegion)?.id || 'wheat';
+    mapMode.value = 'middle';
+  }
+  if (action.type === 'unlockArea') { selectedPlot.value = 0; mapMode.value = 'micro'; }
+  if (action.type === 'build') operationTab.value = action.buildingId === 'stable' ? 'animals' : 'buildings';
+  if (action.type === 'adopt') operationTab.value = 'animals';
+  if (action.type === 'demolish') operationTab.value = 'crops';
+  return result.detail;
+}
+
+async function performWithoutQuiz(action) {
+  if (busy.value || quiz.value) return;
+  busy.value = true;
+  try { notice.value = `${await executeAction(action)}。下次單字題約 ${quizWaitSeconds.value} 秒後出現。`; now.value = Date.now(); }
+  catch (error) { notice.value = `操作未完成：${error.message}`; }
+  finally { busy.value = false; }
 }
 
 async function loadFarm() {
@@ -233,40 +292,14 @@ async function submitAnswer() {
   const correct = answer.value.trim().toLowerCase() === question.target;
   try {
     let detail = '';
-    let releaseWarning = '';
     if (correct) {
-      if (question.action.type === 'battleStart') {
-        await startBattle();
-        detail = battle.value?.message || '戰鬥開始';
-      } else {
-      const result = peopleActionTypes.has(question.action.type)
-        ? applyPeopleAction(farm.value, question.action, Date.now())
-        : applyIsekaiAction(farm.value, question.action.type === 'harvest'
-          ? { ...question.action, frontierBonus: frontier.value?.owner_id === studentId.value } : question.action, Date.now());
-      await saveFarm(result.farm);
-      detail = result.detail;
-      if (question.action.type === 'reincarnate') {
-        selectedPlot.value = 0; selectedCropId.value = 'wheat'; mapMode.value = 'large'; staffActiveMs.value = 0;
-        if (student.value?.class && !student.value?.isAnon) {
-          const { error: releaseError } = await db.rpc('isekai_frontier_relinquish', { p_actor_id: studentId.value });
-          if (releaseError) releaseWarning = `；邊境歸屬尚未清除：${releaseError.message}`;
-          else await loadFrontiers();
-        }
-      }
-      if (question.action.type === 'unlock') {
-        selectedPlot.value = 0;
-        selectedCropId.value = ISEKAI_CROPS.find(crop => crop.region === farm.value.selectedRegion)?.id || 'wheat';
-        mapMode.value = 'middle';
-      }
-      if (question.action.type === 'unlockArea') { selectedPlot.value = 0; mapMode.value = 'micro'; }
-      if (question.action.type === 'build') operationTab.value = question.action.buildingId === 'stable' ? 'animals' : 'buildings';
-      if (question.action.type === 'demolish') operationTab.value = 'crops';
-      }
+      detail = await executeAction(question.action);
       session.value.correct.push(question.word.en_us);
     } else session.value.wrong.push(question.word.en_us);
     rememberSession();
     await syncRecord();
-    notice.value = correct ? `答對 ${question.word.en_us}！${detail}。${releaseWarning}` : `答錯了：${question.word.en_us}＝${question.word.zh_tw}。這次未執行操作。`;
+    scheduleNextQuiz();
+    notice.value = correct ? `答對 ${question.word.en_us}！${detail}。下一題約 30–40 秒後。` : `答錯了：${question.word.en_us}＝${question.word.zh_tw}。這次未執行操作；下一題約 30–40 秒後。`;
     quiz.value = null;
     now.value = Date.now();
   } catch (error) {
@@ -280,7 +313,7 @@ async function leaveFarm() {
   try {
     await syncRecord();
     if (saveNotice.value.startsWith('成績尚未同步')) return;
-    try { sessionStorage.removeItem(sessionKey.value); } catch { /* Browser storage may be unavailable. */ }
+    try { sessionStorage.removeItem(sessionKey.value); sessionStorage.removeItem(quizClockKey.value); } catch { /* Browser storage may be unavailable. */ }
     await navigateTo('/');
   } finally { busy.value = false; }
 }
@@ -306,10 +339,10 @@ async function loadFrontiers() {
 
 async function startBattle() {
   const { data, error } = await db.rpc('isekai_frontier_battle', {
-    p_actor_id: studentId.value, p_area_id: activeArea.value.id, p_plot_index: selectedPlot.value, p_command: 'start'
+    p_actor_id: studentId.value, p_area_id: activeArea.value.id, p_plot_index: selectedFrontier.value, p_command: 'start'
   });
   if (error) throw error;
-  battle.value = { ...data, areaId: activeArea.value.id, plotIndex: selectedPlot.value, log: [data.message] };
+  battle.value = { ...data, areaId: activeArea.value.id, plotIndex: selectedFrontier.value, log: [data.message] };
 }
 
 async function battleCommand(command) {
@@ -388,8 +421,12 @@ onMounted(async () => {
     if (farm.value.unlockedAreas.includes(savedArea)) farm.value.selectedArea = savedArea;
     mapMode.value = 'large';
     await loadSession();
+    try {
+      const savedQuizAt = Number(sessionStorage.getItem(quizClockKey.value));
+      if (savedQuizAt > Date.now() && savedQuizAt < Date.now() + 40000) nextQuizAt.value = savedQuizAt;
+    } catch { /* An unavailable session store leaves the next question immediately due. */ }
     await loadFrontiers();
-    notice.value = '選擇田地與操作，答對單字就能執行。收成後可出售，累積資金開拓北方與南方。';
+    notice.value = '你的農莊佔微地圖中間一塊地；內部六個田位可種植或建設。單字題每 30–40 秒出現一次。';
   } catch (error) { notice.value = `農莊無法載入：${error.message}。請確認已在此站 Supabase 執行異世界農莊 SQL。`; }
   finally { loading.value = false; }
 });
@@ -400,7 +437,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
   <main class="isekai-page">
     <header class="isekai-header">
       <div><span class="eyebrow">THE CHRONICLE OF A NEW HOMESTEAD</span><h1>單字異世界悠閒農莊</h1><p>{{ lessonLabel }} · 獨立冒險存檔</p></div>
-      <nav><NuxtLink :to="{ path: '/history', query: { game: ISEKAI_GAME_TYPE } }">學習紀錄</NuxtLink><NuxtLink :to="{ path: '/leaderboard', query: { game: ISEKAI_GAME_TYPE, ...lesson } }">英雄榜</NuxtLink><button @click="leaveFarm" :disabled="busy || !!quiz">返回遊戲選單</button></nav>
+      <nav><button @click="ledgerOpen = !ledgerOpen">{{ ledgerOpen ? '關閉倉庫' : '📦 倉庫・日誌' }}</button><NuxtLink :to="{ path: '/history', query: { game: ISEKAI_GAME_TYPE } }">學習紀錄</NuxtLink><NuxtLink :to="{ path: '/leaderboard', query: { game: ISEKAI_GAME_TYPE, ...lesson } }">英雄榜</NuxtLink><button @click="leaveFarm" :disabled="busy || !!quiz">返回遊戲選單</button></nav>
     </header>
     <div class="notice" role="status">{{ notice }} <button v-if="saveNotice.startsWith('成績尚未同步')" @click="syncRecord">重試同步</button></div>
     <div class="isekai-layout">
@@ -410,7 +447,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
           <button :class="{ chosen: mapMode === 'large' }" @click="mapMode = 'large'">大地圖 · 全大陸</button>
           <button :class="{ chosen: mapMode === 'middle' }" @click="mapMode = 'middle'">中地圖 · {{ activeRegion.name.replace('中央大陸', '') }}</button>
           <button :class="{ chosen: mapMode === 'small' }" @click="mapMode = 'small'">小地圖 · 領地</button>
-          <button :class="{ chosen: mapMode === 'micro' }" @click="mapMode = 'micro'">微地圖 · 田塊</button>
+          <button :class="{ chosen: mapMode === 'micro' }" @click="mapMode = 'micro'">微地圖 · 農莊</button>
           <button class="atlas-expand" @click="atlasOpen = !atlasOpen">{{ atlasOpen ? '收起地圖' : '展開地圖' }}</button>
         </div>
         <div class="map-frame" :class="`map-${mapMode}`">
@@ -432,17 +469,23 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
               <text class="shape-label" :x="TERRITORY_SHAPES[index].x" :y="TERRITORY_SHAPES[index].y + 22" text-anchor="middle">{{ area.name }}</text>
             </g>
           </svg>
-          <svg v-else viewBox="0 0 600 420" role="group" :aria-label="`${activeArea.name}六塊不規則田地；可選擇田地`">
+          <svg v-else viewBox="0 0 600 420" role="group" :aria-label="`${activeArea.name}的一塊私人農莊及六塊邊境地`">
             <rect width="600" height="420" fill="#253c3e" />
-            <g v-for="(plot, index) in plots" :key="index" class="field-shape" :class="{ chosen: selectedPlot === index }" role="button" tabindex="0" :aria-label="`第 ${index + 1} 塊田；${plot?.cropId ? cropById(plot.cropId)?.name : plot?.facility ? buildingById(plot.facility)?.name : '空地'}`" @click="selectPlot(index)" @keydown.enter="selectPlot(index)">
-              <path :d="FIELD_SHAPES[index].path" :fill="plot?.cropId ? cropById(plot.cropId)?.color : plot?.facility ? '#698184' : MAP_TINTS[activeRegion.id][index % 4]" />
-              <text :x="FIELD_SHAPES[index].x" :y="FIELD_SHAPES[index].y - 12" text-anchor="middle" font-size="32">{{ plot?.cropId ? cropById(plot.cropId)?.symbol : plot?.facility ? buildingById(plot.facility)?.mark : '🌱' }}</text>
-              <text class="shape-label" :x="FIELD_SHAPES[index].x" :y="FIELD_SHAPES[index].y + 17" text-anchor="middle">{{ plot?.cropId ? cropById(plot.cropId)?.name : plot?.facility ? buildingById(plot.facility)?.name : `田地 ${index + 1}` }}</text>
-              <text class="shape-owner" :x="FIELD_SHAPES[index].x" :y="FIELD_SHAPES[index].y + 40" text-anchor="middle">{{ frontiers.find(item => item.area_id === activeArea.id && item.plot_index === index)?.owner_id === studentId ? '⚑ 我方邊境' : frontiers.find(item => item.area_id === activeArea.id && item.plot_index === index)?.owner_id ? '⚔ 同學邊境' : '◇ 系統邊境' }}</text>
+            <g v-for="(shape, index) in FIELD_SHAPES" :key="index" class="field-shape" :class="{ chosen: operationTab === 'war' && selectedFrontier === index }" role="button" tabindex="0" :aria-label="`邊境 ${index + 1}；${frontierAt(index)?.owner_id === studentId ? '我方' : frontierAt(index)?.owner_id ? '同學' : '系統'}`" @click="selectFrontier(index)" @keydown.enter="selectFrontier(index)">
+              <path :d="shape.path" :fill="frontierAt(index)?.owner_id === studentId ? '#517968' : frontierAt(index)?.owner_id ? '#925e58' : MAP_TINTS[activeRegion.id][index % 4]" />
+              <text class="shape-label" :x="shape.x" :y="shape.y" text-anchor="middle">{{ frontierAt(index)?.owner_id === studentId ? '⚑' : frontierAt(index)?.owner_id ? '⚔' : '◇' }} 邊境 {{ index + 1 }}</text>
+            </g>
+            <g class="field-shape home-shape" role="button" tabindex="0" aria-label="我的一塊農莊；點選經營" @click="operationTab = 'crops'" @keydown.enter="operationTab = 'crops'">
+              <path :d="HOMESTEAD_SHAPE.path" fill="#376a61" />
+              <text :x="HOMESTEAD_SHAPE.x" :y="HOMESTEAD_SHAPE.y - 15" text-anchor="middle" font-size="37">🏡</text>
+              <text class="shape-label" :x="HOMESTEAD_SHAPE.x" :y="HOMESTEAD_SHAPE.y + 18" text-anchor="middle">我的農莊</text>
+              <text class="shape-owner" :x="HOMESTEAD_SHAPE.x" :y="HOMESTEAD_SHAPE.y + 42" text-anchor="middle">內含 6 個田位</text>
             </g>
           </svg>
         </div>
-        <p class="map-note">{{ mapMode === 'large' ? '完整中央大陸輪廓；選一區放大。' : mapMode === 'middle' ? '選擇領地後查看微地圖。' : mapMode === 'small' ? '點選不規則領地，可開拓或進入田塊。' : '點選不規則田塊後，在經營區操作。' }} 大陸輪廓參考原作地理；領地與田塊邊界為遊戲設計。</p>
+        <p class="map-note">{{ mapMode === 'large' ? '完整中央大陸輪廓；選一區放大。' : mapMode === 'middle' ? '選擇領地後查看微地圖。' : mapMode === 'small' ? '點選不規則領地，可開拓或進入農莊。' : '中央只有一塊私人農莊；六個田位在右側，外圍是邊境地。' }} 大陸輪廓參考原作地理；領地與邊境邊界為遊戲設計。</p>
+        <button class="atlas-list-toggle" @click="atlasListsOpen = !atlasListsOpen">{{ atlasListsOpen ? '收起區域與領地清單' : '▾ 選擇其他區域與領地' }}</button>
+        <div v-if="atlasListsOpen" class="atlas-lists">
         <div class="region-list">
           <div v-for="region in ISEKAI_REGIONS" :key="region.id" class="region-row" :class="{ selected: activeRegion.id === region.id }">
             <button v-if="farm.unlockedRegions.includes(region.id)" @click="changeRegion(region.id)"><b>{{ region.name }}</b><small>{{ region.subtitle }}</small></button>
@@ -456,6 +499,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
             <div v-else><b>{{ area.name }}</b><small>開拓費 {{ adjustedAreaCost(farm, area) }} 金幣</small></div>
             <button v-if="!farm.unlockedAreas.includes(area.id)" class="unlock" :disabled="!can({ type: 'unlockArea', areaId: area.id })" @click="askAction({ type: 'unlockArea', areaId: area.id })">購地</button>
           </div>
+        </div>
         </div>
       </section>
 
@@ -471,6 +515,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
             </button>
           </div>
         </div>
+        <p class="field-caption">我的農莊是一塊微地圖土地；下方六格是農莊內部田位。{{ quizWaitSeconds ? `下一題約 ${quizWaitSeconds} 秒後` : '下一次操作會出單字題' }}。</p>
         <div class="workbench">
           <div class="work-title"><strong>第 {{ selectedPlot + 1 }} 塊田</strong><span>{{ selectedSite?.cropId ? cropById(selectedSite.cropId)?.name : selectedSite?.facility ? buildingById(selectedSite.facility)?.name : '空地' }}</span></div>
           <div class="operation-tabs"><button :class="{ chosen: operationTab === 'crops' }" @click="operationTab = 'crops'">🌾 種植</button><button :class="{ chosen: operationTab === 'buildings' }" @click="operationTab = 'buildings'">🏗️ 建設</button><button :class="{ chosen: operationTab === 'animals' }" @click="operationTab = 'animals'">🐾 飼育</button><button :class="{ chosen: operationTab === 'staff' }" @click="operationTab = 'staff'">👥 人力</button><button :class="{ chosen: operationTab === 'family' }" @click="operationTab = 'family'">💞 家庭</button><button :class="{ chosen: operationTab === 'war' }" @click="operationTab = 'war'">⚔️ 邊境戰</button></div>
@@ -483,27 +528,27 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
           </div></template>
           <template v-else-if="operationTab === 'buildings'"><div class="crop-picker"><button v-for="building in ISEKAI_BUILDINGS" :key="building.id" :class="{ chosen: selectedBuildingId === building.id }" @click="selectedBuildingId = building.id"><span>{{ building.mark }}</span> {{ building.name }} <small>{{ adjustedBuildingCost(farm, building) }} 金幣 · {{ building.description }}</small></button></div><div class="action-grid building-actions"><button :disabled="!can({ type: 'build', plotIndex: selectedPlot, buildingId: selectedBuildingId })" @click="askAction({ type: 'build', plotIndex: selectedPlot, buildingId: selectedBuildingId })">建造{{ buildingById(selectedBuildingId)?.name }}</button><button :disabled="!can({ type: 'demolish', plotIndex: selectedPlot })" @click="askAction({ type: 'demolish', plotIndex: selectedPlot })">拆除建築 <small>18 金幣</small></button></div></template>
           <template v-else-if="operationTab === 'animals'"><div class="animal-categories"><button v-for="category in [{ id: 'land', name: '陸地與飛禽' }, { id: 'insect', name: '昆蟲' }, { id: 'aquatic', name: '水生' }]" :key="category.id" :class="{ chosen: animalCategory === category.id }" @click="animalCategory = category.id; selectedAnimalId = ISEKAI_ANIMALS.find(animal => animal.group === category.id)?.id">{{ category.name }}</button></div><div class="crop-picker"><button v-for="animal in categoryAnimals" :key="animal.id" :class="{ chosen: selectedAnimalId === animal.id }" @click="selectedAnimalId = animal.id"><span>{{ animal.mark }}</span> {{ animal.name }} <small>{{ adjustedAnimalCost(farm, animal) }} 金幣 · {{ animal.product }}</small></button></div><div class="action-grid">
-            <button :disabled="!can({ type: 'adopt', plotIndex: selectedPlot, animalId: selectedAnimalId })" @click="askAction({ type: 'adopt', plotIndex: selectedPlot, animalId: selectedAnimalId })">購入動物</button>
+            <button :disabled="!can({ type: 'adopt', plotIndex: selectedPlot, animalId: selectedAnimalId })" @click="askAction({ type: 'adopt', plotIndex: selectedPlot, animalId: selectedAnimalId })">{{ selectedSite ? '購入動物' : '建飼育舍並購入' }} <small>合計 {{ animalPurchaseCost }} 金幣</small></button>
             <button :disabled="!can({ type: 'feed', plotIndex: selectedPlot })" @click="askAction({ type: 'feed', plotIndex: selectedPlot })">餵養照顧 <small>{{ animalById(selectedSite?.animalId) ? adjustedFeedCost(farm, animalById(selectedSite.animalId)) : 0 }} 金幣</small></button>
             <button :disabled="!can({ type: 'collect', plotIndex: selectedPlot })" @click="askAction({ type: 'collect', plotIndex: selectedPlot })">收取產物</button>
             <button :disabled="!can({ type: 'release', plotIndex: selectedPlot })" @click="askAction({ type: 'release', plotIndex: selectedPlot })">讓動物離開</button>
-          </div><small class="animal-hint">百獸飼育舍佔用一塊田地，依生物配置圈欄、蟲籠或水槽。</small></template>
+          </div><small class="animal-hint">{{ isekaiActionError(farm, { type: 'adopt', plotIndex: selectedPlot, animalId: selectedAnimalId }, now) || '空地可直接建飼育舍並購入；已有空舍只需付動物費。' }}</small></template>
           <template v-else-if="operationTab === 'staff'"><div class="person-tabs"><button :class="{ chosen: staffView === 'market' }" @click="staffView = 'market'">招募市場</button><button :class="{ chosen: staffView === 'roster' }" @click="staffView = 'roster'">值班與任務</button><button :class="{ chosen: staffView === 'history' }" @click="staffView = 'history'">工作紀錄</button></div>
             <p class="people-note">{{ staffAvailable ? farm.staffRestUntil > now ? `休息中，約 ${Math.ceil((farm.staffRestUntil - now)/60000)} 分鐘後自動恢復` : `自動值班 ${Math.floor(staffActiveMs/60000)}/30 分鐘有效遊玩時間` : '雇用人員或安排家人工作後自動值班' }}。休息 30 分鐘按實際時間計算；不需按啟動按鈕。</p>
-            <div v-if="staffView === 'market'" class="people-grid"><article v-for="person in marketStaff" :key="person.id"><span class="person-icon">{{ person.mark }}</span><b>{{ person.name }}</b><small>{{ ISEKAI_RACES.find(item => item.id === person.raceId)?.name }} · {{ ISEKAI_PROFESSIONS.find(item => item.id === person.professionId)?.name }}</small><small>擅長 {{ {crops:'農田',animals:'飼育',trade:'交易',guard:'戰鬥'}[person.focus] }} · 戰力 {{ person.power }} · 每項薪資 {{ person.wage }}</small><button v-if="!farm.staff.some(item => item.id === person.id)" :disabled="!can({ type:'hireStaff', personId:person.id })" @click="askAction({ type:'hireStaff', personId:person.id })">雇用 · 30 金幣</button><button v-else :disabled="!can({ type:'dismissStaff', personId:person.id })" @click="askAction({ type:'dismissStaff', personId:person.id })">解雇</button></article></div>
+            <div v-if="staffView === 'market'" class="people-grid"><article v-for="person in marketStaff" :key="person.id"><span class="person-art"><IsekaiPortrait :race-id="person.raceId" :profession-id="person.professionId" :seed="person.id" :label="person.name" /></span><b>{{ person.name }}</b><small>{{ ISEKAI_RACES.find(item => item.id === person.raceId)?.name }} · {{ ISEKAI_PROFESSIONS.find(item => item.id === person.professionId)?.name }}</small><small>擅長 {{ {crops:'農田',animals:'飼育',trade:'交易',guard:'戰鬥'}[person.focus] }} · 戰力 {{ person.power }} · 每項薪資 {{ person.wage }}</small><button v-if="!farm.staff.some(item => item.id === person.id)" :disabled="!can({ type:'hireStaff', personId:person.id })" @click="askAction({ type:'hireStaff', personId:person.id })">雇用 · 30 金幣</button><button v-else :disabled="!can({ type:'dismissStaff', personId:person.id })" @click="askAction({ type:'dismissStaff', personId:person.id })">解雇</button></article></div>
             <div v-else-if="staffView === 'roster'" class="people-scroll"><p v-if="!farm.staff.length">目前未雇用市場人員。</p><div v-for="contract in farm.staff" :key="contract.id" class="assignment"><span>{{ staffById(contract.id)?.mark }} {{ staffById(contract.id)?.name }}</span><button v-for="focus in ['crops','animals','trade','guard']" :key="focus" :class="{ chosen: contract.focus === focus }" @click="askAction({ type:'staffFocus', personId:contract.id, focus })">{{ { crops:'農田',animals:'飼育',trade:'交易',guard:'戰鬥' }[focus] }}</button></div><div class="task-toggles"><button v-for="task in ISEKAI_TASKS" :key="task.id" :class="{ chosen: farm.staffTasks[task.id] }" @click="askAction({ type:'staffTask', taskId:task.id, enabled:!farm.staffTasks[task.id] })">{{ farm.staffTasks[task.id] ? '☑' : '□' }} {{ task.label }}</button></div></div>
             <div v-else class="people-scroll"><p v-for="(entry,index) in farm.staffHistory" :key="index">{{ new Date(entry.at).toLocaleString('zh-TW') }} · {{ entry.details.join('；') }}</p><p v-if="!farm.staffHistory.length">尚無值班紀錄。</p></div>
           </template>
           <template v-else-if="operationTab === 'family'"><div class="person-tabs"><button :class="{ chosen: familyView === 'meet' }" @click="familyView = 'meet'">認識對象</button><button :class="{ chosen: familyView === 'home' }" @click="familyView = 'home'">配偶與孩子</button></div><p class="people-note">{{ farm.profile?.faith === 'milis' ? '米里斯信仰：一位配偶' : '自由信仰：最多三位配偶' }}。任何性別組合都可交往與結婚；雙方在遊戲中同意後才能結婚。</p>
-            <div v-if="familyView === 'meet'" class="people-scroll"><div class="task-toggles"><button v-for="hobby in ISEKAI_HOBBIES" :key="hobby.id" :class="{ chosen: chosenHobbyId === hobby.id }" @click="chosenHobbyId = hobby.id">{{ hobby.mark }} {{ hobby.name }} {{ farm.familyHobbies[hobby.id] || 0 }} 次</button></div><button class="people-main-action" :disabled="!can({ type:'activity', hobbyId:chosenHobbyId })" @click="askAction({ type:'activity', hobbyId:chosenHobbyId })">參加活動 · 20 金幣</button><div class="people-grid"><article v-for="person in ISEKAI_PARTNERS" :key="person.id"><span class="person-icon">{{ person.mark }}</span><b>{{ person.name }}</b><small>{{ ISEKAI_RACES.find(item => item.id === person.raceId)?.name }} · {{ ISEKAI_PROFESSIONS.find(item => item.id === person.professionId)?.name }}</small><small>喜歡 {{ ISEKAI_HOBBIES.find(item => item.id === person.hobby)?.name }}</small><button :disabled="!can({ type:'meet',partnerId:person.id })" @click="askAction({ type:'meet',partnerId:person.id })">活動中認識</button><button :disabled="!can({ type:'match',partnerId:person.id })" @click="askAction({ type:'match',partnerId:person.id })">相親介紹 · 60</button></article></div><div v-if="farm.courtship" class="courtship-card"><b>交往中：{{ partnerById(farm.courtship.partnerId)?.name }} · 好感 {{ farm.courtship.affection }}/100 {{ farm.courtship.engaged ? '💍 已訂婚' : '' }}</b><div class="task-toggles"><button @click="askAction({type:'date',partnerId:farm.courtship.partnerId})">約會 · 35</button><button @click="askAction({type:'propose',partnerId:farm.courtship.partnerId})">求婚</button><button @click="askAction({type:'marry',partnerId:farm.courtship.partnerId})">結婚 · 300</button><button @click="askAction({type:'breakup'})">分手</button></div></div></div>
-            <div v-else class="people-scroll"><div class="people-grid"><article v-for="spouse in farm.spouses" :key="spouse.partnerId"><span class="person-icon">{{ partnerById(spouse.partnerId)?.mark }}</span><b>{{ partnerById(spouse.partnerId)?.name }} · 配偶</b><small>{{ ISEKAI_PROFESSIONS.find(item => item.id === partnerById(spouse.partnerId)?.professionId)?.name }} · 工作薪資每項 4</small><div class="task-toggles"><button v-for="focus in ['crops','animals','trade','guard','rest']" :key="focus" :class="{ chosen:spouse.focus===focus }" @click="askAction({type:'familyFocus',memberId:spouse.partnerId,focus})">{{ {crops:'農田',animals:'飼育',trade:'交易',guard:'戰鬥',rest:'休息'}[focus] }}</button></div><button @click="askAction({type:'child',partnerId:spouse.partnerId})">迎接孩子 · 180</button><button @click="askAction({type:'divorce',partnerId:spouse.partnerId})">離婚 · 分產一半</button></article><article v-for="child in farm.children" :key="child.id"><span class="person-icon">🧒</span><b>{{ child.name }} · {{ isekaiChildAge(child,now) }} 歲</b><small>{{ isekaiChildAge(child,now) < 6 ? '尚未入學' : isekaiChildAge(child,now) < 18 ? '在學中；放學後可幫忙' : '已成年' }} · {{ isekaiChildAge(child,now) < 18 ? '每項薪資 2' : '每項薪資 5' }}</small><div class="task-toggles"><button v-for="focus in ['crops','animals','trade','guard','rest']" :key="focus" :disabled="isekaiChildAge(child,now)<6 || (focus==='guard' && isekaiChildAge(child,now)<18)" :class="{ chosen:child.focus===focus }" @click="askAction({type:'familyFocus',memberId:child.id,focus})">{{ {crops:'農田',animals:'飼育',trade:'交易',guard:'戰鬥',rest:'休息'}[focus] }}</button></div><div v-if="isekaiChildAge(child,now)>=18" class="child-courtship"><small v-if="child.childMarriage">💍 已與 {{ partnerById(child.childMarriage.partnerId)?.name }} 結婚</small><template v-else><small v-if="child.childCourtship">💞 與 {{ partnerById(child.childCourtship.partnerId)?.name }} 交往 · 好感 {{ child.childCourtship.affection }}</small><select v-if="!child.childCourtship" v-model="childPartnerChoice[child.id]"><option value="">選擇交往對象</option><option v-for="person in ISEKAI_PARTNERS" :key="person.id" :value="person.id">{{ person.name }}</option></select><div class="task-toggles"><button v-if="!child.childCourtship" :disabled="!can({type:'childMeet',memberId:child.id,partnerId:childPartnerChoice[child.id]})" @click="askAction({type:'childMeet',memberId:child.id,partnerId:childPartnerChoice[child.id]})">認識 · 40</button><template v-else><button @click="askAction({type:'childDate',memberId:child.id})">約會 · 25</button><button @click="askAction({type:'childMarry',memberId:child.id})">結婚 · 150</button><button @click="askAction({type:'childBreakup',memberId:child.id})">分手</button></template></div></template></div></article></div><p v-if="!farm.spouses.length && !farm.children.length">目前尚無家庭成員。</p></div>
+            <div v-if="familyView === 'meet'" class="people-scroll"><div class="task-toggles"><button v-for="hobby in ISEKAI_HOBBIES" :key="hobby.id" :class="{ chosen: chosenHobbyId === hobby.id }" @click="chosenHobbyId = hobby.id">{{ hobby.mark }} {{ hobby.name }} {{ farm.familyHobbies[hobby.id] || 0 }} 次</button></div><button class="people-main-action" :disabled="!can({ type:'activity', hobbyId:chosenHobbyId })" @click="askAction({ type:'activity', hobbyId:chosenHobbyId })">參加活動 · 20 金幣</button><div class="people-grid"><article v-for="person in ISEKAI_PARTNERS" :key="person.id"><span class="person-art"><IsekaiPortrait :race-id="person.raceId" :profession-id="person.professionId" :seed="person.id" :label="person.name" /></span><b>{{ person.name }}</b><small>{{ ISEKAI_RACES.find(item => item.id === person.raceId)?.name }} · {{ ISEKAI_PROFESSIONS.find(item => item.id === person.professionId)?.name }}</small><small>喜歡 {{ ISEKAI_HOBBIES.find(item => item.id === person.hobby)?.name }}</small><button :disabled="!can({ type:'meet',partnerId:person.id })" @click="askAction({ type:'meet',partnerId:person.id })">活動中認識</button><button :disabled="!can({ type:'match',partnerId:person.id })" @click="askAction({ type:'match',partnerId:person.id })">相親介紹 · 60</button></article></div><div v-if="farm.courtship" class="courtship-card"><b>交往中：{{ partnerById(farm.courtship.partnerId)?.name }} · 好感 {{ farm.courtship.affection }}/100 {{ farm.courtship.engaged ? '💍 已訂婚' : '' }}</b><div class="task-toggles"><button @click="askAction({type:'date',partnerId:farm.courtship.partnerId})">約會 · 35</button><button @click="askAction({type:'propose',partnerId:farm.courtship.partnerId})">求婚</button><button @click="askAction({type:'marry',partnerId:farm.courtship.partnerId})">結婚 · 300</button><button @click="askAction({type:'breakup'})">分手</button></div></div></div>
+            <div v-else class="people-scroll"><div class="people-grid"><article v-for="spouse in farm.spouses" :key="spouse.partnerId"><span class="person-art"><IsekaiPortrait :race-id="partnerById(spouse.partnerId)?.raceId" :profession-id="partnerById(spouse.partnerId)?.professionId" :seed="spouse.partnerId" :label="partnerById(spouse.partnerId)?.name" /></span><b>{{ partnerById(spouse.partnerId)?.name }} · 配偶</b><small>{{ ISEKAI_PROFESSIONS.find(item => item.id === partnerById(spouse.partnerId)?.professionId)?.name }} · 工作薪資每項 4</small><div class="task-toggles"><button v-for="focus in ['crops','animals','trade','guard','rest']" :key="focus" :class="{ chosen:spouse.focus===focus }" @click="askAction({type:'familyFocus',memberId:spouse.partnerId,focus})">{{ {crops:'農田',animals:'飼育',trade:'交易',guard:'戰鬥',rest:'休息'}[focus] }}</button></div><button @click="askAction({type:'child',partnerId:spouse.partnerId})">迎接孩子 · 180</button><button @click="askAction({type:'divorce',partnerId:spouse.partnerId})">離婚 · 分產一半</button></article><article v-for="child in farm.children" :key="child.id"><span class="person-art"><IsekaiPortrait :race-id="farm.profile?.raceId" :profession-id="farm.profile?.professionId" :seed="child.id" :label="child.name" /></span><b>{{ child.name }} · {{ isekaiChildAge(child,now) }} 歲</b><small>{{ isekaiChildAge(child,now) < 6 ? '尚未入學' : isekaiChildAge(child,now) < 18 ? '在學中；放學後可幫忙' : '已成年' }} · {{ isekaiChildAge(child,now) < 18 ? '每項薪資 2' : '每項薪資 5' }}</small><div class="task-toggles"><button v-for="focus in ['crops','animals','trade','guard','rest']" :key="focus" :disabled="isekaiChildAge(child,now)<6 || (focus==='guard' && isekaiChildAge(child,now)<18)" :class="{ chosen:child.focus===focus }" @click="askAction({type:'familyFocus',memberId:child.id,focus})">{{ {crops:'農田',animals:'飼育',trade:'交易',guard:'戰鬥',rest:'休息'}[focus] }}</button></div><div v-if="isekaiChildAge(child,now)>=18" class="child-courtship"><small v-if="child.childMarriage">💍 已與 {{ partnerById(child.childMarriage.partnerId)?.name }} 結婚</small><template v-else><small v-if="child.childCourtship">💞 與 {{ partnerById(child.childCourtship.partnerId)?.name }} 交往 · 好感 {{ child.childCourtship.affection }}</small><select v-if="!child.childCourtship" v-model="childPartnerChoice[child.id]"><option value="">選擇交往對象</option><option v-for="person in ISEKAI_PARTNERS" :key="person.id" :value="person.id">{{ person.name }}</option></select><div class="task-toggles"><button v-if="!child.childCourtship" :disabled="!can({type:'childMeet',memberId:child.id,partnerId:childPartnerChoice[child.id]})" @click="askAction({type:'childMeet',memberId:child.id,partnerId:childPartnerChoice[child.id]})">認識 · 40</button><template v-else><button @click="askAction({type:'childDate',memberId:child.id})">約會 · 25</button><button @click="askAction({type:'childMarry',memberId:child.id})">結婚 · 150</button><button @click="askAction({type:'childBreakup',memberId:child.id})">分手</button></template></div></template></div></article></div><p v-if="!farm.spouses.length && !farm.children.length">目前尚無家庭成員。</p></div>
           </template>
-          <div v-else class="war-panel"><div class="war-scene"><span>🛡️</span><strong>{{ activeArea.name }} · 邊境田地 {{ selectedPlot + 1 }}</strong><span>⚔️</span></div><p>目前守方：<b>{{ frontierOwnerName }}</b>。佔領後這塊邊境田地的手動收成每次 +1；原有私人農田與作物不會被覆蓋。</p><p>我方參戰：主角、{{ farm.staff.length }} 位員工{{ farm.spouses.length ? `與 ${farm.spouses.length} 位配偶` : '' }}。不同種族、職業與防禦建築影響戰力。</p><button class="people-main-action" :disabled="!can({ type:'battleStart' })" @click="askAction({ type:'battleStart' })">向{{ frontierOwnerName }}發動挑戰</button><small v-if="student?.isAnon || !student?.class">請用班級學生帳號登入，才能參加同班邊境戰。</small><small v-else-if="!frontierReady">邊境戰尚未啟用；請先在 Supabase 執行 20261003_isekai_frontier_battles.sql。</small></div>
+          <div v-else class="war-panel"><div class="war-scene"><span>🛡️</span><strong>{{ activeArea.name }} · 邊境土地 {{ selectedFrontier + 1 }}</strong><span>⚔️</span></div><p>目前守方：<b>{{ frontierOwnerName }}</b>。佔領後對應的農莊內田位手動收成每次 +1；你的私人農莊與作物不會被覆蓋。</p><p>我方參戰：主角、{{ farm.staff.length }} 位員工{{ farm.spouses.length ? `與 ${farm.spouses.length} 位配偶` : '' }}。不同種族、職業與防禦建築影響戰力。</p><button class="people-main-action" :disabled="!can({ type:'battleStart' })" @click="askAction({ type:'battleStart' })">向{{ frontierOwnerName }}發動挑戰</button><small v-if="student?.isAnon || !student?.class">請用班級學生帳號登入，才能參加同班邊境戰。</small><small v-else-if="!frontierReady">邊境戰尚未啟用；請先在 Supabase 執行 20261003_isekai_frontier_battles.sql。</small></div>
         </div>
       </section>
 
-      <aside class="ledger panel"><div class="section-heading"><span>03 · 開拓日誌</span><strong>倉庫與交易</strong></div>
-        <div v-if="farm.profile" class="profile-card"><span class="character-portrait" aria-hidden="true">{{ professionById(farm.profile.professionId)?.mark }}</span><strong>{{ raceById(farm.profile.raceId)?.mark }} {{ raceById(farm.profile.raceId)?.name }} · {{ professionById(farm.profile.professionId)?.name }}</strong><small>性別：{{ ISEKAI_GENDERS.find(item => item.id === farm.profile.gender)?.name }}</small><small>{{ raceById(farm.profile.raceId)?.skill }}／{{ professionById(farm.profile.professionId)?.skill }}</small><button :disabled="!can({ type: 'reincarnate' })" @click="confirmReincarnation">轉生 · {{ ISEKAI_REINCARNATION_COST }} 金幣</button></div>
+      <aside v-if="ledgerOpen" class="ledger panel"><div class="section-heading"><span>03 · 開拓日誌</span><strong>倉庫與交易</strong><button class="ledger-close" @click="ledgerOpen = false" aria-label="關閉倉庫">×</button></div>
+        <div v-if="farm.profile" class="profile-card"><span class="character-portrait"><IsekaiPortrait :race-id="farm.profile.raceId" :profession-id="farm.profile.professionId" :gender="farm.profile.gender" :seed="studentId" label="我的主角" /></span><strong>{{ raceById(farm.profile.raceId)?.mark }} {{ raceById(farm.profile.raceId)?.name }} · {{ professionById(farm.profile.professionId)?.name }}</strong><small>性別：{{ ISEKAI_GENDERS.find(item => item.id === farm.profile.gender)?.name }}</small><small>{{ raceById(farm.profile.raceId)?.skill }}／{{ professionById(farm.profile.professionId)?.skill }}</small><button :disabled="!can({ type: 'reincarnate' })" @click="confirmReincarnation">轉生 · {{ ISEKAI_REINCARNATION_COST }} 金幣</button></div>
           <div class="stock-list"><div v-for="crop in stockedCrops" :key="crop.id" class="stock-row"><span :style="{ color: crop.color }">{{ crop.symbol }}</span><div><b>{{ crop.name }}</b><small>售價 {{ adjustedSalePrice(farm, crop) }} 金幣 / 份</small></div><strong>× {{ farm.produce[crop.id] || 0 }}</strong><button :disabled="!can({ type: 'sell', cropId: crop.id })" @click="askAction({ type: 'sell', cropId: crop.id })">出售</button></div></div>
           <div class="stock-list animal-stock"><div v-for="animal in stockedAnimals" :key="animal.id" class="stock-row"><span>{{ animal.mark }}</span><div><b>{{ animal.product }}</b><small>售價 {{ adjustedSalePrice(farm, animal) }} 金幣 / 份</small></div><strong>× {{ farm.animalGoods?.[animal.id] || 0 }}</strong><button :disabled="!can({ type: 'sellAnimal', animalId: animal.id })" @click="askAction({ type: 'sellAnimal', animalId: animal.id })">出售</button></div></div>
         <p v-if="!totalProduce" class="empty-stock">收成的作物會存放在這裡。</p>
@@ -513,7 +558,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
     </div>
 
     <div v-if="!loading && !farm.profile && words.length >= 2" class="profile-scrim"><section class="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="identity-title">
-      <span class="eyebrow">YOUR LIFE ON THE CENTRAL CONTINENT</span><h2 id="identity-title">建立開拓者</h2><p>你有自己的本業，農莊是兼職。種族與職業帶來不同經營能力；選定後不能更換，除非付費轉生並從頭開始。</p>
+      <span class="eyebrow">YOUR LIFE ON THE CENTRAL CONTINENT</span><h2 id="identity-title">建立開拓者</h2><div class="identity-intro"><span class="identity-preview"><IsekaiPortrait :race-id="profileDraft.raceId || 'human'" :profession-id="profileDraft.professionId || 'farmer'" :gender="profileDraft.gender" :seed="studentId || 'hero'" label="主角預覽" /></span><p>你有自己的本業，農莊是兼職。種族與職業帶來不同經營能力；選定後不能更換，除非付費轉生並從頭開始。左側會預覽你的原創角色立繪。</p></div>
       <h3>01 · 性別</h3><div class="identity-options"><button v-for="option in ISEKAI_GENDERS" :key="option.id" :class="{ chosen: profileDraft.gender === option.id }" @click="profileDraft.gender = option.id"><span>{{ option.mark }}</span>{{ option.name }}</button></div>
       <h3>信仰與婚姻規則</h3><div class="identity-options"><button :class="{chosen:profileDraft.faith==='free'}" @click="profileDraft.faith='free'"><span>🌟</span>自由信仰<small>最多三位配偶</small></button><button :class="{chosen:profileDraft.faith==='milis'}" @click="profileDraft.faith='milis'"><span>⛪</span>米里斯信仰<small>一位配偶</small></button></div>
       <h3>02 · 種族</h3><div class="identity-options race-options"><button v-for="option in ISEKAI_RACES" :key="option.id" :class="{ chosen: profileDraft.raceId === option.id }" @click="profileDraft.raceId = option.id"><span>{{ option.mark }}</span><b>{{ option.name }}</b><small>{{ option.skill }}</small></button></div>
@@ -565,4 +610,50 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
 @media(max-width:760px){.isekai-layout{display:flex}.atlas-overlay{inset:5px;padding:10px}.atlas-overlay .region-list{grid-template-columns:1fr}.atlas-overlay .area-list{grid-template-columns:1fr 1fr}.atlas-overlay .map-frame{min-height:230px}.identity-options.race-options{grid-template-columns:repeat(3,minmax(0,1fr))}.profile-dialog{padding:12px}}
 @media(max-width:440px){.map-toolbar{grid-template-columns:1fr 1fr}.map-toolbar .atlas-expand{grid-column:1/-1}.atlas-overlay .map-toolbar{grid-template-columns:1fr 1fr}.atlas-overlay .map-toolbar .atlas-expand{grid-column:auto}.atlas-overlay .area-list{grid-template-columns:1fr}.identity-options.race-options,.identity-options.profession-options{grid-template-columns:repeat(2,minmax(0,1fr))}.crop-picker{grid-template-columns:repeat(2,minmax(0,1fr));max-height:170px}.shape-label{font-size:15px}}
 @media(max-width:600px){.people-grid{grid-template-columns:1fr}.battle-commands{grid-template-columns:repeat(2,1fr)}.battle-stage span{font-size:34px}.battle-card{padding:12px}.shape-owner{font-size:11px}}
+/* Two working panes keep the map and the farm readable; stores open only when needed. */
+.isekai-layout{grid-template-columns:minmax(300px,.9fr) minmax(560px,1.6fr);gap:12px;height:calc(100vh - 166px);min-height:560px}
+.atlas,.homestead{overflow:auto;scrollbar-gutter:stable}
+.atlas .map-frame{flex:none;max-height:min(58vh,600px)}
+.atlas .map-frame.map-large{aspect-ratio:8 / 9}
+.atlas .map-frame.map-middle{aspect-ratio:4 / 3}
+.atlas .map-frame.map-small,.atlas .map-frame.map-micro{aspect-ratio:10 / 7}
+.map-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}
+.map-toolbar button{font-size:12px;padding:8px 5px;min-height:36px}
+.map-toolbar .atlas-expand{grid-column:1/-1}
+.atlas-list-toggle{width:100%;background:#2e5149;color:#fff0cf;border:1px solid #c5a773;border-radius:5px;padding:9px;margin:4px 0 7px;font-size:13px}
+.atlas-lists{display:grid;gap:8px}
+.atlas-lists .region-list,.atlas-lists .area-list{margin:0}
+.region-row b,.area-row b{font-size:13px}
+.region-row small,.area-row small,.map-note{font-size:12px;line-height:1.4}
+.field-scene{flex:none;min-height:0;height:255px}
+.field-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.field-tile{height:103px}
+.crop-glyph,.empty-glyph{font-size:34px}
+.field-caption{font-size:12px;color:#dfd2b2;line-height:1.3;margin:7px 0 2px}
+.workbench{margin-top:6px}
+.operation-tabs{grid-template-columns:repeat(6,minmax(0,1fr));gap:5px}
+.operation-tabs button{font-size:13px;min-height:39px;padding:6px 2px}
+.crop-picker{grid-template-columns:repeat(auto-fill,minmax(138px,1fr));max-height:180px}
+.crop-picker button{font-size:13px}
+.action-grid button{font-size:13px;min-height:48px}
+.animal-hint{font-size:12px;line-height:1.4;margin-top:8px}
+.people-grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr));max-height:360px;gap:9px}
+.people-grid article{padding:9px;gap:5px}
+.people-grid article b{font-size:14px}
+.people-grid article small,.people-note{font-size:12px}
+.people-scroll{max-height:360px}
+.person-art{display:block;width:76px;height:108px;margin:0 auto 3px}
+.ledger{position:fixed;z-index:650;top:12px;right:12px;bottom:12px;width:min(380px,calc(100vw - 24px));box-shadow:0 0 0 100vmax #071519a6,0 16px 50px #000b;overflow:auto}
+.ledger-close{border:1px solid #c5a773;background:#35564c;color:#fff4d8;border-radius:5px;font-size:22px;line-height:1;width:32px;height:32px}
+.ledger .stock-list{grid-template-columns:1fr}
+.profile-card .character-portrait{width:108px;height:155px;border:0;border-radius:0;background:none;box-shadow:none}
+.profile-card{grid-template-columns:115px 1fr;align-items:start}
+.profile-card .character-portrait{grid-row:span 4}
+.profile-card button{grid-column:1/-1}
+.home-shape path{stroke:#f3dfa0;stroke-width:7}
+.home-shape:hover path,.home-shape:focus path{stroke:#fff0be;stroke-width:9}
+.identity-intro{display:flex;align-items:center;gap:16px}.identity-preview{display:block;flex:none;width:92px;height:138px}.identity-intro p{font-size:14px;line-height:1.6}
+@media(max-width:1050px){.isekai-layout{grid-template-columns:minmax(270px,.9fr) minmax(430px,1.35fr)}.operation-tabs{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:760px){.isekai-page{padding:10px}.isekai-layout{display:flex;flex-direction:column;height:auto;min-height:0}.panel{overflow:visible}.homestead{order:0}.atlas{order:1}.atlas .map-frame{max-height:none}.field-scene{height:260px}.field-tile{height:103px}.operation-tabs{grid-template-columns:repeat(3,minmax(0,1fr))}.ledger{overflow:auto;top:6px;right:6px;bottom:6px;width:min(380px,calc(100vw - 12px))}.atlas-overlay{overflow:auto}.people-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.isekai-header nav a,.isekai-header nav button{padding:7px;font-size:12px}.field-scene{height:248px}.field-grid{gap:5px;padding:7px}.field-tile{height:100px}.field-tile strong{font-size:12px}.field-tile small{font-size:10px}.crop-glyph,.empty-glyph{font-size:29px}.crop-picker{grid-template-columns:repeat(2,minmax(0,1fr))}.action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.people-grid{grid-template-columns:1fr 1fr}.person-art{width:64px;height:92px}.atlas-list-toggle{font-size:12px}}
 </style>
