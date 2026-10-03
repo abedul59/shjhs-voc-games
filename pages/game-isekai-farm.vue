@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { ISEKAI_ANIMALS, ISEKAI_AREAS, ISEKAI_BUILDINGS, ISEKAI_CROPS, ISEKAI_GAME_TYPE, ISEKAI_GENDERS, ISEKAI_PROFESSIONS, ISEKAI_RACES, ISEKAI_REGIONS, ISEKAI_REINCARNATION_COST, adjustedAnimalCost, adjustedAreaCost, adjustedBuildingCost, adjustedFeedCost, adjustedRegionCost, adjustedSalePrice, adjustedSeedPrice, animalById, applyIsekaiAction, areaById, buildingById, chooseIsekaiIdentity, cropById, freshIsekaiFarm, isekaiActionError, isekaiClimate, normalizeIsekaiFarm, professionById, raceById } from '~/lib/isekai-farm';
-import { FIELD_SHAPES, HOMESTEAD_SHAPE, MAP_TINTS, TERRITORY_SHAPES } from '~/lib/isekai-cartography';
+import { FIELD_SHAPES, HOMESTEAD_SHAPE, LOCAL_LANDMARKS, MAP_TINTS, TERRITORY_SHAPES } from '~/lib/isekai-cartography';
 import { ISEKAI_HOBBIES, ISEKAI_PARTNERS, ISEKAI_REST_MS, ISEKAI_SHIFT_MS, ISEKAI_TASKS, ISEKAI_WORK_INTERVAL_MS, applyPeopleAction, isekaiChildAge, isekaiStaffMarket, isekaiStaffWage, normalizeIsekaiPeople, partnerById, peopleActionError, runIsekaiStaff, staffById } from '~/lib/isekai-farm-people';
 import { advanceIsekaiWorld, applyExpansionAction, expansionActionError, normalizeIsekaiExpansion } from '~/lib/isekai-farm-expansion';
 import { farmLessonAllowed, farmPolicyTableMissing } from '~/lib/happy-farm-access';
@@ -32,7 +32,7 @@ const selectedBuildingId = ref('well');
 const selectedAnimalId = ref('hen');
 const animalCategory = ref('land');
 const operationTab = ref('crops');
-const profileDraft = ref({ gender: '', raceId: '', professionId: '', faith: 'free' });
+const profileDraft = ref({ gender: '', raceId: '', professionId: '', faith: 'free', areaId: '' });
 const staffView = ref('market');
 const staffPayPeriod = ref('day');
 const familyView = ref('meet');
@@ -70,14 +70,16 @@ const quizClockKey = computed(() => `${sessionKey.value}:next-question`);
 const activeRegion = computed(() => ISEKAI_REGIONS.find(region => region.id === farm.value.selectedRegion) || ISEKAI_REGIONS[0]);
 const activeArea = computed(() => areaById(farm.value.selectedArea) || ISEKAI_AREAS[0]);
 const regionAreas = computed(() => ISEKAI_AREAS.filter(area => area.region === activeRegion.value.id));
+const startAreaPreview = computed(() => areaById(profileDraft.value.areaId));
+const localLandmarks = computed(() => LOCAL_LANDMARKS[activeArea.value.id] || LOCAL_LANDMARKS.fittoa);
 const mapViewBox = computed(() => {
-  if (mapMode.value === 'world') return '0 0 1200 800';
   if (mapMode.value === 'large') return '0 0 800 900';
-  return activeRegion.value.viewBox;
+  return '0 0 600 420';
 });
 const mapCaption = computed(() => mapMode.value === 'world' ? '六面世界 · 五大陸圖誌'
+  : mapMode.value === 'worldExact' ? '原作世界地圖 · 海岸線原圖'
   : mapMode.value === 'large' ? '中央大陸全貌'
-  : mapMode.value === 'middle' ? activeRegion.value.name : mapMode.value === 'small' ? `${activeRegion.value.name} · 領地圖` : `${activeArea.value.name} · 農莊與邊境`);
+  : mapMode.value === 'middle' ? `${activeRegion.value.name} · 四領地總覽` : mapMode.value === 'small' ? `${activeArea.value.name} · 領地詳圖` : `${activeArea.value.name} · 農莊與邊境`);
 const regionCrops = computed(() => ISEKAI_CROPS.filter(crop => crop.region === activeRegion.value.id));
 const categoryAnimals = computed(() => ISEKAI_ANIMALS.filter(animal => animal.group === animalCategory.value));
 const stockedCrops = computed(() => ISEKAI_CROPS.filter(crop => (farm.value.produce[crop.id] || 0) > 0));
@@ -114,6 +116,7 @@ function changeRegion(id) {
   mapMode.value = 'middle';
 }
 function openWorldMap() { mapMode.value = 'world'; atlasOpen.value = true; }
+function openExactWorldMap() { mapMode.value = 'worldExact'; atlasOpen.value = true; }
 
 function changeArea(id) {
   const area = areaById(id);
@@ -122,7 +125,7 @@ function changeArea(id) {
   farm.value.selectedArea = id;
   selectedPlot.value = 0;
   selectedCropId.value = ISEKAI_CROPS.find(crop => crop.region === area.region)?.id || 'wheat';
-  mapMode.value = 'micro';
+  mapMode.value = 'small';
 }
 
 function openTerritory(area) {
@@ -151,7 +154,9 @@ async function createProfile() {
   busy.value = true;
   try {
     await saveFarm(chooseIsekaiIdentity(farm.value, profileDraft.value));
-    notice.value = `已建立${raceById(farm.value.profile.raceId).name}・${professionById(farm.value.profile.professionId).name}角色；農莊是你的兼職。`;
+    selectedCropId.value = ISEKAI_CROPS.find(crop => crop.region === farm.value.selectedRegion)?.id || 'wheat';
+    mapMode.value = 'small';
+    notice.value = `已從${activeArea.value.name}開始開拓；${raceById(farm.value.profile.raceId).name}・${professionById(farm.value.profile.professionId).name}的農莊是兼職。`;
   } catch (error) { notice.value = `角色尚未建立：${error.message}`; }
   finally { busy.value = false; }
 }
@@ -267,7 +272,7 @@ async function executeAction(action) {
     selectedCropId.value = ISEKAI_CROPS.find(crop => crop.region === farm.value.selectedRegion)?.id || 'wheat';
     mapMode.value = 'middle';
   }
-  if (action.type === 'unlockArea') { selectedPlot.value = 0; mapMode.value = 'micro'; }
+  if (action.type === 'unlockArea') { selectedPlot.value = 0; mapMode.value = 'small'; }
   if (action.type === 'build') operationTab.value = action.buildingId === 'stable' ? 'animals' : buildingById(action.buildingId)?.category ? 'town' : 'buildings';
   if (action.type === 'adopt') operationTab.value = 'animals';
   if (action.type === 'demolish') operationTab.value = 'crops';
@@ -561,9 +566,10 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
         <div class="section-heading"><span>01 · 大陸圖誌</span><strong>{{ mapCaption }}</strong></div>
         <div class="map-toolbar" aria-label="地圖比例尺">
           <button :class="{ chosen: mapMode === 'world' }" @click="openWorldMap">超大地圖 · 世界</button>
+          <button :class="{ chosen: mapMode === 'worldExact' }" @click="openExactWorldMap">超大地圖 · 原圖海岸線</button>
           <button :class="{ chosen: mapMode === 'large' }" @click="mapMode = 'large'">大地圖 · 全大陸</button>
           <button :class="{ chosen: mapMode === 'middle' }" @click="mapMode = 'middle'">中地圖 · {{ activeRegion.name.replace('中央大陸', '') }}</button>
-          <button :class="{ chosen: mapMode === 'small' }" @click="mapMode = 'small'">小地圖 · 領地</button>
+          <button :class="{ chosen: mapMode === 'small' }" @click="mapMode = 'small'">小地圖 · {{ activeArea.name }}</button>
           <button :class="{ chosen: mapMode === 'micro' }" @click="mapMode = 'micro'">微地圖 · 農莊</button>
           <button class="atlas-expand" @click="atlasOpen = !atlasOpen">{{ atlasOpen ? '收起地圖' : '展開地圖' }}</button>
         </div>
@@ -574,16 +580,14 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
               <rect x="82" y="153" width="540" height="475" fill="transparent" /><text x="287" y="355" text-anchor="middle">點選中央大陸放大 ↗</text>
             </g>
           </svg>
-          <svg v-else-if="mapMode === 'large' || mapMode === 'middle'" :viewBox="mapViewBox" preserveAspectRatio="xMidYMid meet" role="group" :aria-label="`${mapCaption}；可選擇區域或領地`">
+          <img v-else-if="mapMode === 'worldExact'" class="original-world-map" src="https://www.baka-tsuki.org/project/images/3/39/World_Map_3.png" alt="原作網路小說世界地圖第 3 版，顯示各大陸的原圖海岸線" loading="lazy" />
+          <svg v-else-if="mapMode === 'large'" :viewBox="mapViewBox" preserveAspectRatio="xMidYMid meet" role="group" aria-label="中央大陸全貌；可選擇區域">
             <image href="/maps/central-continent.svg" x="0" y="0" width="800" height="900" />
-            <g v-if="mapMode === 'large'" v-for="region in ISEKAI_REGIONS" :key="region.id" class="atlas-point" :class="{ locked: !farm.unlockedRegions.includes(region.id), current: activeRegion.id === region.id }" role="button" tabindex="0" :aria-label="region.name" @click="changeRegion(region.id)" @keydown.enter="changeRegion(region.id)">
+            <g v-for="region in ISEKAI_REGIONS" :key="region.id" class="atlas-point" :class="{ locked: !farm.unlockedRegions.includes(region.id), current: activeRegion.id === region.id }" role="button" tabindex="0" :aria-label="region.name" @click="changeRegion(region.id)" @keydown.enter="changeRegion(region.id)">
               <circle :cx="region.x" :cy="region.y" r="19" /><text :x="region.x" :y="region.y + 7" text-anchor="middle" font-size="22">{{ farm.unlockedRegions.includes(region.id) ? '✧' : '◆' }}</text><text class="atlas-label" :x="region.x" :y="region.y + 40" text-anchor="middle" font-size="19">{{ region.name.replace('中央大陸', '') }}</text>
             </g>
-            <g v-if="mapMode === 'middle'" v-for="area in regionAreas" :key="area.id" class="atlas-point" :class="{ locked: !farm.unlockedAreas.includes(area.id), current: activeArea.id === area.id }" role="button" tabindex="0" :aria-label="area.name" @click="openTerritory(area)" @keydown.enter="openTerritory(area)">
-              <circle :cx="area.x" :cy="area.y" r="11" /><text :x="area.x" :y="area.y + 4" text-anchor="middle" font-size="12">{{ farm.unlockedAreas.includes(area.id) ? '✧' : '◆' }}</text><text class="atlas-label" :x="area.x" :y="area.y + 25" text-anchor="middle" font-size="13">{{ area.name }}</text>
-            </g>
           </svg>
-          <svg v-else-if="mapMode === 'small'" viewBox="0 0 600 420" role="group" :aria-label="`${activeRegion.name}四塊不規則領地；可選擇或開拓`">
+          <svg v-else-if="mapMode === 'middle'" viewBox="0 0 600 420" role="group" :aria-label="`${activeRegion.name}的四塊領地；可選擇或開拓`">
             <rect width="600" height="420" fill="#203a3a" />
             <path d="M15 55 Q180 8 340 32 T590 72 M8 360 Q150 395 300 380 T590 350" fill="none" stroke="#dec58b" stroke-width="5" opacity=".35" />
             <g v-for="(area, index) in regionAreas" :key="area.id" class="territory-shape" :class="{ chosen: activeArea.id === area.id, locked: !farm.unlockedAreas.includes(area.id) }" role="button" tabindex="0" :aria-label="`${area.name}${farm.unlockedAreas.includes(area.id) ? '已開拓' : '尚未開拓'}`" @click="openTerritory(area)" @keydown.enter="openTerritory(area)">
@@ -591,6 +595,17 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
               <text :x="TERRITORY_SHAPES[index].x" :y="TERRITORY_SHAPES[index].y - 6" text-anchor="middle" font-size="28">{{ farm.unlockedAreas.includes(area.id) ? ['🌾','🌲','🏞️','⛰️'][index] : '🔒' }}</text>
               <text class="shape-label" :x="TERRITORY_SHAPES[index].x" :y="TERRITORY_SHAPES[index].y + 22" text-anchor="middle">{{ area.name }}</text>
             </g>
+          </svg>
+          <svg v-else-if="mapMode === 'small'" viewBox="0 0 600 420" role="group" :aria-label="`${activeArea.name}領地詳圖，有三處地方地標，農莊位於其中`">
+            <rect width="600" height="420" fill="#1c3740" />
+            <path d="M22 69 Q118 14 243 37 L335 18 Q490 28 573 92 L580 284 Q533 388 390 402 L206 386 Q70 405 19 306Z" :fill="MAP_TINTS[activeRegion.id][regionAreas.findIndex(area => area.id === activeArea.id)] || '#829869'" stroke="#e8d4a1" stroke-width="7" />
+            <path d="M30 318 Q140 258 220 281 T393 193 T570 113" fill="none" stroke="#8dbbc2" stroke-width="17" opacity=".85" />
+            <path d="M83 109 Q182 138 270 200 T510 319" fill="none" stroke="#d5bb83" stroke-width="8" stroke-dasharray="19 10" />
+            <g class="local-landmark"><circle cx="136" cy="112" r="9"/><text x="151" y="105">{{ localLandmarks[0] }}</text></g>
+            <g class="local-landmark"><circle cx="425" cy="105" r="9"/><text x="440" y="99">{{ localLandmarks[1] }}</text></g>
+            <g class="local-landmark"><circle cx="430" cy="335" r="9"/><text x="445" y="329">{{ localLandmarks[2] }}</text></g>
+            <g class="local-farm" role="button" tabindex="0" aria-label="放大我的農莊與邊境" @click="mapMode = 'micro'" @keydown.enter="mapMode = 'micro'"><circle cx="300" cy="227" r="35"/><text x="300" y="237" text-anchor="middle" font-size="30">🏡</text><text x="300" y="283" text-anchor="middle">我的農莊 · 點選放大</text></g>
+            <text class="local-title" x="300" y="40" text-anchor="middle">{{ activeArea.name }} · 領地詳圖</text>
           </svg>
           <svg v-else viewBox="0 0 600 420" role="group" :aria-label="`${activeArea.name}的一塊私人農莊及六塊邊境地`">
             <rect width="600" height="420" fill="#253c3e" />
@@ -606,7 +621,8 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
             </g>
           </svg>
         </div>
-        <p class="map-note">{{ mapMode === 'world' ? '五大陸與主要國家、城市、迷宮的地理圖誌；可橫向捲動查看，點選中央大陸進入可遊玩區域。' : mapMode === 'large' ? '完整中央大陸輪廓；選一區放大。' : mapMode === 'middle' ? '選擇領地後查看微地圖。' : mapMode === 'small' ? '點選不規則領地，可開拓或進入農莊。' : '中央只有一塊私人農莊；六個田位在右側，外圍是邊境地。' }} 世界輪廓依公開地理資料重新繪製；目前農莊經營仍限中央大陸。</p>
+        <p class="map-note" v-if="mapMode === 'worldExact'">顯示原作網路小說地圖第 3 版的原圖海岸線。<a href="https://www.baka-tsuki.org/project/index.php?title=File%3AWorld_Map_3.png" target="_blank" rel="noopener noreferrer">查看圖片來源與原圖</a>。遊戲領地位置仍是自創設定。</p>
+        <p class="map-note" v-else>{{ mapMode === 'world' ? '五大陸示意圖；點選中央大陸放大。' : mapMode === 'large' ? '中央大陸全貌；選一區放大。' : mapMode === 'middle' ? '本區四塊領地總覽；點選一塊查看詳圖。' : mapMode === 'small' ? '只顯示所選的一塊領地；地標為遊戲設計。點選農莊進入微地圖。' : '私人農莊與六塊邊境地。' }} 農莊經營目前限中央大陸。</p>
         <button class="atlas-list-toggle" @click="atlasListsOpen = !atlasListsOpen">{{ atlasListsOpen ? '收起區域與領地清單' : '▾ 選擇其他區域與領地' }}</button>
         <div v-if="atlasListsOpen" class="atlas-lists">
         <div class="region-list">
@@ -688,7 +704,10 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
       <h3>02 · 種族</h3><div class="identity-options race-options"><button v-for="option in ISEKAI_RACES" :key="option.id" :class="{ chosen: profileDraft.raceId === option.id }" @click="profileDraft.raceId = option.id"><span>{{ option.mark }}</span><b>{{ option.name }}</b><small>{{ option.skill }}</small></button></div>
       <h3>03 · 職業</h3><div class="identity-options profession-options"><button v-for="option in ISEKAI_PROFESSIONS" :key="option.id" :class="{ chosen: profileDraft.professionId === option.id }" @click="profileDraft.professionId = option.id"><span>{{ option.mark }}</span><b>{{ option.name }}</b><small>{{ option.skill }}</small></button></div>
       <p class="identity-story">{{ professionById(profileDraft.professionId)?.story || '選一份本業，開始你的異世界生活。' }}</p>
-      <button class="identity-submit" :disabled="busy || !profileDraft.gender || !profileDraft.raceId || !profileDraft.professionId" @click="createProfile">{{ busy ? '建立中…' : '啟程開拓' }}</button>
+      <h3>04 · 選擇中央大陸的起始領地</h3><p>三個區域的十二塊領地都可選；開局只擁有你選的一塊。</p>
+      <select v-model="profileDraft.areaId" class="start-area-select" aria-label="起始領地"><option value="" disabled>請選擇起始領地</option><optgroup v-for="region in ISEKAI_REGIONS" :key="region.id" :label="region.name"><option v-for="area in ISEKAI_AREAS.filter(item => item.region === region.id)" :key="area.id" :value="area.id">{{ area.name }}</option></optgroup></select>
+      <p v-if="startAreaPreview" class="start-area-description">{{ startAreaPreview.description }} · 開局種苗依所選區域配發。</p>
+      <button class="identity-submit" :disabled="busy || !profileDraft.gender || !profileDraft.raceId || !profileDraft.professionId || !profileDraft.areaId" @click="createProfile">{{ busy ? '建立中…' : '啟程開拓' }}</button>
     </section></div>
 
     <div v-if="battle" class="battle-scrim"><section class="battle-card" role="dialog" aria-modal="true" aria-labelledby="battle-title"><span class="eyebrow">FRONTIER CHRONICLE · 邊境戰</span><h2 id="battle-title">{{ battle.areaId }} · 第 {{ battle.plotIndex + 1 }} 塊田</h2><div class="battle-stage"><div><span>🧙‍♂️</span><b>我方農莊</b><small>生命 {{ battle.actor_hp }} · 魔力 {{ battle.actor_mana }} · 草藥 {{ battle.actor_items }}</small><meter :value="battle.actor_hp" :max="140" /></div><strong>⚔️</strong><div><span>🛡️</span><b>{{ battle.owner_id ? '同班領主' : '系統守衛' }}</b><small>生命 {{ battle.defender_hp }}</small><meter :value="battle.defender_hp" :max="140" /></div></div><p class="battle-outcome">{{ battle.message }}</p><div class="battle-commands" v-if="battle.status==='active'"><button :disabled="busy" @click="battleCommand('attack')">⚔️ 攻擊</button><button :disabled="busy || !battle.actor_mana" @click="battleCommand('magic')">🔮 魔術</button><button :disabled="busy" @click="battleCommand('guard')">🛡️ 防禦</button><button :disabled="busy || !battle.actor_items" @click="battleCommand('item')">🌿 道具</button></div><button v-else class="people-main-action" @click="battle=null">返回農莊</button><div class="battle-log"><p v-for="(entry,index) in battle.log" :key="index">{{ entry }}</p></div></section></div>
@@ -722,7 +741,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
 .territory-shape,.field-shape{cursor:pointer;outline:none}.territory-shape path,.field-shape path{stroke:#e9d5a6;stroke-width:5;stroke-linejoin:round;transition:filter .18s,stroke-width .18s}.territory-shape:hover path,.field-shape:hover path,.territory-shape:focus path,.field-shape:focus path{filter:brightness(1.2);stroke-width:8}.territory-shape.chosen path,.field-shape.chosen path{stroke:#fff3b7;stroke-width:8}.territory-shape.locked path{filter:saturate(.4) brightness(.65)}.shape-label{font-size:17px;font-weight:bold;fill:#fff8de;paint-order:stroke;stroke:#203138;stroke-width:4;pointer-events:none}.territory-shape text,.field-shape text{pointer-events:none}
 .atlas-point{cursor:pointer;fill:#f9f1d6;outline:none}.atlas-point circle{fill:#a77b42;stroke:#fae0a4;stroke-width:2.5}.atlas-point.current circle{fill:#3d7163;stroke:#f7e6a3;stroke-width:4}.atlas-point.locked circle{fill:#4a6264;stroke:#b2bdab}.atlas-label{fill:#fff2d0;paint-order:stroke;stroke:#15282b;stroke-width:4;stroke-linejoin:round;font-weight:bold;pointer-events:none}.atlas-point text{pointer-events:none}
 .area-list{margin-top:8px;border-top:1px solid #af976780;padding-top:7px}.area-list h3{font-size:12px;color:#e8c991;margin:0 0 6px}.area-row{display:flex;align-items:center;gap:6px;border:1px solid #8f8160;background:#10262b8a;border-radius:5px;margin:4px 0;min-height:45px}.area-row.selected{border-color:#e3bf7b;background:#385044}.area-row>button:first-child,.area-row>div{flex:1;text-align:left;background:none;border:none;color:var(--ink);padding:5px 8px}.area-row b,.area-row small{display:block}.area-row b{font-size:12px}.area-row small{font-size:10px;color:#cad1bc}.area-row .unlock{margin-right:6px;padding:6px 9px;border:1px solid #d5b77d;border-radius:4px;background:#946c3c;color:#fff4d7;font-size:11px}
-.atlas-overlay{position:fixed;z-index:700;inset:2vh 4vw;display:flex;flex-direction:column;padding:18px 24px;background:#132930;box-shadow:0 0 0 100vmax #071519d9,0 20px 80px #000a;overflow:auto}.atlas-overlay .map-toolbar{grid-template-columns:repeat(6,1fr)}.atlas-overlay .map-toolbar .atlas-expand{grid-column:auto}.atlas-overlay .map-frame{flex:1;min-height:280px;max-height:calc(100vh - 220px);aspect-ratio:auto}.atlas-overlay .region-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.atlas-overlay .area-list{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}.atlas-overlay .area-list h3{grid-column:1/-1}.atlas-overlay .area-row{margin:0}
+.atlas-overlay{position:fixed;z-index:700;inset:2vh 4vw;display:flex;flex-direction:column;padding:18px 24px;background:#132930;box-shadow:0 0 0 100vmax #071519d9,0 20px 80px #000a;overflow:auto}.atlas-overlay .map-toolbar{grid-template-columns:repeat(4,minmax(0,1fr))}.atlas-overlay .map-toolbar .atlas-expand{grid-column:auto}.atlas-overlay .map-frame{flex:1;min-height:280px;max-height:calc(100vh - 220px);aspect-ratio:auto}.atlas-overlay .region-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.atlas-overlay .area-list{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}.atlas-overlay .area-list h3{grid-column:1/-1}.atlas-overlay .area-row{margin:0}
 .profile-card{display:grid;gap:5px;border:1px solid #c9a66b;background:#bca27222;border-radius:5px;padding:9px;margin-bottom:10px}.profile-card strong{font-size:13px}.profile-card small{font-size:11px;color:#dbd3b7}.profile-card button{background:#304c48;color:#efdcaf;border:1px solid #bb9c63;border-radius:4px;padding:6px;font-size:11px}
 .profile-card .character-portrait{display:grid;place-items:center;width:58px;height:58px;border:2px solid #d9bb80;border-radius:50%;background:radial-gradient(circle at 40% 25%,#777e62,#34554e 70%);box-shadow:0 0 0 3px #132b2d,0 3px 12px #05130f;font-size:31px;margin-bottom:4px}
 .field-tile.facility{background:repeating-linear-gradient(155deg,#4d5b60,#4d5b60 10px,#5b686b 12px,#5b686b 22px)}.field-tile small{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 3px}.operation-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin:8px 0}.operation-tabs button{background:#203d3c;color:#ebdfbf;border:1px solid #9e8d68;border-radius:4px;padding:7px;font-size:12px}.operation-tabs button.chosen{background:#866538;color:#fff6df;border-color:#e5c581}.building-actions{grid-template-columns:1fr 1fr}.animal-hint{display:block;color:#cfc5a8;margin-top:5px;font-size:11px}.animal-stock{margin-top:10px;padding-top:10px;border-top:1px solid #bda47564}
@@ -740,13 +759,17 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
 .atlas .map-frame{flex:none;max-height:min(58vh,600px)}
 .atlas .map-frame.map-large{aspect-ratio:8 / 9}
 .atlas .map-frame.map-world{aspect-ratio:3 / 2;overflow:auto}
+.atlas .map-frame.map-worldExact{aspect-ratio:3 / 2;overflow:auto}
 .map-frame.map-world svg{min-width:1100px;width:100%;height:auto}
+.map-frame.map-worldExact .original-world-map{display:block;width:max(100%,1000px);height:auto;object-fit:contain}
 .world-central-link{cursor:pointer}.world-central-link text{font-size:17px;fill:#fff3d5;paint-order:stroke;stroke:#142931;stroke-width:4;pointer-events:none}.world-central-link:focus rect{stroke:#f4d78d;stroke-width:5}
 .atlas .map-frame.map-middle{aspect-ratio:4 / 3}
 .atlas .map-frame.map-small,.atlas .map-frame.map-micro{aspect-ratio:10 / 7}
 .map-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}
 .map-toolbar button{font-size:12px;padding:8px 5px;min-height:36px}
 .map-toolbar .atlas-expand{grid-column:1/-1}
+.local-landmark circle{fill:#e1c280;stroke:#304e4d;stroke-width:4}.local-landmark text,.local-title,.local-farm text{fill:#fff4d5;font-size:17px;font-weight:bold;paint-order:stroke;stroke:#183139;stroke-width:4}.local-title{font-size:23px}.local-farm{cursor:pointer}.local-farm circle{fill:#315e53;stroke:#f6db9f;stroke-width:5}.local-farm:focus circle,.local-farm:hover circle{fill:#467963}.map-note a{color:#f4d58c}
+.start-area-select{width:100%;padding:10px;border:1px solid #70593b;border-radius:5px;background:#fff6dc;color:#24382f;font:inherit}.start-area-description{font-weight:bold;color:#345743}
 .atlas-list-toggle{width:100%;background:#2e5149;color:#fff0cf;border:1px solid #c5a773;border-radius:5px;padding:9px;margin:4px 0 7px;font-size:13px}
 .atlas-lists{display:grid;gap:8px}
 .atlas-lists .region-list,.atlas-lists .area-list{margin:0}
