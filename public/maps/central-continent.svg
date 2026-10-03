@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 900" role="img" aria-label="中央大陸西部、北部與南部地圖">
+  <defs>
+    <radialGradient id="sea"><stop stop-color="#36515c"/><stop offset="1" stop-color="#172c36"/></radialGradient>
+    <linearGradient id="land" x1="0" x2=".7" y2="1"><stop stop-color="#d2c49d"/><stop offset=".47" stop-color="#a7a97f"/><stop offset="1" stop-color="#8c9d73"/></linearGradient>
+    <linearGradient id="snow" x1="0" x2="0" y1="0" y2="1"><stop stop-color="#e5e8df"/><stop offset="1" stop-color="#a8bcb4"/></linearGradient>
+    <pattern id="waves" width="48" height="48" patternUnits="userSpaceOnUse"><path d="M0 24q12-7 24 0t24 0" fill="none" stroke="#b7c9c3" stroke-opacity=".12" stroke-width="2"/></pattern>
+    <path id="coast" d="M57 102 L87 97 111 111 143 108 174 99 206 109 235 96 261 107 296 99 324 89 352 96 379 92 405 103 430 94 462 98 491 83 513 94 524 120 548 127 565 144 597 155 632 161 654 147 684 156 707 177 731 185 716 209 696 221 689 246 667 261 655 293 639 312 642 339 622 369 619 401 605 425 612 456 628 480 620 514 635 543 651 576 640 604 664 634 672 660 689 678 697 712 717 738 722 769 743 791 763 810 779 834 763 848 731 850 703 838 674 819 651 809 633 780 609 751 593 724 568 704 546 694 526 670 507 645 487 631 461 617 442 592 422 584 399 568 376 573 357 566 331 548 301 551 272 544 247 554 217 542 190 549 161 534 140 514 118 490 110 462 95 440 89 408 78 374 72 338 62 311 65 281 55 257 58 230 49 209 53 183 46 156 55 127 Z"/>
+    <clipPath id="landclip"><use href="#coast"/></clipPath>
+    <filter id="shadow"><feDropShadow dx="2" dy="8" stdDeviation="9" flood-color="#091c24" flood-opacity=".65"/></filter>
+  </defs>
+  <rect width="800" height="900" fill="url(#sea)"/>
+  <rect width="800" height="900" fill="url(#waves)"/>
+  <g filter="url(#shadow)"><use href="#coast" fill="url(#land)" stroke="#eadcb7" stroke-width="5" stroke-linejoin="round"/></g>
+  <g clip-path="url(#landclip)">
+    <path d="M0 75H800V302 Q660 292 561 320 T350 277 Q220 307 0 270Z" fill="url(#snow)" opacity=".9"/>
+    <path d="M314 282 Q412 291 488 329 T554 450 Q575 558 490 609 Q396 562 330 612 Q352 490 291 408Z" fill="#806f5c" opacity=".48"/>
+    <path d="M370 291 Q405 320 420 350 Q456 332 477 371 Q504 359 519 405 Q543 425 522 459 Q550 482 515 511 Q545 547 523 580 M487 552 Q512 595 541 625 L601 688 640 739 711 807" fill="none" stroke="#6a6258" stroke-width="21" opacity=".35" stroke-linejoin="round"/>
+    <path d="M370 291 Q405 320 420 350 Q456 332 477 371 Q504 359 519 405 Q543 425 522 459 Q550 482 515 511 Q545 547 523 580 M487 552 Q512 595 541 625 L601 688 640 739 711 807" fill="none" stroke="#f1d9b0" stroke-width="7" stroke-dasharray="3 23" opacity=".8" stroke-linejoin="round"/>
+    <path d="M138 289 Q240 352 218 453 T319 555 Q360 575 391 561 M243 316 Q301 334 314 379 T299 500" fill="none" stroke="#6a8c8b" stroke-width="5" opacity=".78"/>
+    <path d="M348 580 Q476 605 545 690 T728 819" fill="none" stroke="#e6d5a8" stroke-width="4" stroke-dasharray="8 8" opacity=".75"/>
+    <g fill="#667e61" opacity=".55">
+      <path d="M110 345l20-28 17 27 11-16 22 43-72 7zM160 411l19-30 20 28 15-13 17 38-75 7zM199 468l18-31 20 23 19-9 24 41-82 2z"/>
+      <path d="M575 652l17-26 16 19 12-8 21 38-70 4zM607 697l15-25 21 26 17-8 13 34-70 4z"/>
+    </g>
+    <g stroke="#eee8d2" stroke-width="2" fill="none" opacity=".45"><path d="M82 195Q269 236 401 180T697 198"/><path d="M114 260Q350 304 648 267"/><path d="M76 363Q303 422 610 357"/><path d="M85 477Q290 492 630 460"/><path d="M274 545Q474 566 649 544"/></g>
+  </g>
+  <use href="#coast" fill="none" stroke="#463d32" stroke-width="3" stroke-linejoin="round"/>
+  <g font-family="Georgia, serif" fill="#f6e7bd" opacity=".72" text-anchor="middle"><text x="400" y="54" font-size="16" letter-spacing="5">NORTHERN WILDS</text><text x="380" y="881" font-size="16" letter-spacing="5">CENTRAL CONTINENT</text></g>
+</svg>

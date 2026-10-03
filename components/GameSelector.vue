@@ -24,6 +24,7 @@ const gameDict = {
   'match': { name: '🟦 方塊消消樂', path: '/game', class: '' },
   'monopoly': { name: '🏘️ 單字大富翁', path: '/game-monopoly', class: 'monopoly-btn' },
   'happyFarm': { name: '🌻 單字開心農場', path: '/game-happy-farm', class: 'monopoly-btn' },
+  'isekaiFarm': { name: '✧ 單字異世界悠閒農莊', path: '/game-isekai-farm', class: 'monopoly-btn' },
   'railwayTour': { name: '🚂 單字鐵路旅遊高手', path: '/game-railway-tour', class: 'monopoly-btn' },
   'verbMonopoly': { name: '🏘️ 動詞變化大富翁', path: '/game-verb-monopoly', class: 'monopoly-btn' },
   'move': { name: '🔠 單字神移動', path: '/game-move', class: '' },
@@ -85,7 +86,7 @@ const noUnitGames = ['speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics
 const isNoUnitGame = computed(() => noUnitGames.includes(selectedGameType.value));
 
 const defaultCategories = [
-  { id: 'c1', name: '🕹️ 經典單字遊戲', games: ['monopoly', 'happyFarm', 'railwayTour', 'match', 'move', 'choice', 'fill', 'sentence', 'listen', 'puzzle', 'cross', 'review', 'picture2meaning', 'ninja'] },
+  { id: 'c1', name: '🕹️ 經典單字遊戲', games: ['monopoly', 'happyFarm', 'isekaiFarm', 'railwayTour', 'match', 'move', 'choice', 'fill', 'sentence', 'listen', 'puzzle', 'cross', 'review', 'picture2meaning', 'ninja'] },
   { id: 'c2', name: '🏆 體感與趣味挑戰', games: ['shake2shuffle', 'tilt2sort', 'gravitymaze', 'swing2cast', 'ARsniper', 'GPSmap', 'vocshooting', 'noropejump'] },
   { id: 'c3', name: '👾 懷舊街機遊樂場', games: ['tetris', 'pinball', 'angrybirds', 'solitaire', 'pikavolley', 'pacman', 'minesweeper', 'sudoku'] },
   { id: 'c4', name: '⚔️ 雙人對戰與領域牌組', games: ['monopolyDual', 'pikavolleyDual', 'angrybirdsDual', 'battle', 'tenchi', 'tarot21', 'tarotAlch', 'tarotUno', 'tarotUno1', 'tarot21solo', 'tarotAlch1'] },
@@ -261,12 +262,13 @@ const handleStartGame = async () => {
   if (!selectedVersion.value || !selectedVolume.value || !selectedUnit.value) { errorMsg.value = '⚠️ 請完整選擇要挑戰的範圍！'; return; }
   if (isUnitLocked.value) { errorMsg.value = '⚠️ 此單元已被老師鎖定，目前無法遊玩！'; return; }
 
-  if (selectedGameType.value === 'happyFarm' && studentCookie.value?.class) {
-    const { data: farmPolicy, error: policyError } = await supabase.from('happy_farm_lesson_access')
+  if (['happyFarm','isekaiFarm'].includes(selectedGameType.value) && studentCookie.value?.class) {
+    const policyTable = selectedGameType.value === 'isekaiFarm' ? 'isekai_farm_lesson_access' : 'happy_farm_lesson_access';
+    const { data: farmPolicy, error: policyError } = await supabase.from(policyTable)
       .select('mode,units').eq('class_name', studentCookie.value.class).maybeSingle();
     if (policyError && !farmPolicyTableMissing(policyError)) { errorMsg.value = '⚠️ 農場範圍設定暫時無法讀取，請稍後再試。'; return; }
     if (!farmLessonAllowed(farmPolicy, { version: selectedVersion.value, volume: selectedVolume.value, unit: selectedUnit.value })) {
-      errorMsg.value = '⚠️ 導師目前沒有開放這個單元的開心農場。'; return;
+      errorMsg.value = `⚠️ 導師目前沒有開放這個單元的${selectedGameType.value === 'isekaiFarm' ? '異世界農莊' : '開心農場'}。`; return;
     }
   }
 

@@ -148,6 +148,7 @@ const fetchStats = async () => {
       <div class="game-type-tabs">
         <button class="type-btn" :class="{ active: selectedGameType === '單字大富翁' }" @click="selectedGameType = '單字大富翁'; fetchStats()">🏘️ 大富翁</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字開心農場' }" @click="selectedGameType = '單字開心農場'; fetchStats()">🌻 開心農場</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字異世界悠閒農莊' }" @click="selectedGameType = '單字異世界悠閒農莊'; fetchStats()">✧ 異世界農莊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字鐵路旅遊高手' }" @click="selectedGameType = '單字鐵路旅遊高手'; fetchStats()">🚂 鐵路旅遊</button>
         <button v-for="(type, index) in verbMonopolyTypes" :key="type" class="type-btn" :class="{ active: selectedGameType === type }" @click="selectedGameType = type; fetchStats()">🏘️ 動詞大富翁（{{ index === 0 ? '八' : '九' }}）</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊消消樂' }" @click="selectedGameType = '單字方塊消消樂'; fetchStats()">🟦 方塊</button>

@@ -9,6 +9,7 @@ const loadError = ref('');
 
 const allGames = [
   { id: 'happyFarm', name: '🌻 單字開心農場' },
+  { id: 'isekaiFarm', name: '✧ 單字異世界悠閒農莊' },
   { id: 'railwayTour', name: '🚂 單字鐵路旅遊高手' },
   { id: 'match', name: '🟦 方塊消消樂' },
   { id: 'move', name: '🔠 單字神移動' },
