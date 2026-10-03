@@ -42,6 +42,7 @@ const chosenHobbyId = ref('gardening');
 const childPartnerChoice = ref({});
 const frontiers = ref([]);
 const frontierReady = ref(false);
+const frontierLeaseReady = ref(false);
 const classmates = ref([]);
 const peerLoans = ref([]);
 const peerLoanReady = ref(false);
@@ -215,8 +216,8 @@ function actionMessage(action) {
 
 function can(action) {
   return accessAllowed.value && !loading.value && !busy.value && !quiz.value && !battle.value && !(action.type === 'battleStart'
-    ? (!frontierReady.value || !student.value?.class || student.value?.isAnon || frontierClaim.value?.owner_id === studentId.value || (frontierClaim.value?.lease_holder_id && new Date(frontierClaim.value.lease_expires_at).getTime() > now.value) || !frontierExpansionAllowed.value)
-    : action.type === 'frontierRent' ? (!frontierReady.value || !student.value?.class || student.value?.isAnon || !!frontierClaim.value?.owner_id || (frontierClaim.value?.lease_holder_id && frontierClaim.value.lease_holder_id !== studentId.value && new Date(frontierClaim.value.lease_expires_at).getTime() > now.value) || !frontierExpansionAllowed.value || farm.value.coins < 60)
+    ? (!frontierReady.value || !student.value?.class || student.value?.isAnon || frontierClaim.value?.owner_id === studentId.value || (frontierClaim.value?.lease_holder_id && new Date(frontierClaim.value.lease_expires_at).getTime() > now.value) || !frontierExpansionAllowed.value || (!frontierLeaseReady.value && frontierArea.value.id !== (farm.value.profile?.startAreaId || 'fittoa')))
+    : action.type === 'frontierRent' ? (!frontierLeaseReady.value || !student.value?.class || student.value?.isAnon || !!frontierClaim.value?.owner_id || (frontierClaim.value?.lease_holder_id && frontierClaim.value.lease_holder_id !== studentId.value && new Date(frontierClaim.value.lease_expires_at).getTime() > now.value) || !frontierExpansionAllowed.value || farm.value.coins < 60)
     : action.plotKind === 'frontier' ? (!frontierUsable.value || isekaiActionError(farm.value, { ...action, frontierAccess: true, frontierClaimedAt: frontierClaim.value?.captured_at }, now.value))
     : action.type === 'peerLoan' ? (!peerLoanReady.value || !student.value?.class || student.value?.isAnon)
     : action.type === 'peerVisit' ? (!peerVisitReady.value || !student.value?.class || student.value?.isAnon)
@@ -226,8 +227,8 @@ function can(action) {
 function askAction(action) {
   if (!accessAllowed.value) { notice.value = '導師目前沒有開放這個單元的異世界農莊。'; return; }
   if (busy.value || quiz.value) return;
-  const error = action.type === 'battleStart' ? (!student.value?.class || student.value?.isAnon ? '請以班級學生帳號登入。' : !frontierExpansionAllowed.value ? '先佔領起始領地的六塊邊境地。' : frontierClaim.value?.owner_id === studentId.value ? '已擁有這塊邊境田地。' : '')
-    : action.type === 'frontierRent' ? (!frontierExpansionAllowed.value ? '先佔領起始領地的六塊邊境地。' : farm.value.coins < 60 ? '租地需要 60 金幣。' : '')
+  const error = action.type === 'battleStart' ? (!student.value?.class || student.value?.isAnon ? '請以班級學生帳號登入。' : !frontierExpansionAllowed.value ? '先佔領起始領地的六塊邊境地。' : !frontierLeaseReady.value && frontierArea.value.id !== (farm.value.profile?.startAreaId || 'fittoa') ? '跨領地戰鬥需要先執行新版邊境土地 SQL。' : frontierClaim.value?.owner_id === studentId.value ? '已擁有這塊邊境田地。' : '')
+    : action.type === 'frontierRent' ? (!frontierLeaseReady.value ? '租地需要先執行新版邊境土地 SQL。' : !frontierExpansionAllowed.value ? '先佔領起始領地的六塊邊境地。' : farm.value.coins < 60 ? '租地需要 60 金幣。' : '')
     : action.plotKind === 'frontier' ? (!frontierUsable.value ? '尚未佔領或租用此邊境田地。' : isekaiActionError(farm.value, { ...action, frontierAccess: true, frontierClaimedAt: frontierClaim.value?.captured_at }, now.value))
     : action.type === 'peerLoan' ? (!peerLoanReady.value ? '同學借款尚未啟用，請先執行新增 SQL。' : !student.value?.class || student.value?.isAnon ? '請以班級學生帳號登入。' : '')
     : action.type === 'peerVisit' ? (!peerVisitReady.value ? '同學互訪尚未啟用，請先執行新增 SQL。' : !student.value?.class || student.value?.isAnon ? '請以班級學生帳號登入。' : '')
@@ -438,10 +439,13 @@ function remaining(plot) {
 
 async function loadFrontiers() {
   if (!student.value?.class || student.value?.isAnon) return;
-  const [claims, peers] = await Promise.all([
+  let [claims, peers] = await Promise.all([
     db.from('isekai_frontier_claims').select('area_id,plot_index,owner_id,lease_holder_id,lease_expires_at,captured_at').eq('class_name', student.value.class).limit(1000),
     db.from('students').select('student_id,hidden_name').eq('class_name', student.value.class).limit(100)
   ]);
+  frontierLeaseReady.value = !claims.error;
+  if (claims.error?.code === '42703') claims = await db.from('isekai_frontier_claims')
+    .select('area_id,plot_index,owner_id,captured_at').eq('class_name', student.value.class).limit(1000);
   if (claims.error) { frontierReady.value = false; lastFrontierRefresh = Date.now(); notice.value = '邊境農地尚未啟用：請先執行新版邊境土地 SQL。'; return; }
   frontierReady.value = true;
   frontiers.value = claims.data || [];
@@ -748,6 +752,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
             <p>勝利佔領的邊境田地不會自動到期，可播種、澆水、收成；其他同學仍可發動戰鬥奪取。也可花 60 金幣向系統租用空置田地 6 小時。租期結束或土地被奪後，原有作物無法繼續使用。</p>
             <label class="frontier-area-picker">選擇領地 <select :value="selectedFrontierAreaId" @change="chooseFrontierArea($event.target.value)"><option v-for="area in ISEKAI_AREAS" :key="area.id" :value="area.id">{{ area.name }}{{ area.id === (farm.profile?.startAreaId || 'fittoa') ? ' · 起始領地' : '' }}</option></select></label>
             <p v-if="!homeFrontiersComplete" class="people-note">佔滿起始領地的六塊邊境地後，可前往其他領地租地或戰鬥開拓。進度 {{ frontiers.filter(item => item.area_id === (farm.profile?.startAreaId || 'fittoa') && item.owner_id === studentId).length }}/6。</p>
+            <p v-if="frontierReady && !frontierLeaseReady" class="people-note">本地邊境戰與耕種可用；租地和跨領地拓展需先在新專案 Supabase 執行 20261003_isekai_frontier_farmland.sql。</p>
             <div class="frontier-slot-list"><button v-for="index in 6" :key="index" :class="{ chosen: selectedFrontier === index - 1, usable: frontiers.some(item => item.area_id === frontierArea.id && item.plot_index === index - 1 && (item.owner_id === studentId || (item.lease_holder_id === studentId && new Date(item.lease_expires_at).getTime() > now))) }" @click="selectedFrontier = index - 1">{{ index }} · {{ frontiers.find(item => item.area_id === frontierArea.id && item.plot_index === index - 1)?.owner_id === studentId ? '已佔領' : frontiers.find(item => item.area_id === frontierArea.id && item.plot_index === index - 1)?.lease_holder_id === studentId && new Date(frontiers.find(item => item.area_id === frontierArea.id && item.plot_index === index - 1)?.lease_expires_at).getTime() > now ? '租用中' : '待開拓' }}</button></div>
             <p>目前守方：<b>{{ frontierOwnerName }}</b><template v-if="frontierClaim?.lease_holder_id && new Date(frontierClaim.lease_expires_at).getTime() > now">；租戶：{{ frontierClaim.lease_holder_id === studentId ? '我方' : '同班同學' }}，至 {{ new Date(frontierClaim.lease_expires_at).toLocaleString('zh-TW') }}</template></p>
             <div v-if="frontierUsable" class="frontier-farm-controls">
