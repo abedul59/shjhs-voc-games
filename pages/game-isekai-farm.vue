@@ -71,10 +71,12 @@ const activeRegion = computed(() => ISEKAI_REGIONS.find(region => region.id === 
 const activeArea = computed(() => areaById(farm.value.selectedArea) || ISEKAI_AREAS[0]);
 const regionAreas = computed(() => ISEKAI_AREAS.filter(area => area.region === activeRegion.value.id));
 const mapViewBox = computed(() => {
+  if (mapMode.value === 'world') return '0 0 1200 800';
   if (mapMode.value === 'large') return '0 0 800 900';
   return activeRegion.value.viewBox;
 });
-const mapCaption = computed(() => mapMode.value === 'large' ? '中央大陸全貌'
+const mapCaption = computed(() => mapMode.value === 'world' ? '六面世界 · 五大陸圖誌'
+  : mapMode.value === 'large' ? '中央大陸全貌'
   : mapMode.value === 'middle' ? activeRegion.value.name : mapMode.value === 'small' ? `${activeRegion.value.name} · 領地圖` : `${activeArea.value.name} · 農莊與邊境`);
 const regionCrops = computed(() => ISEKAI_CROPS.filter(crop => crop.region === activeRegion.value.id));
 const categoryAnimals = computed(() => ISEKAI_ANIMALS.filter(animal => animal.group === animalCategory.value));
@@ -111,6 +113,7 @@ function changeRegion(id) {
   selectedCropId.value = ISEKAI_CROPS.find(crop => crop.region === id)?.id || 'wheat';
   mapMode.value = 'middle';
 }
+function openWorldMap() { mapMode.value = 'world'; atlasOpen.value = true; }
 
 function changeArea(id) {
   const area = areaById(id);
@@ -461,7 +464,7 @@ async function tickStaff() {
     return;
   }
   staffActiveMs.value = Math.min(ISEKAI_SHIFT_MS, staffActiveMs.value + delta);
-  const due = staffActiveMs.value - (farm.value.staffLastWorkMs || 0) >= ISEKAI_WORK_INTERVAL_MS;
+  const due = !farm.value.staffLastWorkMs || staffActiveMs.value - farm.value.staffLastWorkMs >= ISEKAI_WORK_INTERVAL_MS;
   if (!due && staffActiveMs.value < ISEKAI_SHIFT_MS) return;
   staffTickBusy = true;
   busy.value = true;
@@ -469,7 +472,7 @@ async function tickStaff() {
     if (current - lastFrontierRefresh > 5 * 60000) await loadFrontiers();
     let next = normalizeIsekaiPeople(farm.value);
     let details = [];
-    if (due) { const worked = runIsekaiStaff(next, current, frontiers.value.filter(item => item.owner_id === studentId.value)); next = worked.farm; details = worked.details; next.staffLastWorkMs = staffActiveMs.value; }
+    if (due) { const worked = runIsekaiStaff(next, current, frontiers.value.filter(item => item.owner_id === studentId.value)); next = worked.farm; details = worked.details; next.staffLastWorkMs = Math.max(1, staffActiveMs.value); }
     if (staffActiveMs.value >= ISEKAI_SHIFT_MS) {
       next.staffActiveMs = 0; next.staffLastWorkMs = 0; next.staffRestUntil = current + ISEKAI_REST_MS;
       next.staffHistory.unshift({ at: current, details: ['本輪值班滿 45 分鐘，開始休息 15 分鐘'] }); next.staffHistory = next.staffHistory.slice(0, 16);
@@ -554,9 +557,10 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
     </header>
     <div class="notice" role="status">{{ notice }} <button v-if="saveNotice.startsWith('成績尚未同步')" @click="syncRecord">重試同步</button></div>
     <div class="isekai-layout">
-      <section class="atlas panel" :class="{ 'atlas-overlay': atlasOpen }" aria-label="中央大陸地圖">
+      <section class="atlas panel" :class="{ 'atlas-overlay': atlasOpen }" aria-label="異世界地圖">
         <div class="section-heading"><span>01 · 大陸圖誌</span><strong>{{ mapCaption }}</strong></div>
         <div class="map-toolbar" aria-label="地圖比例尺">
+          <button :class="{ chosen: mapMode === 'world' }" @click="openWorldMap">超大地圖 · 世界</button>
           <button :class="{ chosen: mapMode === 'large' }" @click="mapMode = 'large'">大地圖 · 全大陸</button>
           <button :class="{ chosen: mapMode === 'middle' }" @click="mapMode = 'middle'">中地圖 · {{ activeRegion.name.replace('中央大陸', '') }}</button>
           <button :class="{ chosen: mapMode === 'small' }" @click="mapMode = 'small'">小地圖 · 領地</button>
@@ -564,7 +568,13 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
           <button class="atlas-expand" @click="atlasOpen = !atlasOpen">{{ atlasOpen ? '收起地圖' : '展開地圖' }}</button>
         </div>
         <div class="map-frame" :class="`map-${mapMode}`">
-          <svg v-if="mapMode === 'large' || mapMode === 'middle'" :viewBox="mapViewBox" preserveAspectRatio="xMidYMid meet" role="group" :aria-label="`${mapCaption}；可選擇區域或領地`">
+          <svg v-if="mapMode === 'world'" viewBox="0 0 1200 800" role="group" aria-label="六面世界五大陸與主要國家、城市、迷宮位置">
+            <image href="/maps/six-faced-world.svg" x="0" y="0" width="1200" height="800" />
+            <g class="world-central-link" role="button" tabindex="0" aria-label="放大中央大陸" @click="mapMode = 'large'" @keydown.enter="mapMode = 'large'">
+              <rect x="82" y="153" width="540" height="475" fill="transparent" /><text x="287" y="355" text-anchor="middle">點選中央大陸放大 ↗</text>
+            </g>
+          </svg>
+          <svg v-else-if="mapMode === 'large' || mapMode === 'middle'" :viewBox="mapViewBox" preserveAspectRatio="xMidYMid meet" role="group" :aria-label="`${mapCaption}；可選擇區域或領地`">
             <image href="/maps/central-continent.svg" x="0" y="0" width="800" height="900" />
             <g v-if="mapMode === 'large'" v-for="region in ISEKAI_REGIONS" :key="region.id" class="atlas-point" :class="{ locked: !farm.unlockedRegions.includes(region.id), current: activeRegion.id === region.id }" role="button" tabindex="0" :aria-label="region.name" @click="changeRegion(region.id)" @keydown.enter="changeRegion(region.id)">
               <circle :cx="region.x" :cy="region.y" r="19" /><text :x="region.x" :y="region.y + 7" text-anchor="middle" font-size="22">{{ farm.unlockedRegions.includes(region.id) ? '✧' : '◆' }}</text><text class="atlas-label" :x="region.x" :y="region.y + 40" text-anchor="middle" font-size="19">{{ region.name.replace('中央大陸', '') }}</text>
@@ -596,7 +606,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
             </g>
           </svg>
         </div>
-        <p class="map-note">{{ mapMode === 'large' ? '完整中央大陸輪廓；選一區放大。' : mapMode === 'middle' ? '選擇領地後查看微地圖。' : mapMode === 'small' ? '點選不規則領地，可開拓或進入農莊。' : '中央只有一塊私人農莊；六個田位在右側，外圍是邊境地。' }} 大陸輪廓參考原作地理；領地與邊境邊界為遊戲設計。</p>
+        <p class="map-note">{{ mapMode === 'world' ? '五大陸與主要國家、城市、迷宮的地理圖誌；可橫向捲動查看，點選中央大陸進入可遊玩區域。' : mapMode === 'large' ? '完整中央大陸輪廓；選一區放大。' : mapMode === 'middle' ? '選擇領地後查看微地圖。' : mapMode === 'small' ? '點選不規則領地，可開拓或進入農莊。' : '中央只有一塊私人農莊；六個田位在右側，外圍是邊境地。' }} 世界輪廓依公開地理資料重新繪製；目前農莊經營仍限中央大陸。</p>
         <button class="atlas-list-toggle" @click="atlasListsOpen = !atlasListsOpen">{{ atlasListsOpen ? '收起區域與領地清單' : '▾ 選擇其他區域與領地' }}</button>
         <div v-if="atlasListsOpen" class="atlas-lists">
         <div class="region-list">
@@ -624,7 +634,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
           <div class="field-grid">
             <button v-for="(plot, index) in plots" :key="index" class="field-tile" :class="{ selected: selectedPlot === index, grown: plot && plot.cropId && now >= plot.readyAt, facility: plot?.facility }" @click="selectPlot(index)">
               <span class="tile-index">田地 {{ index + 1 }}</span><span v-if="plot?.cropId" class="crop-glyph" :style="{ color: cropById(plot.cropId)?.color }">{{ cropById(plot.cropId)?.symbol }}</span><span v-else-if="plot?.animalId" class="crop-glyph">{{ animalById(plot.animalId)?.mark }}</span><span v-else-if="plot?.facility" class="crop-glyph">{{ buildingById(plot.facility)?.mark }}</span><span v-else class="empty-glyph">🌱</span>
-              <strong>{{ plot?.cropId ? cropById(plot.cropId)?.name : plot?.facility ? buildingById(plot.facility)?.name : '尚未使用' }}</strong><small>{{ plot?.cropId ? remaining(plot) : plot?.facility === 'stable' ? plot.animalId ? `${animalById(plot.animalId)?.name} · ${plot.readyAt ? remaining(plot) : '待照顧'}` : '空畜舍' : plot?.facility ? buildingById(plot.facility)?.description : '可種植或建造' }}</small>
+              <strong>{{ plot?.cropId ? cropById(plot.cropId)?.name : plot?.facility ? buildingById(plot.facility)?.name : '尚未使用' }}</strong><small>{{ plot?.cropId ? remaining(plot) : plot?.facility === 'stable' ? plot.animalId ? `${animalById(plot.animalId)?.name} · ${plot.readyAt ? remaining(plot) : '待照顧'}` : '空畜舍' : plot?.facility ? buildingById(plot.facility)?.description : farm.staffReservedPlots.includes(`${activeArea.id}:${index}`) ? '手動保留 · 不自動播種' : '允許人力自動播種' }}</small>
             </button>
           </div>
         </div>
@@ -649,7 +659,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
           <template v-else-if="operationTab === 'staff'"><div class="person-tabs"><button :class="{ chosen: staffView === 'market' }" @click="staffView = 'market'">招募市場</button><button :class="{ chosen: staffView === 'roster' }" @click="staffView = 'roster'">值班與任務</button><button :class="{ chosen: staffView === 'history' }" @click="staffView = 'history'">工作紀錄</button></div>
             <p class="people-note">{{ staffAvailable ? farm.staffRestUntil > now ? `休息中，約 ${Math.ceil((farm.staffRestUntil - now)/60000)} 分鐘後自動恢復` : `自動值班 ${Math.floor(staffActiveMs/60000)}/45 分鐘有效遊玩時間` : '雇用人員或安排家人工作後自動值班' }}。休息 15 分鐘按實際時間計算；不需按啟動按鈕。</p>
             <div v-if="staffView === 'market'" class="people-scroll"><div class="task-toggles"><button :class="{ chosen:staffPayPeriod === 'day' }" @click="staffPayPeriod = 'day'">日薪</button><button :class="{ chosen:staffPayPeriod === 'week' }" @click="staffPayPeriod = 'week'">周薪</button></div><p class="people-note">雇用時預付所選期間薪資；期滿後有任務才自動續約扣款。休息期間不另外扣薪。</p><div class="people-grid"><article v-for="person in marketStaff" :key="person.id"><span class="person-art"><IsekaiPortrait :race-id="person.raceId" :profession-id="person.professionId" :seed="person.id" :label="person.name" /></span><b>{{ person.name }}</b><small>{{ ISEKAI_RACES.find(item => item.id === person.raceId)?.name }} · {{ ISEKAI_PROFESSIONS.find(item => item.id === person.professionId)?.name }}</small><small>擅長 {{ {crops:'農田',animals:'飼育',trade:'交易',guard:'戰鬥'}[person.focus] }} · 戰力 {{ person.power }} · 日薪 {{ isekaiStaffWage(person,'day') }}／周薪 {{ isekaiStaffWage(person,'week') }}</small><button v-if="!farm.staff.some(item => item.id === person.id)" :disabled="!can({ type:'hireStaff', personId:person.id, period:staffPayPeriod })" @click="askAction({ type:'hireStaff', personId:person.id, period:staffPayPeriod })">雇用 · 預付 {{ isekaiStaffWage(person,staffPayPeriod) }} 金幣</button><button v-else :disabled="!can({ type:'dismissStaff', personId:person.id })" @click="askAction({ type:'dismissStaff', personId:person.id })">解雇</button></article></div></div>
-            <div v-else-if="staffView === 'roster'" class="people-scroll"><p v-if="!farm.staff.length">目前未雇用市場人員。</p><div v-for="contract in farm.staff" :key="contract.id" class="assignment"><span>{{ staffById(contract.id)?.mark }} {{ staffById(contract.id)?.name }} · {{ contract.period === 'week' ? '周薪' : '日薪' }} {{ isekaiStaffWage(staffById(contract.id), contract.period) }} · {{ contract.paidUntil > now ? `已付至 ${new Date(contract.paidUntil).toLocaleString('zh-TW')}` : '待有任務時續約' }}</span><button v-for="focus in ['crops','animals','trade','guard']" :key="focus" :class="{ chosen: contract.focus === focus }" @click="askAction({ type:'staffFocus', personId:contract.id, focus })">{{ { crops:'農田',animals:'飼育',trade:'交易',guard:'戰鬥' }[focus] }}</button></div><div class="task-toggles"><button v-for="task in ISEKAI_TASKS" :key="task.id" :class="{ chosen: farm.staffTasks[task.id] }" @click="askAction({ type:'staffTask', taskId:task.id, enabled:!farm.staffTasks[task.id] })">{{ farm.staffTasks[task.id] ? '☑' : '□' }} {{ task.label }}</button></div><p class="people-note">自動播種的作物可多選；勾選「保留手動」後，人力不會在目前田位補苗或播種。</p><div class="task-toggles"><button v-for="crop in regionCrops" :key="crop.id" :class="{ chosen: farm.staffAutoCrops.includes(crop.id) }" @click="askAction({ type:'staffAutoCrop', cropId:crop.id, enabled:!farm.staffAutoCrops.includes(crop.id) })">{{ farm.staffAutoCrops.includes(crop.id) ? '☑' : '□' }} {{ crop.symbol }} {{ crop.name }}</button></div><button class="people-main-action" @click="askAction({ type:'staffReservePlot', areaId:activeArea.id, plotIndex:selectedPlot })">{{ farm.staffReservedPlots.includes(`${activeArea.id}:${selectedPlot}`) ? '☑ 保留手動播種' : '□ 此田允許自動播種' }} · 第 {{ selectedPlot + 1 }} 塊田</button></div>
+            <div v-else-if="staffView === 'roster'" class="people-scroll"><p v-if="!farm.staff.length">目前未雇用市場人員。</p><div v-for="contract in farm.staff" :key="contract.id" class="assignment"><span>{{ staffById(contract.id)?.mark }} {{ staffById(contract.id)?.name }} · {{ contract.period === 'week' ? '周薪' : '日薪' }} {{ isekaiStaffWage(staffById(contract.id), contract.period) }} · {{ contract.paidUntil > now ? `已付至 ${new Date(contract.paidUntil).toLocaleString('zh-TW')}` : '待有任務時續約' }}</span><button v-for="focus in ['crops','animals','trade','guard']" :key="focus" :class="{ chosen: contract.focus === focus }" @click="askAction({ type:'staffFocus', personId:contract.id, focus })">{{ { crops:'農田',animals:'飼育',trade:'交易',guard:'戰鬥' }[focus] }}</button></div><div class="task-toggles"><button v-for="task in ISEKAI_TASKS" :key="task.id" :class="{ chosen: farm.staffTasks[task.id] }" @click="askAction({ type:'staffTask', taskId:task.id, enabled:!farm.staffTasks[task.id] })">{{ farm.staffTasks[task.id] ? '☑' : '□' }} {{ task.label }}</button></div><p class="people-note">勾選要自動種植的作物；人力會在每次巡查填滿所有可播種空田。田位的手動保留只禁止自動補苗與播種，不影響澆水或收成。</p><div class="task-toggles"><button v-for="crop in regionCrops" :key="crop.id" :class="{ chosen: farm.staffAutoCrops.includes(crop.id) }" @click="askAction({ type:'staffAutoCrop', cropId:crop.id, enabled:!farm.staffAutoCrops.includes(crop.id) })">{{ farm.staffAutoCrops.includes(crop.id) ? '☑' : '□' }} {{ crop.symbol }} {{ crop.name }}</button></div><button class="people-main-action" @click="askAction({ type:'staffReservePlot', areaId:activeArea.id, plotIndex:selectedPlot })">第 {{ selectedPlot + 1 }} 塊田 · {{ farm.staffReservedPlots.includes(`${activeArea.id}:${selectedPlot}`) ? '目前禁止人力播種，點此允許' : '目前允許人力播種，點此禁止' }}</button></div>
             <div v-else class="people-scroll"><p v-for="(entry,index) in farm.staffHistory" :key="index">{{ new Date(entry.at).toLocaleString('zh-TW') }} · {{ entry.details.join('；') }}</p><p v-if="!farm.staffHistory.length">尚無值班紀錄。</p></div>
           </template>
           <template v-else-if="operationTab === 'family'"><div class="person-tabs"><button :class="{ chosen: familyView === 'meet' }" @click="familyView = 'meet'">認識對象</button><button :class="{ chosen: familyView === 'home' }" @click="familyView = 'home'">配偶與孩子</button></div><p class="people-note">{{ farm.profile?.faith === 'milis' ? '米里斯信仰：一位配偶' : '自由信仰：最多三位配偶' }}。任何性別組合都可交往與結婚；雙方在遊戲中同意後才能結婚。</p>
@@ -712,7 +722,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
 .territory-shape,.field-shape{cursor:pointer;outline:none}.territory-shape path,.field-shape path{stroke:#e9d5a6;stroke-width:5;stroke-linejoin:round;transition:filter .18s,stroke-width .18s}.territory-shape:hover path,.field-shape:hover path,.territory-shape:focus path,.field-shape:focus path{filter:brightness(1.2);stroke-width:8}.territory-shape.chosen path,.field-shape.chosen path{stroke:#fff3b7;stroke-width:8}.territory-shape.locked path{filter:saturate(.4) brightness(.65)}.shape-label{font-size:17px;font-weight:bold;fill:#fff8de;paint-order:stroke;stroke:#203138;stroke-width:4;pointer-events:none}.territory-shape text,.field-shape text{pointer-events:none}
 .atlas-point{cursor:pointer;fill:#f9f1d6;outline:none}.atlas-point circle{fill:#a77b42;stroke:#fae0a4;stroke-width:2.5}.atlas-point.current circle{fill:#3d7163;stroke:#f7e6a3;stroke-width:4}.atlas-point.locked circle{fill:#4a6264;stroke:#b2bdab}.atlas-label{fill:#fff2d0;paint-order:stroke;stroke:#15282b;stroke-width:4;stroke-linejoin:round;font-weight:bold;pointer-events:none}.atlas-point text{pointer-events:none}
 .area-list{margin-top:8px;border-top:1px solid #af976780;padding-top:7px}.area-list h3{font-size:12px;color:#e8c991;margin:0 0 6px}.area-row{display:flex;align-items:center;gap:6px;border:1px solid #8f8160;background:#10262b8a;border-radius:5px;margin:4px 0;min-height:45px}.area-row.selected{border-color:#e3bf7b;background:#385044}.area-row>button:first-child,.area-row>div{flex:1;text-align:left;background:none;border:none;color:var(--ink);padding:5px 8px}.area-row b,.area-row small{display:block}.area-row b{font-size:12px}.area-row small{font-size:10px;color:#cad1bc}.area-row .unlock{margin-right:6px;padding:6px 9px;border:1px solid #d5b77d;border-radius:4px;background:#946c3c;color:#fff4d7;font-size:11px}
-.atlas-overlay{position:fixed;z-index:700;inset:2vh 4vw;display:flex;flex-direction:column;padding:18px 24px;background:#132930;box-shadow:0 0 0 100vmax #071519d9,0 20px 80px #000a;overflow:auto}.atlas-overlay .map-toolbar{grid-template-columns:repeat(5,1fr)}.atlas-overlay .map-toolbar .atlas-expand{grid-column:auto}.atlas-overlay .map-frame{flex:1;min-height:280px;max-height:calc(100vh - 220px);aspect-ratio:auto}.atlas-overlay .region-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.atlas-overlay .area-list{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}.atlas-overlay .area-list h3{grid-column:1/-1}.atlas-overlay .area-row{margin:0}
+.atlas-overlay{position:fixed;z-index:700;inset:2vh 4vw;display:flex;flex-direction:column;padding:18px 24px;background:#132930;box-shadow:0 0 0 100vmax #071519d9,0 20px 80px #000a;overflow:auto}.atlas-overlay .map-toolbar{grid-template-columns:repeat(6,1fr)}.atlas-overlay .map-toolbar .atlas-expand{grid-column:auto}.atlas-overlay .map-frame{flex:1;min-height:280px;max-height:calc(100vh - 220px);aspect-ratio:auto}.atlas-overlay .region-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.atlas-overlay .area-list{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}.atlas-overlay .area-list h3{grid-column:1/-1}.atlas-overlay .area-row{margin:0}
 .profile-card{display:grid;gap:5px;border:1px solid #c9a66b;background:#bca27222;border-radius:5px;padding:9px;margin-bottom:10px}.profile-card strong{font-size:13px}.profile-card small{font-size:11px;color:#dbd3b7}.profile-card button{background:#304c48;color:#efdcaf;border:1px solid #bb9c63;border-radius:4px;padding:6px;font-size:11px}
 .profile-card .character-portrait{display:grid;place-items:center;width:58px;height:58px;border:2px solid #d9bb80;border-radius:50%;background:radial-gradient(circle at 40% 25%,#777e62,#34554e 70%);box-shadow:0 0 0 3px #132b2d,0 3px 12px #05130f;font-size:31px;margin-bottom:4px}
 .field-tile.facility{background:repeating-linear-gradient(155deg,#4d5b60,#4d5b60 10px,#5b686b 12px,#5b686b 22px)}.field-tile small{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 3px}.operation-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin:8px 0}.operation-tabs button{background:#203d3c;color:#ebdfbf;border:1px solid #9e8d68;border-radius:4px;padding:7px;font-size:12px}.operation-tabs button.chosen{background:#866538;color:#fff6df;border-color:#e5c581}.building-actions{grid-template-columns:1fr 1fr}.animal-hint{display:block;color:#cfc5a8;margin-top:5px;font-size:11px}.animal-stock{margin-top:10px;padding-top:10px;border-top:1px solid #bda47564}
@@ -729,6 +739,9 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
 .atlas,.homestead{overflow:auto;scrollbar-gutter:stable}
 .atlas .map-frame{flex:none;max-height:min(58vh,600px)}
 .atlas .map-frame.map-large{aspect-ratio:8 / 9}
+.atlas .map-frame.map-world{aspect-ratio:3 / 2;overflow:auto}
+.map-frame.map-world svg{min-width:1100px;width:100%;height:auto}
+.world-central-link{cursor:pointer}.world-central-link text{font-size:17px;fill:#fff3d5;paint-order:stroke;stroke:#142931;stroke-width:4;pointer-events:none}.world-central-link:focus rect{stroke:#f4d78d;stroke-width:5}
 .atlas .map-frame.map-middle{aspect-ratio:4 / 3}
 .atlas .map-frame.map-small,.atlas .map-frame.map-micro{aspect-ratio:10 / 7}
 .map-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}
