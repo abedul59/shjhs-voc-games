@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 500" role="img" aria-labelledby="title desc">
+  <title id="title">星璃鍊金大陸十五區</title>
+  <desc id="desc">依優米雅的鍊金工房世界地圖由西向東的長形破碎陸帶構圖，重新描繪森林、峽谷、菌域、工業廢墟與圓形遺跡的海岸外緣，包含十五個探索區。</desc>
+  <defs>
+    <radialGradient id="sea"><stop stop-color="#24495a"/><stop offset="1" stop-color="#0a2234"/></radialGradient>
+    <pattern id="waves" width="50" height="33" patternUnits="userSpaceOnUse"><path d="M0 20q12-7 24 0t26 0" fill="none" stroke="#9fd4cf" stroke-width="2" opacity=".12"/></pattern>
+    <linearGradient id="green" x2=".6" y2="1"><stop stop-color="#b9c69d"/><stop offset="1" stop-color="#447a62"/></linearGradient>
+    <linearGradient id="blue" x2=".8" y2="1"><stop stop-color="#a6bdb5"/><stop offset="1" stop-color="#4c6a77"/></linearGradient>
+    <linearGradient id="brown" x2=".8" y2="1"><stop stop-color="#ceb386"/><stop offset="1" stop-color="#715e58"/></linearGradient>
+    <linearGradient id="gold" x2=".8" y2="1"><stop stop-color="#e4cb9b"/><stop offset="1" stop-color="#9a8564"/></linearGradient>
+  </defs>
+  <rect width="1400" height="500" fill="url(#sea)"/><rect width="1400" height="500" fill="url(#waves)"/>
+  <path d="M0 118 32 133 47 108 82 122 107 102 145 114 166 95 190 112 227 98 244 124 279 136 269 162 299 180 286 201 303 224 276 238 279 268 244 282 235 315 203 303 179 326 150 305 132 319 99 296 80 311 62 276 38 271 19 231 0 216Z" fill="url(#green)" stroke="#e8deb3" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M125 319 150 341 146 379 121 388 107 360Z M199 320 222 323 245 359 229 381 207 369 189 340Z M287 218 313 217 321 237 305 254 282 248Z" fill="#7b9d7e" stroke="#e7dbb2" stroke-width="3"/>
+  <path d="M284 154 319 148 326 126 361 138 388 118 415 134 443 115 464 129 498 115 530 125 556 143 574 166 572 196 596 212 585 241 598 258 575 285 545 279 523 302 493 294 468 316 442 295 420 310 391 292 366 300 336 277 318 257 327 232 305 207Z" fill="url(#blue)" stroke="#e8deb3" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M377 118 389 91 414 99 429 119 M484 113 504 91 526 102 541 125 M359 298 365 337 388 345 402 310 M517 303 524 328 544 317 548 280" fill="#718b86" stroke="#e8deb3" stroke-width="3"/>
+  <path d="M606 192 625 174 644 181 657 203 643 217 620 210Z M659 162 676 143 696 151 701 178 679 188Z M678 223 698 210 720 226 715 251 687 253Z M725 183 748 175 757 194 747 216 724 213Z" fill="#a89e95" stroke="#e6d2b0" stroke-width="3"/>
+  <path d="M745 241 771 224 794 228 812 202 840 215 856 200 884 219 896 241 930 246 937 267 963 287 955 310 979 329 953 342 959 369 929 378 914 397 886 389 858 405 823 394 796 400 779 372 748 365 742 342 718 328 729 299 707 279Z" fill="url(#brown)" stroke="#e7d5ae" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M817 204 810 178 833 165 853 190Z M920 245 946 227 960 235 956 259Z M759 372 750 406 770 419 792 399Z" fill="#9d8170" stroke="#e7d5ae" stroke-width="3"/>
+  <path d="M969 280 994 277 1007 251 1030 259 1050 245 1067 269 1094 275 1110 297 1093 318 1102 347 1085 365 1056 359 1036 380 1008 371 988 386 970 360 958 341 979 329 960 308Z" fill="url(#gold)" stroke="#e7d5ae" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M1107 306 1147 302 1164 320 1140 337 1104 329Z" fill="#b0a084" stroke="#e7d5ae" stroke-width="3"/>
+  <path d="M1160 310 1175 287 1198 272 1228 261 1259 269 1280 289 1298 318 1284 345 1266 370 1238 381 1207 378 1184 363 1169 341Z" fill="#758a87" stroke="#e7d5ae" stroke-width="4"/>
+  <circle cx="1231" cy="322" r="43" fill="none" stroke="#d7c89f" stroke-width="8" opacity=".85"/><circle cx="1231" cy="322" r="21" fill="#304d56" stroke="#e7d5ae" stroke-width="4"/><path d="M1231 280v84 M1189 322h84" stroke="#d7c89f" stroke-width="5"/>
+  <path d="M1302 317 1325 307 1345 318 1333 338 1307 336Z" fill="#9da391" stroke="#e7d5ae" stroke-width="3"/>
+  <path d="M160 236 Q 323 204 452 204 T 645 205 Q 761 252 838 299 T 1051 320 Q 1177 311 1230 322" fill="none" stroke="#ffeba6" stroke-width="4" stroke-dasharray="8 12" opacity=".56"/>
+  <path d="M84 178 101 145 124 169 143 135 169 167 187 138 211 173 M377 189 394 157 417 182 441 145 469 178 489 153 511 184 M802 298 822 270 840 293 863 264 885 301" fill="none" stroke="#f2e6ce" stroke-width="10" opacity=".55"/>
+  <text x="34" y="52" font-family="serif" font-size="27" letter-spacing="6" fill="#f5e5c1">ASTERIA · 星璃大陸</text>
+  <path d="M1357 73V30l-12 19 12-6 12 6Z" stroke="#e8d8ad" stroke-width="2" fill="#e8d8ad"/><text x="1347" y="95" font-family="serif" font-size="18" fill="#e8d8ad">N</text>
+</svg>
