@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 500" role="img" aria-labelledby="title desc">
-  <title id="title">六域鍊金大陸</title>
-  <desc id="desc">依優米雅的鍊金工房世界地圖由西向東的長形破碎陸帶構圖，重新描繪森林、峽谷、菌域、工業廢墟與圓形遺跡的海岸外緣。</desc>
+  <title id="title">星璃鍊金大陸十五區</title>
+  <desc id="desc">依優米雅的鍊金工房世界地圖由西向東的長形破碎陸帶構圖，重新描繪森林、峽谷、菌域、工業廢墟與圓形遺跡的海岸外緣，包含十五個探索區。</desc>
   <defs>
     <radialGradient id="sea"><stop stop-color="#24495a"/><stop offset="1" stop-color="#0a2234"/></radialGradient>
     <pattern id="waves" width="50" height="33" patternUnits="userSpaceOnUse"><path d="M0 20q12-7 24 0t26 0" fill="none" stroke="#9fd4cf" stroke-width="2" opacity=".12"/></pattern>
@@ -24,6 +24,6 @@
   <path d="M1302 317 1325 307 1345 318 1333 338 1307 336Z" fill="#9da391" stroke="#e7d5ae" stroke-width="3"/>
   <path d="M160 236 Q 323 204 452 204 T 645 205 Q 761 252 838 299 T 1051 320 Q 1177 311 1230 322" fill="none" stroke="#ffeba6" stroke-width="4" stroke-dasharray="8 12" opacity=".56"/>
   <path d="M84 178 101 145 124 169 143 135 169 167 187 138 211 173 M377 189 394 157 417 182 441 145 469 178 489 153 511 184 M802 298 822 270 840 293 863 264 885 301" fill="none" stroke="#f2e6ce" stroke-width="10" opacity=".55"/>
-  <text x="34" y="52" font-family="serif" font-size="27" letter-spacing="6" fill="#f5e5c1">ASTERIA · 六域大陸</text>
+  <text x="34" y="52" font-family="serif" font-size="27" letter-spacing="6" fill="#f5e5c1">ASTERIA · 星璃大陸</text>
   <path d="M1357 73V30l-12 19 12-6 12 6Z" stroke="#e8d8ad" stroke-width="2" fill="#e8d8ad"/><text x="1347" y="95" font-family="serif" font-size="18" fill="#e8d8ad">N</text>
 </svg>
