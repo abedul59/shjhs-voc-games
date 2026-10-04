@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { ALCHEMY_GAME_TYPE, MATERIALS, PARTY, RECIPES, REGIONS, appendJournal, canSynthesize, freshAtelier, gather, materialById, normalizeAtelier, recipeById, regionById, synthesize, weatherFor } from '~/lib/alchemy-atelier';
+import { ALCHEMISTS, ALCHEMY_GAME_TYPE, MATERIALS, PARTY, RECIPES, REGIONS, appendJournal, canSynthesize, freshAtelier, gather, materialById, normalizeAtelier, recipeById, regionById, synthesize, weatherFor } from '~/lib/alchemy-atelier';
 
 const db = useSupabaseClient();
 const route = useRoute();
@@ -22,8 +22,11 @@ const saveNotice = ref('');
 const activeTab = ref('explore');
 const mapScale = ref('continent');
 const selectedRecipe = ref('healing');
-const selectedCompanion = ref('alchemist');
-const selectedItem = ref('spark');
+const selectedCompanion = ref('');
+const selectedItem = ref('');
+const startingHero = ref('lia');
+const startingParty = ref([]);
+const selectedCarrier = ref('');
 const battle = ref(null);
 const quiz = ref(null);
 const quizError = ref('');
@@ -49,7 +52,78 @@ const filteredRecipes = computed(() => recipeFilter.value === 'all' ? RECIPES : 
 const score = computed(() => (session.value?.correct.length || 0) * 10);
 const inventoryList = computed(() => MATERIALS.filter(material => (workshop.value.inventory[material.id]?.count || 0) > 0));
 const productList = computed(() => RECIPES.filter(item => (workshop.value.items[item.id]?.count || 0) > 0));
+const hero = computed(() => ALCHEMISTS.find(person => person.id === workshop.value.heroId));
+const activeParty = computed(() => [hero.value, ...PARTY.filter(person => workshop.value.partyIds.includes(person.id))].filter(Boolean));
+const allActors = computed(() => [hero.value, ...PARTY].filter(Boolean));
+const battleItems = computed(() => RECIPES.filter(item => (workshop.value.loadouts[selectedCompanion.value]?.[item.id]?.count || 0) > 0));
+const carriedCount = actorId => Object.values(workshop.value.loadouts[actorId] || {}).reduce((sum, entry) => sum + (entry?.count || 0), 0);
 const worldProgress = computed(() => `${workshop.value.defeated.length}/${REGIONS.length}`);
+
+function cloneWorkshop() { return normalizeAtelier(JSON.parse(JSON.stringify(workshop.value))); }
+
+function toggleStartingCompanion(id) {
+  if (startingParty.value.includes(id)) startingParty.value = startingParty.value.filter(value => value !== id);
+  else if (startingParty.value.length < 3) startingParty.value = [...startingParty.value, id];
+}
+
+async function confirmCharacter() {
+  if (busy.value || workshop.value.heroId) return;
+  busy.value = true;
+  try {
+    const next = cloneWorkshop();
+    next.heroId = startingHero.value;
+    next.partyIds = [...startingParty.value];
+    appendJournal(next, `選擇${ALCHEMISTS.find(person => person.id === next.heroId).name}為主角，與${next.partyIds.length}位同伴踏上旅途。`);
+    await saveWorkshop(next);
+    selectedCompanion.value = next.heroId;
+    selectedCarrier.value = next.heroId;
+    notice.value = '主角已確定。你可以隨時在「夥伴與圖鑑」調整出戰同伴與道具攜帶。';
+  } catch (error) { notice.value = `角色選擇未完成：${error.message}`; }
+  finally { busy.value = false; }
+}
+
+async function toggleCompanion(id) {
+  if (busy.value || battle.value) { notice.value = '請先結束戰鬥，再調整出戰同伴。'; return; }
+  const next = cloneWorkshop();
+  if (next.partyIds.includes(id)) next.partyIds = next.partyIds.filter(value => value !== id);
+  else if (next.partyIds.length < 3) next.partyIds.push(id);
+  else { notice.value = '最多可帶三位同伴出戰。請先移除一位。'; return; }
+  busy.value = true;
+  try {
+    await saveWorkshop(next);
+    if (!activeParty.value.some(person => person.id === selectedCompanion.value)) selectedCompanion.value = next.heroId;
+    notice.value = `已更新出戰隊伍：主角與${next.partyIds.length}位同伴。`;
+  } catch (error) { notice.value = `隊伍設定失敗：${error.message}`; }
+  finally { busy.value = false; }
+}
+
+async function moveItem(itemId, actorId, direction) {
+  if (busy.value || battle.value || quiz.value) { notice.value = '請在戰鬥外調整道具。'; return; }
+  const actor = allActors.value.find(person => person.id === actorId);
+  const item = recipeById(itemId);
+  if (!actor || !item) return;
+  const next = cloneWorkshop();
+  const source = direction === 'equip' ? next.items : (next.loadouts[actorId] || {});
+  const target = direction === 'equip' ? (next.loadouts[actorId] ||= {}) : next.items;
+  if (!source[itemId]?.count) { notice.value = '沒有可轉移的道具。'; return; }
+  if (direction === 'equip' && Object.values(target).reduce((sum, entry) => sum + (entry?.count || 0), 0) >= 6) { notice.value = `${actor.name}最多可攜帶六件道具。`; return; }
+  const quality = Math.round(source[itemId].totalQuality / source[itemId].count);
+  source[itemId].count -= 1;
+  source[itemId].totalQuality = source[itemId].count ? Math.max(0, source[itemId].totalQuality - quality) : 0;
+  const existing = target[itemId] || { count: 0, totalQuality: 0 };
+  target[itemId] = { count: existing.count + 1, totalQuality: existing.totalQuality + quality };
+  busy.value = true;
+  try {
+    await saveWorkshop(next);
+    notice.value = direction === 'equip' ? `已將${item.name}交給${actor.name}攜帶。` : `已從${actor.name}取回${item.name}。`;
+  } catch (error) { notice.value = `道具轉移失敗：${error.message}`; }
+  finally { busy.value = false; }
+}
+
+function chooseFighter(id) {
+  selectedCompanion.value = id;
+  selectedItem.value = RECIPES.find(item => (workshop.value.loadouts[id]?.[item.id]?.count || 0) > 0)?.id || '';
+}
 
 function chooseRegion(id) {
   if (battle.value) { notice.value = '請先完成或撤退目前的戰鬥，再移動到其他區域。'; return; }
@@ -89,9 +163,10 @@ function chooseQuestion(operation) {
 }
 
 function newBattle() {
-  if (battle.value) return;
+  if (battle.value || !workshop.value.heroId) return;
   const region = activeRegion.value;
   battle.value = { regionId: region.id, enemy: region.enemy, hp: region.hp, maxHp: region.hp, guarding: false, shield: 0, bonus: 0, weakenPower: 0, weakenTurns: 0, stunned: false, round: 1 };
+  chooseFighter(workshop.value.heroId);
   activeTab.value = 'battle';
   notice.value = `${region.enemy}現身！選擇夥伴與招式，每次行動回答單字題。`;
 }
@@ -115,7 +190,7 @@ function addDrop(state, id, quantity = 1, quality = 66) {
 
 async function executeOperation(operation) {
   // Vue refs hold reactive proxies, which structuredClone cannot clone in browsers.
-  const next = normalizeAtelier(JSON.parse(JSON.stringify(workshop.value)));
+  const next = cloneWorkshop();
   let message = '';
   let nextBattle = battle.value ? { ...battle.value } : null;
   if (operation.type === 'gather') {
@@ -129,19 +204,20 @@ async function executeOperation(operation) {
     appendJournal(next, message);
   } else if (operation.type === 'battle') {
     if (!nextBattle || nextBattle.regionId !== next.regionId) throw new Error('戰鬥已結束，請重新挑戰。');
-    const fighter = PARTY.find(person => person.id === operation.companionId) || PARTY[0];
+    const fighter = [...ALCHEMISTS, ...PARTY].find(person => person.id === operation.companionId);
+    if (!fighter || ![next.heroId, ...next.partyIds].includes(fighter.id)) throw new Error('這位角色不在目前出戰隊伍。');
     const selected = recipeById(operation.itemId);
     let damage = 0;
     if (operation.move === 'attack') damage = fighter.damage + Math.floor(Math.random() * 7);
     else if (operation.move === 'skill') damage = fighter.damage + 9 + Math.floor(Math.random() * 6);
     else if (operation.move === 'guard') nextBattle.guarding = true;
     else if (operation.move === 'item') {
-      if (!selected || (next.items[selected.id]?.count || 0) < 1) throw new Error('這項道具已經用完。');
-      const stored = next.items[selected.id];
+      if (!selected || (next.loadouts[fighter.id]?.[selected.id]?.count || 0) < 1) throw new Error('這位角色沒有攜帶該道具，請在戰鬥前分配。');
+      const stored = next.loadouts[fighter.id][selected.id];
       const quality = Math.round(stored.totalQuality / stored.count);
       const strength = Math.max(1, Math.round(selected.power * (.75 + quality / 200)));
-      next.items[selected.id].count -= 1;
-      next.items[selected.id].totalQuality = Math.max(0, stored.totalQuality - quality);
+      stored.count -= 1;
+      stored.totalQuality = stored.count ? Math.max(0, stored.totalQuality - quality) : 0;
       if (selected.kind === 'heal') next.hp = Math.min(100, next.hp + strength);
       else if (selected.kind === 'shield') nextBattle.shield = Math.min(120, (nextBattle.shield || 0) + strength);
       else if (selected.kind === 'boost') nextBattle.bonus = Math.min(100, (nextBattle.bonus || 0) + strength);
@@ -182,6 +258,7 @@ async function executeOperation(operation) {
   } else throw new Error('未知的操作。');
   await saveWorkshop(next);
   battle.value = nextBattle;
+  if (operation.type === 'battle' && operation.move === 'item') chooseFighter(operation.companionId);
   return message;
 }
 
@@ -323,6 +400,8 @@ onMounted(async () => {
     if (error) throw error;
     words.value = (data || []).filter(word => word.en_us && word.zh_tw);
     await loadWorkshop();
+    selectedCompanion.value = workshop.value.heroId || '';
+    selectedCarrier.value = workshop.value.heroId || '';
     await loadSession();
     notice.value = words.value.length < 4 ? '本課單字不足四筆，請回首頁換一個範圍。' : '鍊金工房已開啟。採集、調合與戰鬥都會出現本課單字題。';
   } catch (error) { notice.value = `載入失敗：${error.message}。請確認新專案已執行鍊金工房 SQL。`; }
@@ -371,14 +450,36 @@ onMounted(async () => {
             <div class="recipe-grid"><button v-for="item in filteredRecipes" :key="item.id" :class="{ on: selectedRecipe === item.id }" @click="selectedRecipe = item.id"><span>{{ item.icon }}</span><strong>{{ item.name }}</strong><small>{{ item.effect }}</small></button></div>
             <div class="recipe-detail"><div><h3>{{ recipe.icon }} {{ recipe.name }}</h3><p>{{ recipe.effect }} · 可在戰鬥使用</p><div class="ingredient-list"><span v-for="(count, id) in recipe.ingredients" :key="id" :class="{ missing: (workshop.inventory[id]?.count || 0) < count }">{{ materialById(id)?.icon }} {{ materialById(id)?.name }} {{ workshop.inventory[id]?.count || 0 }}/{{ count }}</span></div></div><button class="primary-button" :disabled="busy || !canSynthesize(workshop, recipe) || words.length < 4" @click="chooseQuestion({ type: 'synthesize', recipeId: recipe.id })">投入鍊金釜 · 答單字題</button></div>
           </div>
-          <aside class="side-stack"><div class="panel"><div class="panel-title"><div><span class="eyebrow">BAG</span><h2>素材背包</h2></div></div><div v-if="inventoryList.length" class="stock-list"><div v-for="material in inventoryList" :key="material.id"><span>{{ material.icon }} {{ material.name }}<small>{{ material.element }}屬性 · 平均品質 {{ Math.round(workshop.inventory[material.id].totalQuality / workshop.inventory[material.id].count) }}</small></span><b>×{{ workshop.inventory[material.id].count }}</b></div></div><p v-else>背包是空的。先到大陸探索採集。</p></div><div class="panel"><h3>成品</h3><div v-if="productList.length" class="stock-list"><div v-for="item in productList" :key="item.id"><span>{{ item.icon }} {{ item.name }}</span><b>×{{ workshop.items[item.id].count }}</b></div></div><p v-else>尚未完成任何調合。</p></div></aside>
+          <aside class="side-stack"><div class="panel"><div class="panel-title"><div><span class="eyebrow">BAG</span><h2>素材背包</h2></div></div><div v-if="inventoryList.length" class="stock-list"><div v-for="material in inventoryList" :key="material.id"><span>{{ material.icon }} {{ material.name }}<small>{{ material.element }}屬性 · 平均品質 {{ Math.round(workshop.inventory[material.id].totalQuality / workshop.inventory[material.id].count) }}</small></span><b>×{{ workshop.inventory[material.id].count }}</b></div></div><p v-else>背包是空的。先到大陸探索採集。</p></div><div class="panel"><h3>調合成品 · 工房背包</h3><p class="intro">成品先放在工房；交給角色攜帶後，該角色出戰才能使用。每位角色最多攜帶六件。</p><label class="carrier-select">交給角色 <select v-model="selectedCarrier"><option v-for="person in allActors" :key="person.id" :value="person.id">{{ person.name }} · {{ person.job }}{{ activeParty.some(member => member.id === person.id) ? '（出戰）' : '' }}</option></select></label><div v-if="productList.length" class="stock-list"><div v-for="item in productList" :key="item.id"><span>{{ item.icon }} {{ item.name }}<small>{{ item.effect }}</small></span><div class="stock-actions"><b>×{{ workshop.items[item.id].count }}</b><button :disabled="busy || !!battle || !selectedCarrier || carriedCount(selectedCarrier) >= 6" @click="moveItem(item.id, selectedCarrier, 'equip')">交給角色</button></div></div></div><p v-else>尚未完成任何調合，或成品已全部交給角色。</p></div></aside>
         </section>
 
-        <section v-if="activeTab === 'battle'" class="main-grid"><div class="panel battle-panel"><div class="panel-title"><div><span class="eyebrow">BATTLE</span><h2>{{ battle ? `對戰 · ${battle.enemy}` : '隊伍戰鬥' }}</h2></div><span>擊敗守衛可解鎖下一區</span></div><div v-if="!battle" class="battle-idle"><span>⚔️</span><h3>前往 {{ activeRegion.name }} 的守衛戰</h3><p>夥伴擁有不同傷害與技能；調合的藥劑和炸彈也能帶進戰鬥。</p><button class="primary-button" :disabled="busy || words.length < 4" @click="newBattle">開始挑戰 {{ activeRegion.enemy }}</button></div><template v-else><div class="enemy-card"><span>👁️</span><div><h3>{{ battle.enemy }}</h3><p>第 {{ battle.round }} 回合 · {{ activeRegion.name }}</p><div class="hp-track"><i :style="{ width: (battle.hp / battle.maxHp * 100) + '%' }"></i></div><strong>{{ battle.hp }} / {{ battle.maxHp }} HP</strong></div></div><div class="fighter-list"><button v-for="person in PARTY" :key="person.id" :class="{ on: selectedCompanion === person.id }" @click="selectedCompanion = person.id"><img :src="person.portrait" :alt="person.name + '立繪'"/><span><strong>{{ person.name }}</strong><small>{{ person.job }}</small></span></button></div><div class="battle-actions"><button :disabled="busy" @click="chooseQuestion({ type: 'battle', move: 'attack', companionId: selectedCompanion })">⚔ 普通攻擊</button><button :disabled="busy" @click="chooseQuestion({ type: 'battle', move: 'skill', companionId: selectedCompanion })">✦ 職業技能</button><button :disabled="busy" @click="chooseQuestion({ type: 'battle', move: 'guard', companionId: selectedCompanion })">🛡 防禦</button><select v-model="selectedItem"><option v-for="item in RECIPES" :key="item.id" :value="item.id">{{ item.name }} ×{{ workshop.items[item.id]?.count || 0 }}</option></select><button :disabled="busy || !workshop.items[selectedItem]?.count" @click="chooseQuestion({ type: 'battle', move: 'item', companionId: selectedCompanion, itemId: selectedItem })">🧪 使用道具</button><button class="ghost-button" @click="abandonBattle">撤退</button></div></template></div><aside class="side-stack"><div class="panel"><h3>夥伴技能</h3><div v-for="person in PARTY" :key="person.id" class="member-line"><span>{{ person.icon }} {{ person.name }} · {{ person.race }}{{ person.job }}</span><small>{{ person.skill }} / 基礎 {{ person.damage }}</small></div></div><div class="panel"><h3>戰鬥提示</h3><p>每次出手都需回答單字題。答錯不會出手，敵人也不會反擊；HP 歸零會返回工房。</p></div></aside></section>
+        <section v-if="activeTab === 'battle'" class="main-grid">
+          <div class="panel battle-panel">
+            <div class="panel-title"><div><span class="eyebrow">BATTLE</span><h2>{{ battle ? `對戰 · ${battle.enemy}` : '隊伍戰鬥' }}</h2></div><span>擊敗守衛可解鎖下一區</span></div>
+            <div v-if="!battle" class="battle-idle"><span>⚔️</span><h3>前往 {{ activeRegion.name }} 的守衛戰</h3><p>主角與最多三位同伴出戰。戰鬥道具須先在工房背包交給角色攜帶。</p><button class="primary-button" :disabled="busy || words.length < 4 || !hero" @click="newBattle">開始挑戰 {{ activeRegion.enemy }}</button></div>
+            <template v-else>
+              <div class="enemy-card"><span>👁️</span><div><h3>{{ battle.enemy }}</h3><p>第 {{ battle.round }} 回合 · {{ activeRegion.name }}</p><div class="hp-track"><i :style="{ width: (battle.hp / battle.maxHp * 100) + '%' }"></i></div><strong>{{ battle.hp }} / {{ battle.maxHp }} HP</strong></div></div>
+              <div class="fighter-list"><button v-for="person in activeParty" :key="person.id" :class="{ on: selectedCompanion === person.id }" @click="chooseFighter(person.id)"><img :src="person.portrait" :alt="person.name + '立繪'"/><span><strong>{{ person.name }}</strong><small>{{ person.job }} · 攜帶 {{ carriedCount(person.id) }} 件</small></span></button></div>
+              <div class="battle-actions"><button :disabled="busy" @click="chooseQuestion({ type: 'battle', move: 'attack', companionId: selectedCompanion })">⚔ 普通攻擊</button><button :disabled="busy" @click="chooseQuestion({ type: 'battle', move: 'skill', companionId: selectedCompanion })">✦ 職業技能</button><button :disabled="busy" @click="chooseQuestion({ type: 'battle', move: 'guard', companionId: selectedCompanion })">🛡 防禦</button><select v-model="selectedItem" aria-label="選擇目前角色攜帶的道具"><option v-if="!battleItems.length" value="">未攜帶道具</option><option v-for="item in battleItems" :key="item.id" :value="item.id">{{ item.name }} ×{{ workshop.loadouts[selectedCompanion]?.[item.id]?.count || 0 }}</option></select><button :disabled="busy || !selectedItem || !workshop.loadouts[selectedCompanion]?.[selectedItem]?.count" @click="chooseQuestion({ type: 'battle', move: 'item', companionId: selectedCompanion, itemId: selectedItem })">🧪 使用道具</button><button class="ghost-button" :disabled="busy || !!quiz" @click="abandonBattle">撤退</button></div>
+            </template>
+          </div>
+          <aside class="side-stack"><div class="panel"><h3>出戰隊伍</h3><div v-for="person in activeParty" :key="person.id" class="member-line"><span>{{ person.icon }} {{ person.name }} · {{ person.job }}</span><small>{{ person.skill }} / 基礎 {{ person.damage }} / 攜帶 {{ carriedCount(person.id) }} 件</small></div><button v-if="!battle" class="ghost-button" @click="activeTab = 'party'">調整同伴與行囊</button></div><div class="panel"><h3>戰鬥提示</h3><p>每次出手都需回答單字題。答錯不會出手，敵人也不會反擊；HP 歸零會返回工房。</p></div></aside>
+        </section>
 
-        <section v-if="activeTab === 'party'" class="party-layout"><div class="panel"><div class="panel-title"><div><span class="eyebrow">COMPANIONS</span><h2>冒險夥伴</h2></div></div><div class="portrait-grid"><article v-for="person in PARTY" :key="person.id" class="portrait-card"><div class="portrait-frame"><img :src="person.portrait" :alt="person.name + '立繪'"/></div><div><small>{{ person.race }} · {{ person.job }}</small><h3>{{ person.name }}</h3><p>{{ person.skill }} · 傷害基礎 {{ person.damage }}</p></div></article></div></div><div class="panel"><div class="panel-title"><div><span class="eyebrow">CODEX</span><h2>素材圖鑑與鍊金日誌</h2></div><span>{{ workshop.discoveries.length }}/{{ MATERIALS.length }}</span></div><div class="discovery-grid"><span v-for="material in MATERIALS" :key="material.id" :class="{ unknown: !workshop.discoveries.includes(material.id) }">{{ workshop.discoveries.includes(material.id) ? `${material.icon} ${material.name}` : '？ 未發現' }}</span></div><h3>最近冒險</h3><p v-for="(entry, index) in workshop.journal" :key="index" class="journal-line">{{ entry }}</p></div></section>
+        <section v-if="activeTab === 'party'" class="party-layout">
+          <div class="panel"><div class="panel-title"><div><span class="eyebrow">COMPANIONS</span><h2>主角與冒險夥伴</h2></div><span>出戰 {{ workshop.partyIds.length }} / 3 位同伴</span></div><p class="intro">主角固定出戰。從十位同伴中選最多三位；調整隊伍後，已攜帶的道具會留在原角色身上。</p><div v-if="hero" class="hero-summary"><img :src="hero.portrait" :alt="hero.name + '立繪'"/><div><small>主角 · {{ hero.gender }} · {{ hero.job }}</small><h3>{{ hero.name }}</h3><p>{{ hero.skill }} · 基礎傷害 {{ hero.damage }} · 攜帶 {{ carriedCount(hero.id) }} 件</p></div></div><div class="portrait-grid"><article v-for="person in PARTY" :key="person.id" class="portrait-card" :class="{ enlisted: workshop.partyIds.includes(person.id) }"><div class="portrait-frame"><img :src="person.portrait" :alt="person.name + '立繪'" loading="lazy"/></div><div><small>{{ person.race }} · {{ person.job }}</small><h3>{{ person.name }}</h3><p>{{ person.skill }} · 傷害 {{ person.damage }} · 攜帶 {{ carriedCount(person.id) }} 件</p><button :disabled="busy || !!battle || (!workshop.partyIds.includes(person.id) && workshop.partyIds.length >= 3)" @click="toggleCompanion(person.id)">{{ workshop.partyIds.includes(person.id) ? '移出隊伍' : '加入隊伍' }}</button></div></article></div></div>
+          <aside class="side-stack"><div class="panel"><h3>角色行囊</h3><p class="intro">已分配道具可在此取回工房。未出戰角色的道具無法在戰鬥中使用。</p><div v-for="person in allActors" :key="person.id" class="loadout-person"><strong>{{ person.name }}{{ activeParty.some(member => member.id === person.id) ? ' · 出戰' : '' }}（{{ carriedCount(person.id) }}/6）</strong><div v-if="carriedCount(person.id)" class="loadout-items"><div v-for="item in RECIPES.filter(recipe => workshop.loadouts[person.id]?.[recipe.id]?.count)" :key="item.id"><span>{{ item.icon }} {{ item.name }} ×{{ workshop.loadouts[person.id][item.id].count }}</span><button :disabled="busy || !!battle" @click="moveItem(item.id, person.id, 'return')">取回</button></div></div><small v-else>未攜帶道具</small></div></div><div class="panel"><div class="panel-title"><div><span class="eyebrow">CODEX</span><h2>素材圖鑑與鍊金日誌</h2></div><span>{{ workshop.discoveries.length }}/{{ MATERIALS.length }}</span></div><div class="discovery-grid"><span v-for="material in MATERIALS" :key="material.id" :class="{ unknown: !workshop.discoveries.includes(material.id) }">{{ workshop.discoveries.includes(material.id) ? `${material.icon} ${material.name}` : '？ 未發現' }}</span></div><h3>最近冒險</h3><p v-for="(entry, index) in workshop.journal" :key="index" class="journal-line">{{ entry }}</p></div></aside>
+        </section>
         <p class="save-note">{{ saveNotice }}　採集 {{ workshop.gatheringCount }} 次 · 調合 {{ workshop.synthesisCount }} 次 · 勝利 {{ workshop.victories }} 次</p>
       </template>
+
+      <div v-if="!loading && !workshop.heroId && lessonLabel" class="character-overlay" role="dialog" aria-modal="true" aria-label="選擇鍊金術士主角">
+        <div class="character-card"><span class="eyebrow">BEGIN YOUR STORY</span><h2>選擇你的鍊金術士</h2><p>三位女性、三位男性，選定後將成為這份工房存檔的主角。原有玩家的採集與調合進度會保留。</p>
+          <div class="starter-grid"><button v-for="person in ALCHEMISTS" :key="person.id" :class="{ on: startingHero === person.id }" @click="startingHero = person.id"><img :src="person.portrait" :alt="person.name + '立繪'"/><strong>{{ person.name }}</strong><small>{{ person.gender }} · {{ person.job }} · {{ person.skill }}</small></button></div>
+          <h3>挑選起始同伴 <small>可選 0–3 位，之後仍可調整</small></h3><div class="starter-companions"><button v-for="person in PARTY" :key="person.id" :class="{ on: startingParty.includes(person.id) }" :disabled="!startingParty.includes(person.id) && startingParty.length >= 3" @click="toggleStartingCompanion(person.id)"><img :src="person.portrait" :alt="person.name + '立繪'"/><span>{{ person.name }}<small>{{ person.job }}</small></span></button></div>
+          <button class="primary-button start-button" :disabled="busy" @click="confirmCharacter">{{ busy ? '儲存中…' : '確定主角，開始冒險' }}</button>
+        </div>
+      </div>
 
       <div v-if="quiz" class="quiz-overlay"><div class="quiz-card">
         <span class="eyebrow">VOCABULARY CHALLENGE</span><h2>{{ brewing ? '鍊金融合中…' : '回答單字，完成行動' }}</h2>
@@ -409,5 +510,13 @@ onMounted(async () => {
 .submit-quiz{margin-top:14px;min-width:150px}
 .quiz-processing,.brew-message{font-size:14px!important;color:#d9eadf!important}
 .quiz-card .cauldron-scene{height:240px;width:min(100%,330px)}
+.character-overlay{position:fixed;inset:0;z-index:1100;background:#06131aef;display:flex;align-items:center;justify-content:center;padding:15px}
+.character-card{width:min(1180px,100%);max-height:calc(100dvh - 30px);overflow:auto;background:linear-gradient(145deg,#263f4c,#142938);border:2px solid #d7b777;border-radius:18px;padding:22px;box-shadow:0 20px 75px #000b}
+.character-card h2{font:700 32px serif;margin:4px 0}.character-card p{color:#d1ded5}.character-card h3 small{font:400 13px 'Noto Sans TC',sans-serif;color:#cbd8ce}
+.starter-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}.starter-grid button{background:#183542;border:2px solid #688583;border-radius:12px;color:#f8eed8;padding:7px;cursor:pointer;text-align:left}.starter-grid button.on,.starter-companions button.on{border-color:#ffda8c;background:#5a5d48;box-shadow:0 0 0 2px #f7ce7955}.starter-grid img{display:block;width:100%;height:200px;object-fit:cover;object-position:top;border-radius:7px}.starter-grid strong,.starter-grid small{display:block;margin-top:5px}.starter-grid small{font-size:12px;color:#d0dfd7}
+.starter-companions{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}.starter-companions button{display:flex;align-items:center;gap:7px;background:#1d3b49;color:#f5ecd9;border:2px solid #718c87;border-radius:10px;padding:5px;cursor:pointer;text-align:left}.starter-companions img{width:40px;height:52px;object-fit:cover;object-position:top;border-radius:5px}.starter-companions small{display:block;color:#c3d7ce}.start-button{display:block;margin:18px auto 0;font-size:17px}
+.carrier-select{display:block;margin:8px 0 12px}.carrier-select select{display:block;width:100%;margin-top:6px;background:#163745;border:1px solid #b8b08d;border-radius:8px;color:#f8efd8;padding:9px}.stock-actions{display:flex;align-items:center;gap:8px}.stock-actions button,.loadout-items button,.portrait-card button{background:#335467;border:1px solid #cdb98b;border-radius:7px;color:#fff0d0;padding:6px 8px;cursor:pointer}.stock-actions button:disabled,.loadout-items button:disabled{opacity:.5}.hero-summary{display:flex;align-items:center;gap:15px;margin:12px 0 18px;background:#314b52;border:1px solid #d8bc87;border-radius:12px;overflow:hidden}.hero-summary img{width:105px;height:140px;object-fit:cover;object-position:top}.hero-summary h3{font:700 25px serif;margin:5px 0}.hero-summary p{margin:0}.portrait-card.enlisted{border:2px solid #efca87}.portrait-card button{margin-top:10px}.loadout-person{border-bottom:1px solid #6d878477;padding:10px 0}.loadout-person>small{display:block;color:#b4c9c1;margin-top:4px}.loadout-items>div{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:5px;background:#163642;border-radius:7px;padding:5px}.loadout-items span{font-size:13px}
+@media(max-width:950px){.starter-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.starter-companions{grid-template-columns:repeat(3,minmax(0,1fr))}.starter-grid img{height:170px}}
+@media(max-width:600px){.character-card{padding:12px}.character-card h2{font-size:25px}.starter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.starter-grid img{height:170px}.starter-companions{grid-template-columns:repeat(2,minmax(0,1fr))}.hero-summary img{width:85px;height:115px}.hero-summary p{font-size:12px}.stock-actions{flex-direction:column;align-items:flex-end}}
 @media(max-width:1050px){.main-grid,.party-layout{grid-template-columns:1fr}.side-stack{display:grid;grid-template-columns:1fr 1fr}.portrait-frame{height:250px}}@media(max-width:700px){.atelier-page{padding:8px}.hero{display:block;padding:14px}.hero-actions{margin-top:12px}.status-row{grid-template-columns:repeat(2,1fr)}.status-row>div:last-child{grid-column:span 2}.tabs button{flex:1 1 40%}.panel{padding:12px}.continent-map{min-width:680px}.map-pin{font-size:10px;padding:4px}.side-stack{display:flex}.recipe-grid,.fighter-list,.portrait-grid{grid-template-columns:repeat(2,1fr)}.portrait-frame{height:260px}.recipe-detail{display:block}.recipe-detail button{margin-top:12px}.battle-actions>*{flex:1 1 43%}.discovery-grid{grid-template-columns:repeat(2,1fr)}}
 </style>
