@@ -27,6 +27,10 @@ const selectedItem = ref('');
 const startingHero = ref('lia');
 const startingParty = ref([]);
 const selectedCarrier = ref('');
+const focusedPerson = ref(null);
+const actionFx = ref(null);
+const visibleHeroIds = ref(null);
+const visibleCompanionIds = ref(null);
 const battle = ref(null);
 const quiz = ref(null);
 const quizError = ref('');
@@ -52,16 +56,63 @@ const filteredRecipes = computed(() => recipeFilter.value === 'all' ? RECIPES : 
 const score = computed(() => (session.value?.correct.length || 0) * 10);
 const inventoryList = computed(() => MATERIALS.filter(material => (workshop.value.inventory[material.id]?.count || 0) > 0));
 const productList = computed(() => RECIPES.filter(item => (workshop.value.items[item.id]?.count || 0) > 0));
+const availableHeroes = computed(() => {
+  const choices = visibleHeroIds.value ? ALCHEMISTS.filter(person => visibleHeroIds.value.includes(person.id)) : ALCHEMISTS;
+  return choices.length ? choices : ALCHEMISTS;
+});
+const availableParty = computed(() => visibleCompanionIds.value ? PARTY.filter(person => visibleCompanionIds.value.includes(person.id)) : PARTY);
 const hero = computed(() => ALCHEMISTS.find(person => person.id === workshop.value.heroId));
-const activeParty = computed(() => [hero.value, ...PARTY.filter(person => workshop.value.partyIds.includes(person.id))].filter(Boolean));
-const allActors = computed(() => [hero.value, ...PARTY].filter(Boolean));
+const activeParty = computed(() => [hero.value, ...availableParty.value.filter(person => workshop.value.partyIds.includes(person.id))].filter(Boolean));
+const allActors = computed(() => [hero.value, ...availableParty.value].filter(Boolean));
 const battleItems = computed(() => RECIPES.filter(item => (workshop.value.loadouts[selectedCompanion.value]?.[item.id]?.count || 0) > 0));
 const carriedCount = actorId => Object.values(workshop.value.loadouts[actorId] || {}).reduce((sum, entry) => sum + (entry?.count || 0), 0);
 const worldProgress = computed(() => `${workshop.value.defeated.length}/${REGIONS.length}`);
 
 function cloneWorkshop() { return normalizeAtelier(JSON.parse(JSON.stringify(workshop.value))); }
 
+function openPortrait(person) { focusedPerson.value = person; }
+
+async function loadCharacterVisibility() {
+  const { data, error } = await db.from('system_settings').select('alchemy_character_visibility').eq('id', 1).maybeSingle();
+  if (error) return;
+  const setting = data?.alchemy_character_visibility;
+  visibleHeroIds.value = Array.isArray(setting?.heroes) ? setting.heroes : null;
+  visibleCompanionIds.value = Array.isArray(setting?.companions) ? setting.companions : null;
+  if (!availableHeroes.value.some(person => person.id === startingHero.value)) startingHero.value = availableHeroes.value[0].id;
+  startingParty.value = startingParty.value.filter(id => availableParty.value.some(person => person.id === id));
+}
+
+async function reconcileHiddenCompanions() {
+  const hidden = PARTY.filter(person => !availableParty.value.some(candidate => candidate.id === person.id));
+  if (!hidden.length) return;
+  const next = cloneWorkshop();
+  let changed = false;
+  for (const person of hidden) {
+    if (next.partyIds.includes(person.id)) { next.partyIds = next.partyIds.filter(id => id !== person.id); changed = true; }
+    if (next.loadouts[person.id]) {
+      for (const [itemId, entry] of Object.entries(next.loadouts[person.id])) {
+        const stock = next.items[itemId] || { count: 0, totalQuality: 0 };
+        next.items[itemId] = { count: stock.count + (entry.count || 0), totalQuality: stock.totalQuality + (entry.totalQuality || 0) };
+      }
+      delete next.loadouts[person.id];
+      changed = true;
+    }
+  }
+  if (changed) await saveWorkshop(next);
+}
+
+function playBattleEffect(operation) {
+  if (operation.type !== 'battle') return;
+  const item = operation.move === 'item' ? recipeById(operation.itemId) : null;
+  const kind = item ? `item-${item.kind}` : operation.move;
+  const labels = { attack: '斬擊！', skill: '職業技能！', guard: '防禦姿態！' };
+  actionFx.value = { kind, label: item?.name || labels[kind], icon: item?.icon || (kind === 'guard' ? '🛡️' : kind === 'skill' ? '✦' : '⚔️'), key: Date.now() };
+  const key = actionFx.value.key;
+  setTimeout(() => { if (actionFx.value?.key === key) actionFx.value = null; }, item ? 1600 : 900);
+}
+
 function toggleStartingCompanion(id) {
+  if (!availableParty.value.some(person => person.id === id)) return;
   if (startingParty.value.includes(id)) startingParty.value = startingParty.value.filter(value => value !== id);
   else if (startingParty.value.length < 3) startingParty.value = [...startingParty.value, id];
 }
@@ -71,8 +122,8 @@ async function confirmCharacter() {
   busy.value = true;
   try {
     const next = cloneWorkshop();
-    next.heroId = startingHero.value;
-    next.partyIds = [...startingParty.value];
+    next.heroId = availableHeroes.value.some(person => person.id === startingHero.value) ? startingHero.value : availableHeroes.value[0].id;
+    next.partyIds = startingParty.value.filter(id => availableParty.value.some(person => person.id === id)).slice(0, 3);
     appendJournal(next, `選擇${ALCHEMISTS.find(person => person.id === next.heroId).name}為主角，與${next.partyIds.length}位同伴踏上旅途。`);
     await saveWorkshop(next);
     selectedCompanion.value = next.heroId;
@@ -84,6 +135,7 @@ async function confirmCharacter() {
 
 async function toggleCompanion(id) {
   if (busy.value || battle.value) { notice.value = '請先結束戰鬥，再調整出戰同伴。'; return; }
+  if (!availableParty.value.some(person => person.id === id)) return;
   const next = cloneWorkshop();
   if (next.partyIds.includes(id)) next.partyIds = next.partyIds.filter(value => value !== id);
   else if (next.partyIds.length < 3) next.partyIds.push(id);
@@ -386,6 +438,7 @@ async function submitAnswer(value = answer.value) {
     notice.value = correct ? `答對 ${question.word.en_us}！${result}` : `答錯了：${question.word.en_us}＝${question.word.zh_tw}。這次未執行操作。`;
     quiz.value = null;
     answer.value = '';
+    if (correct) playBattleEffect(question.operation);
     await syncRecord();
   } catch (error) { brewPhase.value = 'idle'; quizError.value = `操作未完成：${error.message}`; notice.value = quizError.value; }
   finally { brewing.value = false; busy.value = false; }
@@ -399,7 +452,9 @@ onMounted(async () => {
       .eq('version', lesson.version).eq('volume', lesson.volume).eq('unit', lesson.unit).limit(1000);
     if (error) throw error;
     words.value = (data || []).filter(word => word.en_us && word.zh_tw);
+    await loadCharacterVisibility();
     await loadWorkshop();
+    await reconcileHiddenCompanions();
     selectedCompanion.value = workshop.value.heroId || '';
     selectedCarrier.value = workshop.value.heroId || '';
     await loadSession();
@@ -455,11 +510,12 @@ onMounted(async () => {
 
         <section v-if="activeTab === 'battle'" class="main-grid">
           <div class="panel battle-panel">
+            <AlchemyBattleEffect v-if="actionFx" :key="actionFx.key" :effect="actionFx"/>
             <div class="panel-title"><div><span class="eyebrow">BATTLE</span><h2>{{ battle ? `對戰 · ${battle.enemy}` : '隊伍戰鬥' }}</h2></div><span>擊敗守衛可解鎖下一區</span></div>
             <div v-if="!battle" class="battle-idle"><span>⚔️</span><h3>前往 {{ activeRegion.name }} 的守衛戰</h3><p>主角與最多三位同伴出戰。戰鬥道具須先在工房背包交給角色攜帶。</p><button class="primary-button" :disabled="busy || words.length < 4 || !hero" @click="newBattle">開始挑戰 {{ activeRegion.enemy }}</button></div>
             <template v-else>
               <div class="enemy-card"><span>👁️</span><div><h3>{{ battle.enemy }}</h3><p>第 {{ battle.round }} 回合 · {{ activeRegion.name }}</p><div class="hp-track"><i :style="{ width: (battle.hp / battle.maxHp * 100) + '%' }"></i></div><strong>{{ battle.hp }} / {{ battle.maxHp }} HP</strong></div></div>
-              <div class="fighter-list"><button v-for="person in activeParty" :key="person.id" :class="{ on: selectedCompanion === person.id }" @click="chooseFighter(person.id)"><img :src="person.portrait" :alt="person.name + '立繪'"/><span><strong>{{ person.name }}</strong><small>{{ person.job }} · 攜帶 {{ carriedCount(person.id) }} 件</small></span></button></div>
+              <div class="fighter-list"><button v-for="person in activeParty" :key="person.id" :class="{ on: selectedCompanion === person.id }" @click="chooseFighter(person.id)"><img :src="person.portrait" :alt="person.name + '立繪'" role="button" tabindex="0" title="放大立繪" @click.stop="openPortrait(person)" @keydown.enter.stop="openPortrait(person)"/><span><strong>{{ person.name }}</strong><small>{{ person.job }} · 攜帶 {{ carriedCount(person.id) }} 件</small></span></button></div>
               <div class="battle-actions"><button :disabled="busy" @click="chooseQuestion({ type: 'battle', move: 'attack', companionId: selectedCompanion })">⚔ 普通攻擊</button><button :disabled="busy" @click="chooseQuestion({ type: 'battle', move: 'skill', companionId: selectedCompanion })">✦ 職業技能</button><button :disabled="busy" @click="chooseQuestion({ type: 'battle', move: 'guard', companionId: selectedCompanion })">🛡 防禦</button><select v-model="selectedItem" aria-label="選擇目前角色攜帶的道具"><option v-if="!battleItems.length" value="">未攜帶道具</option><option v-for="item in battleItems" :key="item.id" :value="item.id">{{ item.name }} ×{{ workshop.loadouts[selectedCompanion]?.[item.id]?.count || 0 }}</option></select><button :disabled="busy || !selectedItem || !workshop.loadouts[selectedCompanion]?.[selectedItem]?.count" @click="chooseQuestion({ type: 'battle', move: 'item', companionId: selectedCompanion, itemId: selectedItem })">🧪 使用道具</button><button class="ghost-button" :disabled="busy || !!quiz" @click="abandonBattle">撤退</button></div>
             </template>
           </div>
@@ -467,19 +523,21 @@ onMounted(async () => {
         </section>
 
         <section v-if="activeTab === 'party'" class="party-layout">
-          <div class="panel"><div class="panel-title"><div><span class="eyebrow">COMPANIONS</span><h2>主角與冒險夥伴</h2></div><span>出戰 {{ workshop.partyIds.length }} / 3 位同伴</span></div><p class="intro">主角固定出戰。從十位同伴中選最多三位；調整隊伍後，已攜帶的道具會留在原角色身上。</p><div v-if="hero" class="hero-summary"><img :src="hero.portrait" :alt="hero.name + '立繪'"/><div><small>主角 · {{ hero.gender }} · {{ hero.job }}</small><h3>{{ hero.name }}</h3><p>{{ hero.skill }} · 基礎傷害 {{ hero.damage }} · 攜帶 {{ carriedCount(hero.id) }} 件</p></div></div><div class="portrait-grid"><article v-for="person in PARTY" :key="person.id" class="portrait-card" :class="{ enlisted: workshop.partyIds.includes(person.id) }"><div class="portrait-frame"><img :src="person.portrait" :alt="person.name + '立繪'" loading="lazy"/></div><div><small>{{ person.race }} · {{ person.job }}</small><h3>{{ person.name }}</h3><p>{{ person.skill }} · 傷害 {{ person.damage }} · 攜帶 {{ carriedCount(person.id) }} 件</p><button :disabled="busy || !!battle || (!workshop.partyIds.includes(person.id) && workshop.partyIds.length >= 3)" @click="toggleCompanion(person.id)">{{ workshop.partyIds.includes(person.id) ? '移出隊伍' : '加入隊伍' }}</button></div></article></div></div>
+          <div class="panel"><div class="panel-title"><div><span class="eyebrow">COMPANIONS</span><h2>主角與冒險夥伴</h2></div><span>出戰 {{ workshop.partyIds.length }} / 3 位同伴</span></div><p class="intro">主角固定出戰。從二十位同伴中選最多三位；調整隊伍後，已攜帶的道具會留在原角色身上。</p><div v-if="hero" class="hero-summary"><button class="hero-portrait" title="放大主角立繪" @click="openPortrait(hero)"><img :src="hero.portrait" :alt="hero.name + '立繪'"/></button><div><small>主角 · {{ hero.gender }} · {{ hero.job }}</small><h3>{{ hero.name }}</h3><p>{{ hero.skill }} · 基礎傷害 {{ hero.damage }} · 攜帶 {{ carriedCount(hero.id) }} 件</p></div></div><div class="portrait-grid"><article v-for="person in availableParty" :key="person.id" class="portrait-card" :class="{ enlisted: workshop.partyIds.includes(person.id) }"><button class="portrait-frame" :aria-label="`放大${person.name}立繪`" @click="openPortrait(person)"><img :src="person.portrait" :alt="person.name + '立繪'" loading="lazy"/></button><div><small>{{ person.race }} · {{ person.job }}</small><h3>{{ person.name }}</h3><p>{{ person.bio }}</p><p>{{ person.skill }} · 傷害 {{ person.damage }} · 攜帶 {{ carriedCount(person.id) }} 件</p><button :disabled="busy || !!battle || (!workshop.partyIds.includes(person.id) && workshop.partyIds.length >= 3)" @click="toggleCompanion(person.id)">{{ workshop.partyIds.includes(person.id) ? '移出隊伍' : '加入隊伍' }}</button></div></article></div></div>
           <aside class="side-stack"><div class="panel"><h3>角色行囊</h3><p class="intro">已分配道具可在此取回工房。未出戰角色的道具無法在戰鬥中使用。</p><div v-for="person in allActors" :key="person.id" class="loadout-person"><strong>{{ person.name }}{{ activeParty.some(member => member.id === person.id) ? ' · 出戰' : '' }}（{{ carriedCount(person.id) }}/6）</strong><div v-if="carriedCount(person.id)" class="loadout-items"><div v-for="item in RECIPES.filter(recipe => workshop.loadouts[person.id]?.[recipe.id]?.count)" :key="item.id"><span>{{ item.icon }} {{ item.name }} ×{{ workshop.loadouts[person.id][item.id].count }}</span><button :disabled="busy || !!battle" @click="moveItem(item.id, person.id, 'return')">取回</button></div></div><small v-else>未攜帶道具</small></div></div><div class="panel"><div class="panel-title"><div><span class="eyebrow">CODEX</span><h2>素材圖鑑與鍊金日誌</h2></div><span>{{ workshop.discoveries.length }}/{{ MATERIALS.length }}</span></div><div class="discovery-grid"><span v-for="material in MATERIALS" :key="material.id" :class="{ unknown: !workshop.discoveries.includes(material.id) }">{{ workshop.discoveries.includes(material.id) ? `${material.icon} ${material.name}` : '？ 未發現' }}</span></div><h3>最近冒險</h3><p v-for="(entry, index) in workshop.journal" :key="index" class="journal-line">{{ entry }}</p></div></aside>
         </section>
         <p class="save-note">{{ saveNotice }}　採集 {{ workshop.gatheringCount }} 次 · 調合 {{ workshop.synthesisCount }} 次 · 勝利 {{ workshop.victories }} 次</p>
       </template>
 
       <div v-if="!loading && !workshop.heroId && lessonLabel" class="character-overlay" role="dialog" aria-modal="true" aria-label="選擇鍊金術士主角">
-        <div class="character-card"><span class="eyebrow">BEGIN YOUR STORY</span><h2>選擇你的鍊金術士</h2><p>三位女性、三位男性，選定後將成為這份工房存檔的主角。原有玩家的採集與調合進度會保留。</p>
-          <div class="starter-grid"><button v-for="person in ALCHEMISTS" :key="person.id" :class="{ on: startingHero === person.id }" @click="startingHero = person.id"><img :src="person.portrait" :alt="person.name + '立繪'"/><strong>{{ person.name }}</strong><small>{{ person.gender }} · {{ person.job }} · {{ person.skill }}</small></button></div>
-          <h3>挑選起始同伴 <small>可選 0–3 位，之後仍可調整</small></h3><div class="starter-companions"><button v-for="person in PARTY" :key="person.id" :class="{ on: startingParty.includes(person.id) }" :disabled="!startingParty.includes(person.id) && startingParty.length >= 3" @click="toggleStartingCompanion(person.id)"><img :src="person.portrait" :alt="person.name + '立繪'"/><span>{{ person.name }}<small>{{ person.job }}</small></span></button></div>
+        <div class="character-card"><span class="eyebrow">BEGIN YOUR STORY</span><h2>選擇你的鍊金術士</h2><p>八位女性、五位男性，選定後將成為這份工房存檔的主角。原有玩家的採集與調合進度會保留。</p>
+          <div class="starter-grid"><div v-for="person in availableHeroes" :key="person.id" class="starter-person" :class="{ on: startingHero === person.id }"><button class="starter-picture" :aria-label="`放大${person.name}立繪`" @click="openPortrait(person)"><img :src="person.portrait" :alt="person.name + '立繪'"/></button><strong>{{ person.name }}</strong><small>{{ person.gender }} · {{ person.job }}</small><button class="starter-choose" @click="startingHero = person.id">{{ startingHero === person.id ? '已選主角' : '選為主角' }}</button></div></div>
+          <h3>挑選起始同伴 <small>可選 0–3 位，之後仍可調整</small></h3><div class="starter-companions"><div v-for="person in availableParty" :key="person.id" class="starter-companion" :class="{ on: startingParty.includes(person.id) }"><button class="starter-companion-picture" :aria-label="`放大${person.name}立繪`" @click="openPortrait(person)"><img :src="person.portrait" :alt="person.name + '立繪'"/></button><span>{{ person.name }}<small>{{ person.job }}</small></span><button class="starter-companion-select" :disabled="!startingParty.includes(person.id) && startingParty.length >= 3" @click="toggleStartingCompanion(person.id)">{{ startingParty.includes(person.id) ? '✓' : '＋' }}</button></div></div>
           <button class="primary-button start-button" :disabled="busy" @click="confirmCharacter">{{ busy ? '儲存中…' : '確定主角，開始冒險' }}</button>
         </div>
       </div>
+
+      <div v-if="focusedPerson" class="character-viewer" role="dialog" aria-modal="true" :aria-label="focusedPerson.name + '人物介紹'" @click.self="focusedPerson = null"><div class="character-viewer-card"><button class="viewer-close" @click="focusedPerson = null">關閉 ×</button><img :src="focusedPerson.portrait" :alt="focusedPerson.name + '完整立繪'"/><div><span class="eyebrow">CHARACTER PORTRAIT</span><h2>{{ focusedPerson.name }}</h2><p class="viewer-job">{{ focusedPerson.race }} · {{ focusedPerson.job }} · {{ focusedPerson.skill }}</p><p>{{ focusedPerson.bio }}</p></div></div></div>
 
       <div v-if="quiz" class="quiz-overlay"><div class="quiz-card">
         <span class="eyebrow">VOCABULARY CHALLENGE</span><h2>{{ brewing ? '鍊金融合中…' : '回答單字，完成行動' }}</h2>
@@ -516,6 +574,10 @@ onMounted(async () => {
 .starter-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}.starter-grid button{background:#183542;border:2px solid #688583;border-radius:12px;color:#f8eed8;padding:7px;cursor:pointer;text-align:left}.starter-grid button.on,.starter-companions button.on{border-color:#ffda8c;background:#5a5d48;box-shadow:0 0 0 2px #f7ce7955}.starter-grid img{display:block;width:100%;height:200px;object-fit:cover;object-position:top;border-radius:7px}.starter-grid strong,.starter-grid small{display:block;margin-top:5px}.starter-grid small{font-size:12px;color:#d0dfd7}
 .starter-companions{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}.starter-companions button{display:flex;align-items:center;gap:7px;background:#1d3b49;color:#f5ecd9;border:2px solid #718c87;border-radius:10px;padding:5px;cursor:pointer;text-align:left}.starter-companions img{width:40px;height:52px;object-fit:cover;object-position:top;border-radius:5px}.starter-companions small{display:block;color:#c3d7ce}.start-button{display:block;margin:18px auto 0;font-size:17px}
 .carrier-select{display:block;margin:8px 0 12px}.carrier-select select{display:block;width:100%;margin-top:6px;background:#163745;border:1px solid #b8b08d;border-radius:8px;color:#f8efd8;padding:9px}.stock-actions{display:flex;align-items:center;gap:8px}.stock-actions button,.loadout-items button,.portrait-card button{background:#335467;border:1px solid #cdb98b;border-radius:7px;color:#fff0d0;padding:6px 8px;cursor:pointer}.stock-actions button:disabled,.loadout-items button:disabled{opacity:.5}.hero-summary{display:flex;align-items:center;gap:15px;margin:12px 0 18px;background:#314b52;border:1px solid #d8bc87;border-radius:12px;overflow:hidden}.hero-summary img{width:105px;height:140px;object-fit:cover;object-position:top}.hero-summary h3{font:700 25px serif;margin:5px 0}.hero-summary p{margin:0}.portrait-card.enlisted{border:2px solid #efca87}.portrait-card button{margin-top:10px}.loadout-person{border-bottom:1px solid #6d878477;padding:10px 0}.loadout-person>small{display:block;color:#b4c9c1;margin-top:4px}.loadout-items>div{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:5px;background:#163642;border-radius:7px;padding:5px}.loadout-items span{font-size:13px}
+.battle-panel{position:relative;overflow:hidden}.fighter-list img[role="button"]{cursor:zoom-in}.hero-portrait{border:0;background:none;padding:0;cursor:zoom-in;flex:0 0 auto}.portrait-card .portrait-frame{display:block;width:100%;padding:0;margin:0;border:0;border-radius:0;background:none;cursor:zoom-in}.portrait-card>div:last-child p:first-of-type{line-height:1.5;color:#c9dad2;margin-bottom:6px}
+.starter-grid .starter-person{background:#183542;border:2px solid #688583;border-radius:12px;color:#f8eed8;padding:7px;text-align:left}.starter-grid .starter-person.on,.starter-companions .starter-companion.on{border-color:#ffda8c;background:#5a5d48;box-shadow:0 0 0 2px #f7ce7955}.starter-grid .starter-picture{display:block;width:100%;padding:0;border:0;background:none;cursor:zoom-in}.starter-grid .starter-picture img{height:190px}.starter-grid .starter-choose{width:100%;margin-top:8px;padding:6px;border:1px solid #d7ba80;border-radius:7px;background:#385668;color:#fff0d1;cursor:pointer}.starter-grid .starter-person.on .starter-choose{background:#d3a965;color:#18303a;font-weight:800}.starter-companions .starter-companion{display:flex;align-items:center;gap:6px;background:#1d3b49;color:#f5ecd9;border:2px solid #718c87;border-radius:10px;padding:5px}.starter-companions .starter-companion-picture{display:block;flex:0 0 auto;border:0;background:none;padding:0;cursor:zoom-in}.starter-companions .starter-companion-picture img{width:44px;height:55px}.starter-companions .starter-companion-select{margin-left:auto;padding:4px 8px;border:1px solid #d8bd88;border-radius:6px;background:#345464;color:#fff;font-weight:900;cursor:pointer}
+.character-viewer{position:fixed;inset:0;z-index:1200;display:grid;place-items:center;background:#06111ce9;padding:14px}.character-viewer-card{position:relative;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(230px,.85fr);align-items:center;gap:20px;width:min(950px,100%);max-height:96dvh;overflow:auto;padding:15px;background:linear-gradient(140deg,#203945,#142838);border:2px solid #d4b57b;border-radius:17px;box-shadow:0 20px 75px #000c}.character-viewer-card img{display:block;max-width:100%;max-height:calc(96dvh - 34px);object-fit:contain;margin:auto}.character-viewer-card h2{font:700 clamp(30px,4vw,52px) serif;margin:8px 0}.character-viewer-card p{font-size:18px;line-height:1.8;color:#e1e9dc}.character-viewer-card .viewer-job{font-size:15px;color:#efd6a2}.viewer-close{position:absolute;right:16px;top:14px;z-index:1;border:1px solid #e4c58d;border-radius:8px;background:#193745;color:#fff2d5;padding:8px 12px;cursor:pointer}
+@media(max-width:650px){.character-viewer-card{display:block;text-align:center}.character-viewer-card img{max-height:63dvh}.character-viewer-card p{font-size:15px}.starter-grid .starter-picture img{height:155px}}
 @media(max-width:950px){.starter-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.starter-companions{grid-template-columns:repeat(3,minmax(0,1fr))}.starter-grid img{height:170px}}
 @media(max-width:600px){.character-card{padding:12px}.character-card h2{font-size:25px}.starter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.starter-grid img{height:170px}.starter-companions{grid-template-columns:repeat(2,minmax(0,1fr))}.hero-summary img{width:85px;height:115px}.hero-summary p{font-size:12px}.stock-actions{flex-direction:column;align-items:flex-end}}
 @media(max-width:1050px){.main-grid,.party-layout{grid-template-columns:1fr}.side-stack{display:grid;grid-template-columns:1fr 1fr}.portrait-frame{height:250px}}@media(max-width:700px){.atelier-page{padding:8px}.hero{display:block;padding:14px}.hero-actions{margin-top:12px}.status-row{grid-template-columns:repeat(2,1fr)}.status-row>div:last-child{grid-column:span 2}.tabs button{flex:1 1 40%}.panel{padding:12px}.continent-map{min-width:680px}.map-pin{font-size:10px;padding:4px}.side-stack{display:flex}.recipe-grid,.fighter-list,.portrait-grid{grid-template-columns:repeat(2,1fr)}.portrait-frame{height:260px}.recipe-detail{display:block}.recipe-detail button{margin-top:12px}.battle-actions>*{flex:1 1 43%}.discovery-grid{grid-template-columns:repeat(2,1fr)}}

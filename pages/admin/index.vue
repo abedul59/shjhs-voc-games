@@ -247,6 +247,7 @@ const clearGhostRooms = async () => {
         <NuxtLink to="/admin/teachers" class="retro-btn teacher-btn" style="grid-column: span 2; background: #9c27b0; color: white;">👨‍🏫 教師權限管理</NuxtLink>
         <NuxtLink to="/admin/vocabularies" class="retro-btn vocab-btn">📝 編輯單字庫</NuxtLink>
         <NuxtLink to="/admin/categories" class="retro-btn nav-btn" style="background: #ff9800; border-color: #ffb74d;">🗂️ 前台排版管理</NuxtLink>
+        <NuxtLink to="/admin/alchemy-characters" class="retro-btn nav-btn" style="background: #527d78; border-color: #315a57; color: white;">⚗️ 鍊金工房角色管理</NuxtLink>
         <NuxtLink to="/admin/manage-announcements" class="retro-btn nav-btn" style="background: #03a9f4; border-color: #0288d1;">📢 公佈欄管理</NuxtLink>
         <NuxtLink to="/admin/import-exam" class="retro-btn nav-btn" style="background: #e91e63; border-color: #7b1fa2;">📥 會考題庫匯入</NuxtLink>
         <NuxtLink to="/admin/manage-exam" class="retro-btn nav-btn" style="background: #9c27b0; border-color: #6a1b9a;">✏️ 會考單題題庫管理</NuxtLink>
