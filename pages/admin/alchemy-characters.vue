@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { ALCHEMISTS, PARTY } from '~/lib/alchemy-atelier';
+import { ALCHEMISTS, PARTY, PREVIOUS_ALCHEMIST_IDS, PREVIOUS_COMPANION_IDS, visibleCharacterIds } from '~/lib/alchemy-atelier';
 
 definePageMeta({ middleware: 'auth' });
 const db = useSupabaseClient();
@@ -22,8 +22,8 @@ onMounted(async () => {
   if (error) message.value = `讀取失敗：${error.message}。請先在新專案執行 20261004_alchemy_character_visibility.sql。`;
   else {
     const config = data?.alchemy_character_visibility;
-    heroIds.value = Array.isArray(config?.heroes) ? allHeroIds.filter(id => config.heroes.includes(id)) : [...allHeroIds];
-    companionIds.value = Array.isArray(config?.companions) ? allCompanionIds.filter(id => config.companions.includes(id)) : [...allCompanionIds];
+    heroIds.value = visibleCharacterIds(config?.heroes, ALCHEMISTS, PREVIOUS_ALCHEMIST_IDS);
+    companionIds.value = visibleCharacterIds(config?.companions, PARTY, PREVIOUS_COMPANION_IDS);
   }
   loading.value = false;
 });
