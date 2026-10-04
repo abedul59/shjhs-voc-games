@@ -26,6 +26,7 @@ const selectedCompanion = ref('');
 const selectedItem = ref('');
 const startingHero = ref('lia');
 const startingParty = ref([]);
+const changingHero = ref(false);
 const selectedCarrier = ref('');
 const heroGenderFilter = ref('all');
 const heroSearch = ref('');
@@ -135,6 +136,42 @@ async function confirmCharacter() {
     selectedCarrier.value = next.heroId;
     notice.value = '主角已確定。你可以隨時在「夥伴與圖鑑」調整出戰同伴與道具攜帶。';
   } catch (error) { notice.value = `角色選擇未完成：${error.message}`; }
+  finally { busy.value = false; }
+}
+
+function openHeroChange() {
+  if (busy.value || battle.value || quiz.value) { notice.value = '請先完成目前的戰鬥或單字題，再更換主角。'; return; }
+  startingHero.value = availableHeroes.value.some(person => person.id === workshop.value.heroId)
+    ? workshop.value.heroId : availableHeroes.value[0]?.id;
+  heroSearch.value = '';
+  heroGenderFilter.value = 'all';
+  changingHero.value = true;
+}
+
+async function confirmHeroChange() {
+  if (!changingHero.value || busy.value || battle.value || quiz.value) return;
+  const replacement = availableHeroes.value.find(person => person.id === startingHero.value);
+  if (!replacement) { notice.value = '請選擇可用的主角。'; return; }
+  if (replacement.id === workshop.value.heroId) { changingHero.value = false; return; }
+  busy.value = true;
+  try {
+    const next = cloneWorkshop();
+    const previous = ALCHEMISTS.find(person => person.id === next.heroId);
+    // Return the outgoing hero's carried items so they remain accessible after the switch.
+    for (const [itemId, entry] of Object.entries(next.loadouts[next.heroId] || {})) {
+      if (!entry?.count) continue;
+      const stored = next.items[itemId] || { count: 0, totalQuality: 0 };
+      next.items[itemId] = { count: stored.count + entry.count, totalQuality: stored.totalQuality + (entry.totalQuality || 0) };
+    }
+    delete next.loadouts[next.heroId];
+    next.heroId = replacement.id;
+    appendJournal(next, `由${previous?.name || '原主角'}換成${replacement.name}擔任主角；原主角攜帶的道具已回到工房。`);
+    await saveWorkshop(next);
+    selectedCompanion.value = replacement.id;
+    selectedCarrier.value = replacement.id;
+    changingHero.value = false;
+    notice.value = `已由${previous?.name || '原主角'}換成${replacement.name}。原主角攜帶的道具已回到工房。`;
+  } catch (error) { notice.value = `更換主角失敗：${error.message}`; }
   finally { busy.value = false; }
 }
 
@@ -528,17 +565,17 @@ onMounted(async () => {
         </section>
 
         <section v-if="activeTab === 'party'" class="party-layout">
-          <div class="panel"><div class="panel-title"><div><span class="eyebrow">COMPANIONS</span><h2>主角與冒險夥伴</h2></div><span>出戰 {{ workshop.partyIds.length }} / 3 位同伴</span></div><p class="intro">主角固定出戰。從 {{ availableParty.length }} 位同伴中選最多三位；調整隊伍後，已攜帶的道具會留在原角色身上。</p><input v-model="companionSearch" class="roster-search" placeholder="搜尋同伴姓名或職業" aria-label="搜尋同伴"/><div v-if="hero" class="hero-summary"><button class="hero-portrait" title="放大主角立繪" @click="openPortrait(hero)"><img :src="hero.portrait" :alt="hero.name + '立繪'"/></button><div><small>主角 · {{ hero.gender }} · {{ hero.job }}</small><h3>{{ hero.name }}</h3><p>{{ hero.skill }} · 基礎傷害 {{ hero.damage }} · 攜帶 {{ carriedCount(hero.id) }} 件</p></div></div><div class="portrait-grid"><article v-for="person in displayedCompanions" :key="person.id" class="portrait-card" :class="{ enlisted: workshop.partyIds.includes(person.id) }"><button class="portrait-frame" :aria-label="`放大${person.name}立繪`" @click="openPortrait(person)"><img :src="person.portrait" :alt="person.name + '立繪'" loading="lazy"/></button><div><small>{{ person.race }} · {{ person.job }}</small><h3>{{ person.name }}</h3><p>{{ person.bio }}</p><p>{{ person.skill }} · 傷害 {{ person.damage }} · 攜帶 {{ carriedCount(person.id) }} 件</p><button :disabled="busy || !!battle || (!workshop.partyIds.includes(person.id) && workshop.partyIds.length >= 3)" @click="toggleCompanion(person.id)">{{ workshop.partyIds.includes(person.id) ? '移出隊伍' : '加入隊伍' }}</button></div></article></div></div>
+          <div class="panel"><div class="panel-title"><div><span class="eyebrow">COMPANIONS</span><h2>主角與冒險夥伴</h2></div><span>出戰 {{ workshop.partyIds.length }} / 3 位同伴</span></div><p class="intro">目前主角固定出戰，戰鬥外可更換。從 {{ availableParty.length }} 位同伴中選最多三位；調整隊伍後，已攜帶的道具會留在原角色身上。</p><button class="hero-change-button" :disabled="busy || !!battle || !!quiz" @click="openHeroChange">更換主角</button><input v-model="companionSearch" class="roster-search" placeholder="搜尋同伴姓名或職業" aria-label="搜尋同伴"/><div v-if="hero" class="hero-summary"><button class="hero-portrait" title="放大主角立繪" @click="openPortrait(hero)"><img :src="hero.portrait" :alt="hero.name + '立繪'"/></button><div><small>主角 · {{ hero.gender }} · {{ hero.job }}</small><h3>{{ hero.name }}</h3><p>{{ hero.skill }} · 基礎傷害 {{ hero.damage }} · 攜帶 {{ carriedCount(hero.id) }} 件</p></div></div><div class="portrait-grid"><article v-for="person in displayedCompanions" :key="person.id" class="portrait-card" :class="{ enlisted: workshop.partyIds.includes(person.id) }"><button class="portrait-frame" :aria-label="`放大${person.name}立繪`" @click="openPortrait(person)"><img :src="person.portrait" :alt="person.name + '立繪'" loading="lazy"/></button><div><small>{{ person.race }} · {{ person.job }}</small><h3>{{ person.name }}</h3><p>{{ person.bio }}</p><p>{{ person.skill }} · 傷害 {{ person.damage }} · 攜帶 {{ carriedCount(person.id) }} 件</p><button :disabled="busy || !!battle || (!workshop.partyIds.includes(person.id) && workshop.partyIds.length >= 3)" @click="toggleCompanion(person.id)">{{ workshop.partyIds.includes(person.id) ? '移出隊伍' : '加入隊伍' }}</button></div></article></div></div>
           <aside class="side-stack"><div class="panel"><h3>角色行囊</h3><p class="intro">已分配道具可在此取回工房。未出戰角色的道具無法在戰鬥中使用。</p><div v-for="person in allActors" :key="person.id" class="loadout-person"><strong>{{ person.name }}{{ activeParty.some(member => member.id === person.id) ? ' · 出戰' : '' }}（{{ carriedCount(person.id) }}/6）</strong><div v-if="carriedCount(person.id)" class="loadout-items"><div v-for="item in RECIPES.filter(recipe => workshop.loadouts[person.id]?.[recipe.id]?.count)" :key="item.id"><span>{{ item.icon }} {{ item.name }} ×{{ workshop.loadouts[person.id][item.id].count }}</span><button :disabled="busy || !!battle" @click="moveItem(item.id, person.id, 'return')">取回</button></div></div><small v-else>未攜帶道具</small></div></div><div class="panel"><div class="panel-title"><div><span class="eyebrow">CODEX</span><h2>素材圖鑑與鍊金日誌</h2></div><span>{{ workshop.discoveries.length }}/{{ MATERIALS.length }}</span></div><div class="discovery-grid"><span v-for="material in MATERIALS" :key="material.id" :class="{ unknown: !workshop.discoveries.includes(material.id) }">{{ workshop.discoveries.includes(material.id) ? `${material.icon} ${material.name}` : '？ 未發現' }}</span></div><h3>最近冒險</h3><p v-for="(entry, index) in workshop.journal" :key="index" class="journal-line">{{ entry }}</p></div></aside>
         </section>
         <p class="save-note">{{ saveNotice }}　採集 {{ workshop.gatheringCount }} 次 · 調合 {{ workshop.synthesisCount }} 次 · 勝利 {{ workshop.victories }} 次</p>
       </template>
 
-      <div v-if="!loading && !workshop.heroId && lessonLabel" class="character-overlay" role="dialog" aria-modal="true" aria-label="選擇鍊金術士主角">
-        <div class="character-card"><span class="eyebrow">BEGIN YOUR STORY</span><h2>選擇你的鍊金術士</h2><p>{{ ALCHEMISTS.filter(person => person.gender === '女').length }} 位女性、{{ ALCHEMISTS.filter(person => person.gender === '男').length }} 位男性，選定後將成為這份工房存檔的主角。原有玩家的採集與調合進度會保留。</p>
+      <div v-if="!loading && (!workshop.heroId || changingHero) && lessonLabel" class="character-overlay" role="dialog" aria-modal="true" aria-label="選擇鍊金術士主角">
+        <div class="character-card"><span class="eyebrow">BEGIN YOUR STORY</span><h2>{{ changingHero ? '更換鍊金術士主角' : '選擇你的鍊金術士' }}</h2><p>{{ ALCHEMISTS.filter(person => person.gender === '女').length }} 位女性、{{ ALCHEMISTS.filter(person => person.gender === '男').length }} 位男性。更換主角會保留採集、調合、戰鬥與成績進度；原主角的道具會回到工房背包。</p>
           <div class="roster-controls"><button :class="{ on: heroGenderFilter === 'all' }" @click="heroGenderFilter = 'all'">全部</button><button :class="{ on: heroGenderFilter === '女' }" @click="heroGenderFilter = '女'">女性</button><button :class="{ on: heroGenderFilter === '男' }" @click="heroGenderFilter = '男'">男性</button><input v-model="heroSearch" placeholder="搜尋主角" aria-label="搜尋主角"/></div><div class="starter-grid"><div v-for="person in displayedHeroes" :key="person.id" class="starter-person" :class="{ on: startingHero === person.id }"><button class="starter-picture" :aria-label="`放大${person.name}立繪`" @click="openPortrait(person)"><img :src="person.portrait" :alt="person.name + '立繪'" loading="lazy"/></button><strong>{{ person.name }}</strong><small>{{ person.gender }} · {{ person.job }}</small><button class="starter-choose" @click="startingHero = person.id">{{ startingHero === person.id ? '已選主角' : '選為主角' }}</button></div></div>
-          <h3>挑選起始同伴 <small>可選 0–3 位，之後仍可調整</small></h3><input v-model="companionSearch" class="roster-search" placeholder="搜尋同伴姓名或職業" aria-label="搜尋起始同伴"/><div class="starter-companions"><div v-for="person in displayedCompanions" :key="person.id" class="starter-companion" :class="{ on: startingParty.includes(person.id) }"><button class="starter-companion-picture" :aria-label="`放大${person.name}立繪`" @click="openPortrait(person)"><img :src="person.portrait" :alt="person.name + '立繪'" loading="lazy"/></button><span>{{ person.name }}<small>{{ person.job }}</small></span><button class="starter-companion-select" :disabled="!startingParty.includes(person.id) && startingParty.length >= 3" @click="toggleStartingCompanion(person.id)">{{ startingParty.includes(person.id) ? '✓' : '＋' }}</button></div></div>
-          <button class="primary-button start-button" :disabled="busy" @click="confirmCharacter">{{ busy ? '儲存中…' : '確定主角，開始冒險' }}</button>
+          <h3 v-if="!changingHero">挑選起始同伴 <small>可選 0–3 位，之後仍可調整</small></h3><input v-if="!changingHero" v-model="companionSearch" class="roster-search" placeholder="搜尋同伴姓名或職業" aria-label="搜尋起始同伴"/><div v-if="!changingHero" class="starter-companions"><div v-for="person in displayedCompanions" :key="person.id" class="starter-companion" :class="{ on: startingParty.includes(person.id) }"><button class="starter-companion-picture" :aria-label="`放大${person.name}立繪`" @click="openPortrait(person)"><img :src="person.portrait" :alt="person.name + '立繪'" loading="lazy"/></button><span>{{ person.name }}<small>{{ person.job }}</small></span><button class="starter-companion-select" :disabled="!startingParty.includes(person.id) && startingParty.length >= 3" @click="toggleStartingCompanion(person.id)">{{ startingParty.includes(person.id) ? '✓' : '＋' }}</button></div></div>
+          <div class="hero-choice-actions"><button v-if="changingHero" class="ghost-button" :disabled="busy" @click="changingHero = false">取消</button><button class="primary-button start-button" :disabled="busy" @click="changingHero ? confirmHeroChange() : confirmCharacter()">{{ busy ? '儲存中…' : changingHero ? '確認更換主角' : '確定主角，開始冒險' }}</button></div>
         </div>
       </div>
 
@@ -576,6 +613,7 @@ onMounted(async () => {
 .character-overlay{position:fixed;inset:0;z-index:1100;background:#06131aef;display:flex;align-items:center;justify-content:center;padding:15px}
 .character-card{width:min(1180px,100%);max-height:calc(100dvh - 30px);overflow:auto;background:linear-gradient(145deg,#263f4c,#142938);border:2px solid #d7b777;border-radius:18px;padding:22px;box-shadow:0 20px 75px #000b}
 .character-card h2{font:700 32px serif;margin:4px 0}.character-card p{color:#d1ded5}.character-card h3 small{font:400 13px 'Noto Sans TC',sans-serif;color:#cbd8ce}
+.hero-change-button{display:inline-block;margin:0 0 10px;border:1px solid #e3c687;border-radius:8px;background:#315766;color:#fff3d3;padding:9px 15px;font-weight:800;cursor:pointer}.hero-change-button:disabled{opacity:.5;cursor:not-allowed}.hero-choice-actions{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:18px}.hero-choice-actions .start-button{margin:0}
 .roster-controls{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:14px 0}.roster-controls button{border:1px solid #b7b092;border-radius:8px;background:#254755;color:#f7ecd7;padding:8px 12px;cursor:pointer}.roster-controls button.on{background:#dbb875;color:#193746;font-weight:800}.roster-controls input,.roster-search{min-width:170px;max-width:100%;border:1px solid #aabdb4;border-radius:8px;background:#173645;color:#f7ecd7;padding:9px 11px}.roster-controls input::placeholder,.roster-search::placeholder{color:#c2d1cc}.roster-search{display:block;width:min(360px,100%);margin:10px 0}
 .starter-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}.starter-grid button{background:#183542;border:2px solid #688583;border-radius:12px;color:#f8eed8;padding:7px;cursor:pointer;text-align:left}.starter-grid button.on,.starter-companions button.on{border-color:#ffda8c;background:#5a5d48;box-shadow:0 0 0 2px #f7ce7955}.starter-grid img{display:block;width:100%;height:200px;object-fit:cover;object-position:top;border-radius:7px}.starter-grid strong,.starter-grid small{display:block;margin-top:5px}.starter-grid small{font-size:12px;color:#d0dfd7}
 .starter-grid{max-height:min(50dvh,490px);overflow-y:auto;padding:2px 5px 4px 2px}.starter-companions{max-height:270px;overflow-y:auto;padding:2px 5px 4px 2px}
