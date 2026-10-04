@@ -560,7 +560,10 @@ async function startBattle() {
     p_actor_id: studentId.value, p_area_id: frontierArea.value.id, p_plot_index: selectedFrontier.value, p_command: 'start'
   });
   if (error) throw error;
-  battle.value = { ...data, areaId: frontierArea.value.id, plotIndex: selectedFrontier.value, log: [data.message] };
+  if (!Array.isArray(data?.actor_team) || !Array.isArray(data?.defender_team))
+    throw new Error('請先在新專案 Supabase SQL Editor 執行 20261004_isekai_frontier_party_battle.sql。');
+  battle.value = { ...data, areaId: frontierArea.value.id, plotIndex: selectedFrontier.value,
+    defenderWasStudent: !!data.owner_id, log: [data.message] };
 }
 
 async function battleCommand(command) {
@@ -818,7 +821,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
           <IsekaiTownPanel v-else-if="operationTab === 'town'" :farm="farm" :area-id="workArea.id" :plot-index="landView === 'frontier' ? selectedFrontier : selectedPlot" :plot-kind="landView" :frontier-field-index="selectedFrontierField" :frontier-access="frontierUsable" :frontier-claimed-at="frontierClaim?.captured_at || ''" :now="now" :classmates="classmates" :loans="peerLoans" :visits="peerVisits" :visit-preview="peerVisitPreview" :student-id="studentId" :loan-ready="peerLoanReady" :visit-ready="peerVisitReady" :disabled="loading || busy || !!quiz || !!battle" @action="askAction" />
           <div v-else class="war-panel">
             <div class="war-scene"><span>🛡️</span><strong>{{ frontierArea.name }} · 邊境土地 {{ selectedFrontier + 1 }}</strong><span>⚔️</span></div>
-            <p>在此挑戰或租用邊境地。取得土地後，中央農莊畫面會切換為該地的 3–6 格田位，種植、建設、飼育與城鎮經營都在中央操作。</p>
+            <p>在此挑戰或租用邊境地。戰鬥時主角與可參戰的員工、成年家人組隊，雙方人數相同；守備崗位優先排列。取得土地後，中央畫面會切換為該地的 3–6 格田位。</p>
             <label class="frontier-area-picker">選擇領地 <select :value="selectedFrontierAreaId" @change="chooseFrontierArea($event.target.value)"><option v-for="area in ISEKAI_AREAS" :key="area.id" :value="area.id">{{ area.name }}{{ area.id === (farm.profile?.startAreaId || 'fittoa') ? ' · 起始領地' : '' }}</option></select></label>
             <p v-if="!homeFrontiersComplete" class="people-note">佔滿起始領地的六塊邊境地後，可前往其他領地租地或戰鬥開拓。進度 {{ frontiers.filter(item => item.area_id === (farm.profile?.startAreaId || 'fittoa') && item.owner_id === studentId).length }}/6。</p>
             <p v-if="frontierReady && !frontierLeaseReady" class="people-note">本地邊境戰與耕種可用；租地和跨領地拓展需先在新專案 Supabase 執行 20261003_isekai_frontier_farmland.sql。</p>
@@ -854,7 +857,34 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
       <button class="identity-submit" :disabled="busy || !profileDraft.gender || !profileDraft.raceId || !profileDraft.professionId || !profileDraft.areaId" @click="createProfile">{{ busy ? '建立中…' : '啟程開拓' }}</button>
     </section></div>
 
-    <div v-if="battle" class="battle-scrim"><section class="battle-card" role="dialog" aria-modal="true" aria-labelledby="battle-title"><span class="eyebrow">FRONTIER CHRONICLE · 邊境戰</span><h2 id="battle-title">{{ battle.areaId }} · 第 {{ battle.plotIndex + 1 }} 塊田</h2><div class="battle-stage"><div><span>🧙‍♂️</span><b>我方農莊</b><small>生命 {{ battle.actor_hp }} · 魔力 {{ battle.actor_mana }} · 草藥 {{ battle.actor_items }}</small><meter :value="battle.actor_hp" :max="140" /></div><strong>⚔️</strong><div><span>🛡️</span><b>{{ battle.owner_id ? '同班領主' : '系統守衛' }}</b><small>生命 {{ battle.defender_hp }}</small><meter :value="battle.defender_hp" :max="140" /></div></div><p class="battle-outcome">{{ battle.message }}</p><div class="battle-commands" v-if="battle.status==='active'"><button :disabled="busy" @click="battleCommand('attack')">⚔️ 攻擊</button><button :disabled="busy || !battle.actor_mana" @click="battleCommand('magic')">🔮 魔術</button><button :disabled="busy" @click="battleCommand('guard')">🛡️ 防禦</button><button :disabled="busy || !battle.actor_items" @click="battleCommand('item')">🌿 道具</button></div><button v-else class="people-main-action" @click="battle=null">返回農莊</button><div class="battle-log"><p v-for="(entry,index) in battle.log" :key="index">{{ entry }}</p></div></section></div>
+    <div v-if="battle" class="battle-scrim">
+      <section class="battle-card" role="dialog" aria-modal="true" aria-labelledby="battle-title">
+        <span class="eyebrow">FRONTIER CHRONICLE · 邊境隊伍戰</span>
+        <h2 id="battle-title">{{ areaById(battle.areaId)?.name }} · 第 {{ battle.plotIndex + 1 }} 塊邊境地</h2>
+        <p class="battle-round">第 {{ battle.turn + 1 }} 回合 · 雙方各 {{ battle.party_size }} 人 · 我方魔力 {{ battle.actor_mana }} · 草藥 {{ battle.actor_items }}</p>
+        <div class="battle-armies">
+          <div class="battle-roster"><h3>⚔️ 我方隊伍 <small>剩餘生命 {{ battle.actor_hp }}</small></h3>
+            <div v-for="(unit,index) in battle.actor_team" :key="`a-${index}`" class="battle-unit" :class="{ fallen: unit.hp <= 0 }">
+              <span class="battle-unit-icon">{{ unit.icon }}</span><div><b>{{ unit.name }} <small>· {{ unit.role }}</small></b><meter :value="unit.hp" :max="unit.max_hp" /><small>生命 {{ unit.hp }}/{{ unit.max_hp }} · 戰力 {{ unit.power }}</small></div>
+            </div>
+          </div>
+          <div class="battle-roster"><h3>🛡️ {{ battle.defenderWasStudent ? '同班領主' : '系統守軍' }} <small>剩餘生命 {{ battle.defender_hp }}</small></h3>
+            <div v-for="(unit,index) in battle.defender_team" :key="`d-${index}`" class="battle-unit" :class="{ fallen: unit.hp <= 0 }">
+              <span class="battle-unit-icon">{{ unit.icon }}</span><div><b>{{ unit.name }} <small>· {{ unit.role }}</small></b><meter :value="unit.hp" :max="unit.max_hp" /><small>生命 {{ unit.hp }}/{{ unit.max_hp }} · 戰力 {{ unit.power }}</small></div>
+            </div>
+          </div>
+        </div>
+        <p class="battle-outcome">{{ battle.message }}</p>
+        <div v-if="battle.status === 'active'" class="battle-commands">
+          <button :disabled="busy" @click="battleCommand('attack')">⚔️ 全隊攻擊</button>
+          <button :disabled="busy || !battle.actor_mana" @click="battleCommand('magic')">🔮 合力魔術</button>
+          <button :disabled="busy" @click="battleCommand('guard')">🛡️ 全隊防禦</button>
+          <button :disabled="busy || !battle.actor_items || !battle.actor_team.some(unit => unit.hp > 0 && unit.hp < unit.max_hp)" @click="battleCommand('item')">🌿 治療傷者</button>
+        </div>
+        <button v-else class="people-main-action" @click="battle = null">返回農莊</button>
+        <div class="battle-log"><p v-for="(entry,index) in battle.log" :key="index">{{ entry }}</p></div>
+      </section>
+    </div>
 
     <div v-if="quiz" class="quiz-scrim"><section class="quiz-card" role="dialog" aria-modal="true" aria-labelledby="quiz-title"><span class="eyebrow">WORD MAGIC · 單字咒語</span><h2 id="quiz-title">{{ quiz.title }}</h2><p>「{{ quiz.word.zh_tw }}」的英文是什麼？</p>
       <div v-if="quiz.type === 'choice'" class="quiz-options"><button v-for="option in quiz.options" :key="option" :class="{ chosen: answer === option }" @click="answer = option">{{ option }}</button></div>
@@ -957,4 +987,6 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
 @media(max-width:760px){.isekai-page{padding:10px}.isekai-layout{display:flex;flex-direction:column;height:auto;min-height:0}.panel{overflow:visible}.homestead{order:0}.atlas{order:1}.atlas .map-frame{max-height:none}.field-scene{height:260px}.field-tile{height:103px}.operation-tabs{grid-template-columns:repeat(3,minmax(0,1fr))}.ledger{overflow:auto;top:6px;right:6px;bottom:6px;width:min(380px,calc(100vw - 12px))}.atlas-overlay{overflow:auto}.people-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:480px){.isekai-header nav a,.isekai-header nav button{padding:7px;font-size:12px}.field-scene{height:248px}.field-grid{gap:5px;padding:7px}.field-tile{height:100px}.field-tile strong{font-size:12px}.field-tile small{font-size:10px}.crop-glyph,.empty-glyph{font-size:29px}.crop-picker{grid-template-columns:repeat(2,minmax(0,1fr))}.action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.people-grid{grid-template-columns:1fr 1fr}.person-art{width:64px;height:92px}.atlas-list-toggle{font-size:12px}}
 @media(max-width:480px){.land-switcher{align-items:stretch;flex-direction:column;gap:4px}.land-switcher select{width:100%}}
+.battle-card{width:min(920px,100%)}.battle-round{margin:0 0 10px;color:#e7cf9f;font-size:13px}.battle-armies{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;max-height:48vh;overflow:auto}.battle-roster{min-width:0;display:grid;align-content:start;gap:5px;padding:9px;border:1px solid #b89c6b;border-radius:6px;background:#0e252a80}.battle-roster h3{display:flex;justify-content:space-between;gap:8px;margin:0 0 3px;font-size:15px}.battle-roster h3 small{font-size:11px;color:#e3c993}.battle-unit{display:grid;grid-template-columns:34px minmax(0,1fr);gap:6px;align-items:center;min-height:54px;padding:5px 7px;border:1px solid #bda47559;border-radius:4px;background:#aa956020}.battle-unit.fallen{opacity:.48;filter:grayscale(1)}.battle-unit-icon{font-size:26px}.battle-unit>div{display:grid;min-width:0;gap:1px}.battle-unit b{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.battle-unit b small,.battle-unit>div>small{color:#d8d2bc;font-size:10px}.battle-unit meter{width:100%;height:10px}.battle-commands{position:sticky;bottom:0;z-index:1;padding:7px 0;background:#243137}.battle-log{max-height:100px}
+@media(max-width:620px){.battle-armies{grid-template-columns:1fr}.battle-roster{grid-template-columns:repeat(2,minmax(0,1fr))}.battle-roster h3{grid-column:1/-1}.battle-unit{grid-template-columns:26px minmax(0,1fr)}.battle-unit-icon{font-size:20px}}
 </style>
