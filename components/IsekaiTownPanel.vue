@@ -3,7 +3,7 @@ import { computed, ref } from 'vue';
 import { ISEKAI_AREAS, ISEKAI_BUILDINGS, ISEKAI_CROPS, adjustedBuildingCost, buildingById, isekaiActionError } from '~/lib/isekai-farm';
 import { ISEKAI_CIVIC, ISEKAI_CIVIC_UPGRADES, ISEKAI_RECIPES, ISEKAI_SCHOOL_DAYS, ISEKAI_SCHOOL_SUBJECTS, ISEKAI_SPECIALISTS, ISEKAI_WORLD_CYCLE_MS, expansionActionError, isekaiCivicMarket, isekaiFacilityCount } from '~/lib/isekai-farm-expansion';
 
-const props = defineProps({ farm: { type: Object, required: true }, areaId: { type: String, required: true }, plotIndex: { type: Number, required: true }, now: { type: Number, required: true }, disabled: { type: Boolean, default: false }, classmates: { type: Array, default: () => [] }, loans: { type: Array, default: () => [] }, visits: { type: Array, default: () => [] }, visitPreview: { type: Object, default: null }, studentId: { type: String, default: '' }, loanReady: { type: Boolean, default: false }, visitReady: { type: Boolean, default: false } });
+const props = defineProps({ farm: { type: Object, required: true }, areaId: { type: String, required: true }, plotIndex: { type: Number, required: true }, plotKind: { type: String, default: 'home' }, frontierFieldIndex: { type: Number, default: 0 }, frontierAccess: { type: Boolean, default: false }, frontierClaimedAt: { type: String, default: '' }, now: { type: Number, required: true }, disabled: { type: Boolean, default: false }, classmates: { type: Array, default: () => [] }, loans: { type: Array, default: () => [] }, visits: { type: Array, default: () => [] }, visitPreview: { type: Object, default: null }, studentId: { type: String, default: '' }, loanReady: { type: Boolean, default: false }, visitReady: { type: Boolean, default: false } });
 const emit = defineEmits(['action']);
 const section = ref('craft');
 const fullScreen = ref(false);
@@ -29,13 +29,14 @@ const categories = [
   { id: 'civic', label: '🏫 學府與公益' }, { id: 'research', label: '🔆 研發與能源' },
   { id: 'finance', label: '📒 財務與事件' }, { id: 'visits', label: '👥 同學互訪' }
 ];
-const plot = computed(() => props.farm.plots?.[props.areaId]?.[props.plotIndex]);
+const plot = computed(() => props.plotKind === 'frontier' ? props.farm.frontierPlots?.[props.areaId]?.[props.plotIndex]?.[props.frontierFieldIndex]
+  : props.farm.plots?.[props.areaId]?.[props.plotIndex]);
 const selectedCivic = computed(() => ISEKAI_CIVIC.find(item => item.id === civicId.value));
 const civicCandidates = computed(() => [...isekaiCivicMarket(props.now, civicId.value, 'leader'), ...isekaiCivicMarket(props.now, civicId.value, 'worker')]);
 const institution = computed(() => props.farm.expansion?.civic?.[civicId.value]);
 const selectedRecipe = computed(() => ISEKAI_RECIPES.find(item => item.id === recipeId.value));
 const stock = computed(() => selectedRecipe.value?.animal ? props.farm.animalGoods?.[selectedRecipe.value.sourceId] || 0 : props.farm.produce?.[selectedRecipe.value?.sourceId] || 0);
-const usedSite = computed(() => `${props.areaId}:${props.plotIndex}`);
+const usedSite = computed(() => props.plotKind === 'frontier' ? `frontier:${props.areaId}:${props.plotIndex}:${props.frontierFieldIndex}` : `${props.areaId}:${props.plotIndex}`);
 const collateralOptions = computed(() => ISEKAI_AREAS.filter(item => props.farm.unlockedAreas?.includes(item.id)
   && !['fittoa','ranoa','kingdragon'].includes(item.id) && props.farm.plots?.[item.id]?.every(plot => !plot)));
 const loanPerson = id => id === props.studentId ? '我' : props.classmates.find(item => item.student_id === id)?.hidden_name || '同班同學';
@@ -44,10 +45,13 @@ const facilityOptions = computed(() => ISEKAI_BUILDINGS.filter(item => section.v
   : section.value === 'venue' ? item.category === 'venue' : section.value === 'civic' ? item.category === 'civic'
     : section.value === 'research' ? ['energy','research','housing'].includes(item.category) : false));
 const selectedFacility = computed(() => buildingById(facilityId.value));
-const buildAction = computed(() => ({ type: 'build', areaId: props.areaId, plotIndex: props.plotIndex, buildingId: facilityId.value }));
+const localAction = action => props.plotKind === 'frontier' && ['build','operateVenue','solarRoof'].includes(action.type)
+  ? { ...action, plotKind: 'frontier', frontierFieldIndex: props.frontierFieldIndex, frontierAccess: props.frontierAccess, frontierClaimedAt: props.frontierClaimedAt }
+  : action;
+const buildAction = computed(() => localAction({ type: 'build', areaId: props.areaId, plotIndex: props.plotIndex, buildingId: facilityId.value }));
 const canBuild = computed(() => !props.disabled && !isekaiActionError(props.farm, buildAction.value, props.now));
-const can = action => !props.disabled && !expansionActionError(props.farm, action, props.now);
-const send = action => emit('action', action);
+const can = action => !props.disabled && !expansionActionError(props.farm, localAction(action), props.now);
+const send = action => emit('action', localAction(action));
 const closeInstitution = () => {
   if (window.confirm(`結束${institution.value?.name || '機構'}營運？基金將移交公共用途，無法提回農莊；之後可拆除建築。`)) send({ type: 'closeCivic', civicId: civicId.value });
 };
@@ -60,7 +64,7 @@ const currency = value => Math.round(Number(value) || 0);
 
 <template>
   <div class="town-panel" :class="{ fullscreen: fullScreen }">
-    <header class="town-header"><div><strong>中央大陸城鎮經營</strong><small>建設使用你的農莊田位；各項產業以三小時為營運週期。</small></div><button @click="fullScreen = !fullScreen">{{ fullScreen ? '返回農莊' : '⛶ 全頁管理' }}</button></header>
+    <header class="town-header"><div><strong>中央大陸城鎮經營</strong><small>建設使用目前選取的田位；各項產業以三小時為營運週期。</small></div><button @click="fullScreen = !fullScreen">{{ fullScreen ? '返回農莊' : '⛶ 全頁管理' }}</button></header>
     <nav class="town-nav"><button v-for="item in categories" :key="item.id" :class="{ active: section === item.id }" @click="setSection(item.id)">{{ item.label }}</button></nav>
     <div class="town-content">
       <div v-if="!['finance','visits'].includes(section)" class="facility-builder">
@@ -73,7 +77,7 @@ const currency = value => Math.round(Number(value) || 0);
       </div>
 
       <template v-if="section === 'craft'">
-        <p>先建魔藥加工坊，再用兩份原料製作一份加工品。加工品可直接販賣；多族市集會提高售價。</p>
+        <p>先在私人農莊或可使用的邊境地建魔藥加工坊，再用兩份原料製作一份加工品。加工品可直接販賣；多族市集會提高售價。</p>
         <div class="town-cards"><article v-for="recipe in ISEKAI_RECIPES" :key="recipe.id" :class="{ active: recipeId === recipe.id }" @click="recipeId = recipe.id">
           <b>{{ recipe.mark }} {{ recipe.name }}</b><small>原料 {{ recipe.sourceCount }} 份 · 庫存 {{ recipe.animal ? farm.animalGoods?.[recipe.sourceId] || 0 : farm.produce?.[recipe.sourceId] || 0 }} · 成品 {{ farm.expansion?.processed?.[recipe.id] || 0 }}</small><small>售價 {{ recipe.sale }}；多族市集加價 30%</small>
         </article></div>
@@ -88,7 +92,7 @@ const currency = value => Math.round(Number(value) || 0);
       </template>
 
       <template v-else-if="section === 'civic'">
-        <p>公益機構需蓋在自己的農莊地上；捐贈、學費和結餘只留在機構基金。學校可設定班級與招生；各機構聘用主管與專業人員後自動營運。</p>
+        <p>公益機構需蓋在自己可使用的田位；捐贈、學費和結餘只留在機構基金。學校可設定班級與招生；各機構聘用主管與專業人員後自動營運。</p>
         <div class="town-cards"><article v-for="item in ISEKAI_CIVIC" :key="item.id" :class="{ active: civicId === item.id }" @click="civicId = item.id; facilityId = item.id"><b>{{ item.mark }} {{ item.name }}</b><small>已建 {{ isekaiFacilityCount(farm, item.id) }} 間 · {{ farm.expansion?.civic?.[item.id]?.name || '尚未成立' }}</small></article></div>
         <section class="institution"><h3>{{ selectedCivic?.mark }} {{ institution?.name || selectedCivic?.name }}</h3>
           <template v-if="!institution"><label>自訂機構名稱<input v-model.trim="institutionName" maxlength="24" placeholder="例如：星露學府" /></label><button :disabled="!can({ type:'foundCivic', civicId, name:institutionName })" @click="send({ type:'foundCivic', civicId, name:institutionName })">創辦並捐入 300 金幣</button><small>{{ expansionActionError(farm, { type:'foundCivic', civicId, name:institutionName }, now) }}</small></template>
