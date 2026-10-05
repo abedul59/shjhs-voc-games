@@ -12,13 +12,13 @@
   "dependencies": {
     "@nuxtjs/supabase": "^2.0.4",
     "canvas-confetti": "^1.9.2",
+    "chess.js": "^1.4.0",
     "cnchar": "^3.2.6",
     "joy-con-webhid": "^0.11.0",
     "nuxt": "^4.3.1",
     "papaparse": "^5.5.3",
     "vue": "^3.5.28",
-    "vue-router": "^4.6.4",
-    "papaparse": "^5.4.1"
+    "vue-router": "^4.6.4"
   },
   "devDependencies": {
     "@types/papaparse": "^5.5.2"

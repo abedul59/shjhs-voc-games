@@ -25,6 +25,7 @@ const gamesList = [
   { id: 'happyFarm', name: '🌻 單字開心農場' },
   { id: 'isekaiFarm', name: '✧ 單字異世界悠閒農莊' },
   { id: 'alchemyAtelier', name: '⚗️ 單字鍊金工房' },
+  { id: 'chess', name: '♔ 單字西洋棋' },
   { id: 'railwayTour', name: '🚂 單字鐵路旅遊高手' },
   { id: 'monopolyDual', name: '🏘️ 單字大富翁（雙人）' },
   { id: 'pikavolleyDual', name: '⚡ 皮卡丘排球（雙人）' },

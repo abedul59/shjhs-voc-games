@@ -26,6 +26,7 @@ const gameDict = {
   'happyFarm': { name: '🌻 單字開心農場', path: '/game-happy-farm', class: 'monopoly-btn' },
   'isekaiFarm': { name: '✧ 單字異世界悠閒農莊', path: '/game-isekai-farm', class: 'monopoly-btn' },
   'alchemyAtelier': { name: '⚗️ 單字鍊金工房', path: '/game-alchemy-atelier', class: 'monopoly-btn' },
+  'chess': { name: '♔ 單字西洋棋', path: '/game-chess', class: 'monopoly-btn' },
   'railwayTour': { name: '🚂 單字鐵路旅遊高手', path: '/game-railway-tour', class: 'monopoly-btn' },
   'verbMonopoly': { name: '🏘️ 動詞變化大富翁', path: '/game-verb-monopoly', class: 'monopoly-btn' },
   'move': { name: '🔠 單字神移動', path: '/game-move', class: '' },
@@ -87,7 +88,7 @@ const noUnitGames = ['speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics
 const isNoUnitGame = computed(() => noUnitGames.includes(selectedGameType.value));
 
 const defaultCategories = [
-  { id: 'c1', name: '🕹️ 經典單字遊戲', games: ['monopoly', 'happyFarm', 'isekaiFarm', 'alchemyAtelier', 'railwayTour', 'match', 'move', 'choice', 'fill', 'sentence', 'listen', 'puzzle', 'cross', 'review', 'picture2meaning', 'ninja'] },
+  { id: 'c1', name: '🕹️ 經典單字遊戲', games: ['monopoly', 'happyFarm', 'isekaiFarm', 'alchemyAtelier', 'railwayTour', 'chess', 'match', 'move', 'choice', 'fill', 'sentence', 'listen', 'puzzle', 'cross', 'review', 'picture2meaning', 'ninja'] },
   { id: 'c2', name: '🏆 體感與趣味挑戰', games: ['shake2shuffle', 'tilt2sort', 'gravitymaze', 'swing2cast', 'ARsniper', 'GPSmap', 'vocshooting', 'noropejump'] },
   { id: 'c3', name: '👾 懷舊街機遊樂場', games: ['tetris', 'pinball', 'angrybirds', 'solitaire', 'pikavolley', 'pacman', 'minesweeper', 'sudoku'] },
   { id: 'c4', name: '⚔️ 雙人對戰與領域牌組', games: ['monopolyDual', 'pikavolleyDual', 'angrybirdsDual', 'battle', 'tenchi', 'tarot21', 'tarotAlch', 'tarotUno', 'tarotUno1', 'tarot21solo', 'tarotAlch1'] },
@@ -141,7 +142,10 @@ onMounted(async () => {
         name: c.name || c.category_name || `分類 ${i+1}`,
         games: Array.isArray(c.games) ? [...c.games] : []
       }));
-      // 已儲存的分類由後台決定；新遊戲可以自由安排或隱藏。
+      // 舊站已儲存的分類仍由後台管理；只補入尚未排版的新棋戲。
+      if (!dynamicCategories.value.some(cat => cat.games.includes('chess')) && dynamicCategories.value.length) {
+        dynamicCategories.value[0].games.push('chess');
+      }
       const hasShooting = dynamicCategories.value.some(cat => cat.games.includes('vocshooting'));
       if (!hasShooting && dynamicCategories.value.length > 0) {
         dynamicCategories.value[0].games.push('vocshooting');

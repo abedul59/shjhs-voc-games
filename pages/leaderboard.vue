@@ -9,7 +9,7 @@ const studentsMap = ref({});
 
 const route = useRoute();
 const verbMonopolyTypes = ['動詞變化大富翁（八年級）', '動詞變化大富翁（九年級）'];
-const fromMonopoly = ['單字大富翁', '單字開心農場', '單字異世界悠閒農莊', '單字鍊金工房', '單字鐵路旅遊高手', '單字大富翁（雙人）', '單字皮卡丘排球（雙人）', '單字憤怒鳥（雙人）', ...verbMonopolyTypes].includes(route.query.game);
+const fromMonopoly = ['單字大富翁', '單字開心農場', '單字異世界悠閒農莊', '單字鍊金工房', '單字西洋棋', '單字鐵路旅遊高手', '單字大富翁（雙人）', '單字皮卡丘排球（雙人）', '單字憤怒鳥（雙人）', ...verbMonopolyTypes].includes(route.query.game);
 const selectedGameType = ref(fromMonopoly ? route.query.game : '單字方塊消消樂');
 const identityMode = ref('student'); 
 const selectedVersion = ref(fromMonopoly && typeof route.query.version === 'string' ? route.query.version : '');
@@ -190,6 +190,7 @@ const getPlayerName = (id) => {
         <button class="type-btn" :class="{ active: selectedGameType === '單字開心農場' }" @click="selectedGameType = '單字開心農場'; fetchLeaderboard()">🌻 開心農場</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字異世界悠閒農莊' }" @click="selectedGameType = '單字異世界悠閒農莊'; fetchLeaderboard()">✧ 異世界農莊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字鍊金工房' }" @click="selectedGameType = '單字鍊金工房'; fetchLeaderboard()">⚗️ 鍊金工房</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字西洋棋' }" @click="selectedGameType = '單字西洋棋'; fetchLeaderboard()">♔ 西洋棋</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字鐵路旅遊高手' }" @click="selectedGameType = '單字鐵路旅遊高手'; fetchLeaderboard()">🚂 鐵路旅遊</button>
         <button v-for="(type, index) in verbMonopolyTypes" :key="type" class="type-btn" :class="{ active: selectedGameType === type }" @click="selectedGameType = type; fetchLeaderboard()">🏘️ 動詞大富翁（{{ index === 0 ? '八' : '九' }}）</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊消消樂' }" @click="selectedGameType = '單字方塊消消樂'; fetchLeaderboard()">🟦 方塊</button>
@@ -283,7 +284,7 @@ const getPlayerName = (id) => {
         <!-- 🌟 名次區塊增加遊玩模式標示 -->
         <div class="rank-info">
           <div class="player-name">{{ getPlayerName(record.student_id) }}</div>
-          <details v-if="['單字大富翁', '單字開心農場', '單字異世界悠閒農莊', '單字鍊金工房', '單字鐵路旅遊高手', '單字大富翁（雙人）', ...verbMonopolyTypes, ...scoredWordDuels].includes(selectedGameType)" class="monopoly-words">
+          <details v-if="['單字大富翁', '單字開心農場', '單字異世界悠閒農莊', '單字鍊金工房', '單字西洋棋', '單字鐵路旅遊高手', '單字大富翁（雙人）', ...verbMonopolyTypes, ...scoredWordDuels].includes(selectedGameType)" class="monopoly-words">
             <summary>查看最佳成績的對錯{{ verbMonopolyTypes.includes(selectedGameType) ? '動詞' : '單字' }}</summary>
             <p v-if="selectedGameType === '單字大富翁（雙人）'">最佳現金：{{ record.score }} 分 · {{ record.draws }} 平</p>
             <p v-if="selectedGameType === '單字皮卡丘排球（雙人）'">最佳對戰與拼字：{{ record.score }} 分 · {{ record.draws }} 平</p>
