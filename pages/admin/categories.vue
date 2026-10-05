@@ -12,6 +12,8 @@ const allGames = [
   { id: 'isekaiFarm', name: '✧ 單字異世界悠閒農莊' },
   { id: 'alchemyAtelier', name: '⚗️ 單字鍊金工房' },
   { id: 'chess', name: '♔ 單字西洋棋' },
+  { id: 'go', name: '⚫ 單字圍棋' },
+  { id: 'xiangqi', name: '帥 單字象棋' },
   { id: 'railwayTour', name: '🚂 單字鐵路旅遊高手' },
   { id: 'match', name: '🟦 方塊消消樂' },
   { id: 'move', name: '🔠 單字神移動' },
@@ -79,8 +81,10 @@ onMounted(async () => {
         name: cat.name || cat.category_name || `分類 ${index + 1}`,
         games: Array.isArray(cat.games) ? [...cat.games] : []
       }));
-      if (categories.value.length && !categories.value.some(cat => cat.games.includes('chess'))) {
-        categories.value[0].games.push('chess');
+      for (const gameId of ['chess', 'go', 'xiangqi']) {
+        if (categories.value.length && !categories.value.some(cat => cat.games.includes(gameId))) {
+          categories.value[0].games.push(gameId);
+        }
       }
     }
   } catch (error) {

@@ -149,6 +149,8 @@ const exportToCSV = () => {
         <button class="type-btn" :class="{ active: selectedGameType === '單字異世界悠閒農莊' }" @click="selectedGameType = '單字異世界悠閒農莊'">✧ 異世界農莊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字鍊金工房' }" @click="selectedGameType = '單字鍊金工房'">⚗️ 鍊金工房</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字西洋棋' }" @click="selectedGameType = '單字西洋棋'">♔ 西洋棋</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字圍棋' }" @click="selectedGameType = '單字圍棋'">⚫ 圍棋</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字象棋' }" @click="selectedGameType = '單字象棋'">帥 象棋</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字鐵路旅遊高手' }" @click="selectedGameType = '單字鐵路旅遊高手'">🚂 鐵路旅遊</button>
         <button v-for="(type, index) in verbMonopolyTypes" :key="type" class="type-btn" :class="{ active: selectedGameType === type }" @click="selectedGameType = type">🏘️ 動詞大富翁（{{ index === 0 ? '八' : '九' }}）</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字方塊消消樂' }" @click="selectedGameType = '單字方塊消消樂'">🟦 方塊</button>
