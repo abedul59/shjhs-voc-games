@@ -26,6 +26,7 @@ const gameDict = {
   'happyFarm': { name: '🌻 單字開心農場', path: '/game-happy-farm', class: 'monopoly-btn' },
   'isekaiFarm': { name: '✧ 單字異世界悠閒農莊', path: '/game-isekai-farm', class: 'monopoly-btn' },
   'alchemyAtelier': { name: '⚗️ 單字鍊金工房', path: '/game-alchemy-atelier', class: 'monopoly-btn' },
+  'vocabularyZoo': { name: '🦁 單字模擬動物園', path: '/game-vocabulary-zoo', class: 'monopoly-btn' },
   'chess': { name: '♔ 單字西洋棋', path: '/game-chess', class: 'monopoly-btn' },
   'go': { name: '⚫ 單字圍棋', path: '/game-go', class: 'monopoly-btn' },
   'xiangqi': { name: '帥 單字象棋', path: '/game-xiangqi', class: 'monopoly-btn' },
@@ -90,7 +91,7 @@ const noUnitGames = ['speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics
 const isNoUnitGame = computed(() => noUnitGames.includes(selectedGameType.value));
 
 const defaultCategories = [
-  { id: 'c1', name: '🕹️ 經典單字遊戲', games: ['monopoly', 'happyFarm', 'isekaiFarm', 'alchemyAtelier', 'railwayTour', 'chess', 'go', 'xiangqi', 'match', 'move', 'choice', 'fill', 'sentence', 'listen', 'puzzle', 'cross', 'review', 'picture2meaning', 'ninja'] },
+  { id: 'c1', name: '🕹️ 經典單字遊戲', games: ['monopoly', 'happyFarm', 'isekaiFarm', 'alchemyAtelier', 'vocabularyZoo', 'railwayTour', 'chess', 'go', 'xiangqi', 'match', 'move', 'choice', 'fill', 'sentence', 'listen', 'puzzle', 'cross', 'review', 'picture2meaning', 'ninja'] },
   { id: 'c2', name: '🏆 體感與趣味挑戰', games: ['shake2shuffle', 'tilt2sort', 'gravitymaze', 'swing2cast', 'ARsniper', 'GPSmap', 'vocshooting', 'noropejump'] },
   { id: 'c3', name: '👾 懷舊街機遊樂場', games: ['tetris', 'pinball', 'angrybirds', 'solitaire', 'pikavolley', 'pacman', 'minesweeper', 'sudoku'] },
   { id: 'c4', name: '⚔️ 雙人對戰與領域牌組', games: ['monopolyDual', 'pikavolleyDual', 'angrybirdsDual', 'battle', 'tenchi', 'tarot21', 'tarotAlch', 'tarotUno', 'tarotUno1', 'tarot21solo', 'tarotAlch1'] },
@@ -144,8 +145,8 @@ onMounted(async () => {
         name: c.name || c.category_name || `分類 ${i+1}`,
         games: Array.isArray(c.games) ? [...c.games] : []
       }));
-      // 舊站已儲存的分類仍由後台管理；只補入尚未排版的新棋戲。
-      for (const gameId of ['chess', 'go', 'xiangqi']) {
+      // 舊站已儲存的分類仍由後台管理；只補入尚未排版的新遊戲。
+      for (const gameId of ['chess', 'go', 'xiangqi', 'vocabularyZoo']) {
         if (!dynamicCategories.value.some(cat => cat.games.includes(gameId)) && dynamicCategories.value.length) {
           dynamicCategories.value[0].games.push(gameId);
         }

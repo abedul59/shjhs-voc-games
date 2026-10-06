@@ -8,7 +8,7 @@ const isLoading = ref(true);
 
 const route = useRoute();
 const verbMonopolyTypes = ['動詞變化大富翁（八年級）', '動詞變化大富翁（九年級）'];
-const selectedGameType = ref(['單字大富翁', '單字開心農場', '單字異世界悠閒農莊', '單字鍊金工房', '單字西洋棋', '單字圍棋', '單字象棋', '單字鐵路旅遊高手', '單字大富翁（雙人）', '單字皮卡丘排球（雙人）', '單字憤怒鳥（雙人）', ...verbMonopolyTypes].includes(route.query.game) ? route.query.game : '單字方塊消消樂');
+const selectedGameType = ref(['單字大富翁', '單字開心農場', '單字異世界悠閒農莊', '單字鍊金工房', '單字模擬動物園', '單字西洋棋', '單字圍棋', '單字象棋', '單字鐵路旅遊高手', '單字大富翁（雙人）', '單字皮卡丘排球（雙人）', '單字憤怒鳥（雙人）', ...verbMonopolyTypes].includes(route.query.game) ? route.query.game : '單字方塊消消樂');
 
 // 🌟 統一定義所有 PvP 對戰遊戲
 const pvpGames = ['單字大富翁（雙人）', '單字皮卡丘排球（雙人）', '單字憤怒鳥（雙人）', '單字方塊陣', '單字吞食天地', '單字塔羅21點', '單字塔羅鍊金術', '單字塔羅UNO對決'];
@@ -84,6 +84,7 @@ const pvpTotalEscapes = computed(() => historyRecords.value.filter(r => getBattl
         <button class="type-btn" :class="{ active: selectedGameType === '單字開心農場' }" @click="selectedGameType = '單字開心農場'; fetchHistory()">🌻 開心農場</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字異世界悠閒農莊' }" @click="selectedGameType = '單字異世界悠閒農莊'; fetchHistory()">✧ 異世界農莊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字鍊金工房' }" @click="selectedGameType = '單字鍊金工房'; fetchHistory()">⚗️ 鍊金工房</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字模擬動物園' }" @click="selectedGameType = '單字模擬動物園'; fetchHistory()">🦁 模擬動物園</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字西洋棋' }" @click="selectedGameType = '單字西洋棋'; fetchHistory()">♔ 西洋棋</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字圍棋' }" @click="selectedGameType = '單字圍棋'; fetchHistory()">⚫ 圍棋</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字象棋' }" @click="selectedGameType = '單字象棋'; fetchHistory()">帥 象棋</button>
