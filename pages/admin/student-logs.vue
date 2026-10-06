@@ -117,6 +117,7 @@ const pathNames = {
   '/game-happy-farm': '🌻 單字開心農場',
   '/game-isekai-farm': '✧ 單字異世界悠閒農莊',
   '/game-alchemy-atelier': '⚗️ 單字鍊金工房',
+  '/game-vocabulary-zoo': '🦁 單字模擬動物園',
   '/game-railway-tour': '🚂 單字鐵路旅遊高手',
   '/game-pikavolley-dual': '⚡ 皮卡丘排球（雙人）',
   '/game-battle': '⚔️ 單字方塊陣',
