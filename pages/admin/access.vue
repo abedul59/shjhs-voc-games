@@ -26,6 +26,7 @@ const gamesList = [
   { id: 'isekaiFarm', name: '✧ 單字異世界悠閒農莊' },
   { id: 'alchemyAtelier', name: '⚗️ 單字鍊金工房' },
   { id: 'vocabularyZoo', name: '🦁 單字模擬動物園' },
+  { id: 'vocabularyStairs', name: '🪜 單字小朋友下樓梯' },
   { id: 'chess', name: '♔ 單字西洋棋' },
   { id: 'go', name: '⚫ 單字圍棋' },
   { id: 'xiangqi', name: '帥 單字象棋' },
