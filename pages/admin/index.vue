@@ -23,6 +23,7 @@ const isSuperAdmin = computed(() => {
 const config = ref({
   system_name: '單字領域展開', announcement: '', school_name: '新化國中', school_phone: '065902269',
   auto_logout_minutes: 10, anti_cheat_enabled: true, anti_cheat_cooldown: 5,
+  stairs_quiz_min_seconds: 30, stairs_quiz_max_seconds: 40, stairs_wrong_pause_seconds: 3,
   stroke_limit_window: 1, stroke_limit_count: 1, stroke_cooldown: 3,
   match_game_time_limit: 60, match_penalty: 2, move_game_time_limit: 20, move_penalty: 2,
   choice_game_time_limit: 20, choice_penalty: 2, fill_game_time_limit: 20, fill_penalty: 2,
@@ -87,6 +88,14 @@ onMounted(async () => {
 
 const saveSettings = async () => {
   if (!isSuperAdmin.value) return;
+  const min = Number(config.value.stairs_quiz_min_seconds);
+  const max = Number(config.value.stairs_quiz_max_seconds);
+  const pause = Number(config.value.stairs_wrong_pause_seconds);
+  if (!Number.isInteger(min) || !Number.isInteger(max) || min < 5 || max > 180 || min > max ||
+      !Number.isInteger(pause) || pause < 0 || pause > 30) {
+    alert('下樓梯設定請輸入 5～180 秒的出題範圍（最短不可大於最長），答錯暫停為 0～30 秒。');
+    return;
+  }
   const { error } = await supabase.from('system_settings').update(config.value).eq('id', 1);
   if (error) alert('更新失敗：' + error.message); else alert('✅ 系統設定更新成功！');
 };

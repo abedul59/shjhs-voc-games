@@ -16,6 +16,15 @@ const toggleAngrybirdsDuel = event => {
 
 <template>
   <div class="settings-section">
+    <div class="setting-item highlight-item" style="flex-direction:column;align-items:stretch;gap:8px;background:#e3f2fd;border-color:#81b7d4;">
+      <label style="color:#155079;font-size:1.1rem;font-weight:800;">🪜 單字小朋友下樓梯</label>
+      <div class="multi-input" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        遊玩滿 <input type="number" min="5" max="180" v-model.number="config.stairs_quiz_min_seconds" class="retro-input num-input" />
+        ～ <input type="number" min="5" max="180" v-model.number="config.stairs_quiz_max_seconds" class="retro-input num-input" /> 秒出一題；
+        答錯暫停 <input type="number" min="0" max="30" v-model.number="config.stairs_wrong_pause_seconds" class="retro-input num-input" /> 秒。
+      </div>
+      <small>預設 30～40 秒出題、答錯暫停 3 秒。問答及分頁切換期間不計入遊玩時間。</small>
+    </div>
     
     <!-- 🚦 伺服器流量管理：對戰遊戲開放控制 -->
     <div class="setting-item highlight-item" style="flex-direction: column; align-items: stretch; gap: 10px; background: #ffebee; border-color: #f44336; margin-bottom: 25px;">

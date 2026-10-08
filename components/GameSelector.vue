@@ -27,6 +27,7 @@ const gameDict = {
   'isekaiFarm': { name: '✧ 單字異世界悠閒農莊', path: '/game-isekai-farm', class: 'monopoly-btn' },
   'alchemyAtelier': { name: '⚗️ 單字鍊金工房', path: '/game-alchemy-atelier', class: 'monopoly-btn' },
   'vocabularyZoo': { name: '🦁 單字模擬動物園', path: '/game-vocabulary-zoo', class: 'monopoly-btn' },
+  'vocabularyStairs': { name: '🪜 單字小朋友下樓梯', path: '/game-vocabulary-stairs', class: 'monopoly-btn' },
   'chess': { name: '♔ 單字西洋棋', path: '/game-chess', class: 'monopoly-btn' },
   'go': { name: '⚫ 單字圍棋', path: '/game-go', class: 'monopoly-btn' },
   'xiangqi': { name: '帥 單字象棋', path: '/game-xiangqi', class: 'monopoly-btn' },
@@ -93,7 +94,7 @@ const isNoUnitGame = computed(() => noUnitGames.includes(selectedGameType.value)
 const defaultCategories = [
   { id: 'c1', name: '🕹️ 經典單字遊戲', games: ['monopoly', 'happyFarm', 'isekaiFarm', 'alchemyAtelier', 'vocabularyZoo', 'railwayTour', 'chess', 'go', 'xiangqi', 'match', 'move', 'choice', 'fill', 'sentence', 'listen', 'puzzle', 'cross', 'review', 'picture2meaning', 'ninja'] },
   { id: 'c2', name: '🏆 體感與趣味挑戰', games: ['shake2shuffle', 'tilt2sort', 'gravitymaze', 'swing2cast', 'ARsniper', 'GPSmap', 'vocshooting', 'noropejump'] },
-  { id: 'c3', name: '👾 懷舊街機遊樂場', games: ['tetris', 'pinball', 'angrybirds', 'solitaire', 'pikavolley', 'pacman', 'minesweeper', 'sudoku'] },
+  { id: 'c3', name: '👾 懷舊街機遊樂場', games: ['vocabularyStairs', 'tetris', 'pinball', 'angrybirds', 'solitaire', 'pikavolley', 'pacman', 'minesweeper', 'sudoku'] },
   { id: 'c4', name: '⚔️ 雙人對戰與領域牌組', games: ['monopolyDual', 'pikavolleyDual', 'angrybirdsDual', 'battle', 'tenchi', 'tarot21', 'tarotAlch', 'tarotUno', 'tarotUno1', 'tarot21solo', 'tarotAlch1'] },
   // 🌟 將總複習加入此分類
   { id: 'c5', name: '🎓 考試與口說訓練', games: ['speak', 'speakno1', 'speakno2', 'speakno3', 'KKphonetics', 'Phonics', 'examListen1', 'examRead1', 'examRead2', 'gramAmuPark', 'verbing', 'verbAmuPark', 'verbMonopoly', 'vocReviewing'] }
@@ -150,6 +151,10 @@ onMounted(async () => {
         if (!dynamicCategories.value.some(cat => cat.games.includes(gameId)) && dynamicCategories.value.length) {
           dynamicCategories.value[0].games.push(gameId);
         }
+      }
+      if (!dynamicCategories.value.some(cat => cat.games.includes('vocabularyStairs'))) {
+        const arcade = dynamicCategories.value.find(cat => cat.games.includes('tetris')) || dynamicCategories.value[0];
+        if (arcade) arcade.games.push('vocabularyStairs');
       }
       const hasShooting = dynamicCategories.value.some(cat => cat.games.includes('vocshooting'));
       if (!hasShooting && dynamicCategories.value.length > 0) {

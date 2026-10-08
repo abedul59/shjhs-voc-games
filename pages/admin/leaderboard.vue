@@ -84,7 +84,7 @@ const fetchLeaderboard = async () => {
   if (data) {
     const filteredData = data.filter(r => {
       const isAnonRecord = r.student_id.startsWith('anon_');
-      if (['單字大富翁', '單字開心農場', '單字異世界悠閒農莊', '單字鍊金工房', '單字模擬動物園', '單字西洋棋', '單字圍棋', '單字象棋', '單字鐵路旅遊高手', '單字大富翁（雙人）', ...verbMonopolyTypes, ...scoredWordDuels].includes(selectedGameType.value) && identityMode.value === 'student' && selectedClass.value !== 'ALL' && studentsMap.value[r.student_id]?.class_name !== selectedClass.value) return false;
+      if (['單字大富翁', '單字開心農場', '單字異世界悠閒農莊', '單字鍊金工房', '單字模擬動物園', '單字小朋友下樓梯', '單字西洋棋', '單字圍棋', '單字象棋', '單字鐵路旅遊高手', '單字大富翁（雙人）', ...verbMonopolyTypes, ...scoredWordDuels].includes(selectedGameType.value) && identityMode.value === 'student' && selectedClass.value !== 'ALL' && studentsMap.value[r.student_id]?.class_name !== selectedClass.value) return false;
       return identityMode.value === 'student' ? !isAnonRecord : isAnonRecord;
     });
 
@@ -207,6 +207,7 @@ const getPlayerName = (id) => {
         <button class="type-btn" :class="{ active: selectedGameType === '單字異世界悠閒農莊' }" @click="selectedGameType = '單字異世界悠閒農莊'; fetchLeaderboard()">✧ 異世界農莊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字鍊金工房' }" @click="selectedGameType = '單字鍊金工房'; fetchLeaderboard()">⚗️ 鍊金工房</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字模擬動物園' }" @click="selectedGameType = '單字模擬動物園'; fetchLeaderboard()">🦁 模擬動物園</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字小朋友下樓梯' }" @click="selectedGameType = '單字小朋友下樓梯'; fetchLeaderboard()">🪜 小朋友下樓梯</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字西洋棋' }" @click="selectedGameType = '單字西洋棋'; fetchLeaderboard()">♔ 西洋棋</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字圍棋' }" @click="selectedGameType = '單字圍棋'; fetchLeaderboard()">⚫ 圍棋</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字象棋' }" @click="selectedGameType = '單字象棋'; fetchLeaderboard()">帥 象棋</button>
@@ -306,7 +307,7 @@ const getPlayerName = (id) => {
         <!-- 🌟 名次區塊增加遊玩模式標示 -->
         <div class="rank-info">
           <div class="player-name">{{ getPlayerName(record.student_id) }}</div>
-          <details v-if="['單字大富翁', '單字開心農場', '單字異世界悠閒農莊', '單字鍊金工房', '單字模擬動物園', '單字西洋棋', '單字圍棋', '單字象棋', '單字鐵路旅遊高手', '單字大富翁（雙人）', ...verbMonopolyTypes, ...scoredWordDuels].includes(selectedGameType)" class="monopoly-words">
+          <details v-if="['單字大富翁', '單字開心農場', '單字異世界悠閒農莊', '單字鍊金工房', '單字模擬動物園', '單字小朋友下樓梯', '單字西洋棋', '單字圍棋', '單字象棋', '單字鐵路旅遊高手', '單字大富翁（雙人）', ...verbMonopolyTypes, ...scoredWordDuels].includes(selectedGameType)" class="monopoly-words">
             <summary>查看最佳成績的對錯{{ verbMonopolyTypes.includes(selectedGameType) ? '動詞' : '單字' }}</summary>
             <p v-if="selectedGameType === '單字大富翁（雙人）'">最佳現金：{{ record.score }} 分 · {{ record.draws }} 平</p>
             <p v-if="selectedGameType === '單字皮卡丘排球（雙人）'">最佳對戰與拼字：{{ record.score }} 分 · {{ record.draws }} 平</p>
