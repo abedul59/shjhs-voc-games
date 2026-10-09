@@ -8,7 +8,7 @@ const isLoading = ref(true);
 
 const route = useRoute();
 const verbMonopolyTypes = ['動詞變化大富翁（八年級）', '動詞變化大富翁（九年級）'];
-const selectedGameType = ref(['單字大富翁', '單字開心農場', '單字異世界悠閒農莊', '單字鍊金工房', '單字模擬動物園', '單字小朋友下樓梯', '單字西洋棋', '單字圍棋', '單字象棋', '單字鐵路旅遊高手', '單字大富翁（雙人）', '單字皮卡丘排球（雙人）', '單字憤怒鳥（雙人）', ...verbMonopolyTypes].includes(route.query.game) ? route.query.game : '單字方塊消消樂');
+const selectedGameType = ref(['單字大富翁', '單字開心農場', '單字異世界悠閒農莊', '單字鍊金工房', '單字城市建造家', '單字模擬動物園', '單字小朋友下樓梯', '單字馬戲團', '單字Candy Crush', '單字地鐵跑酷', '單字便利商店', '單字西洋棋', '單字圍棋', '單字象棋', '單字鐵路旅遊高手', '單字大富翁（雙人）', '單字皮卡丘排球（雙人）', '單字憤怒鳥（雙人）', ...verbMonopolyTypes].includes(route.query.game) ? route.query.game : '單字方塊消消樂');
 
 // 🌟 統一定義所有 PvP 對戰遊戲
 const pvpGames = ['單字大富翁（雙人）', '單字皮卡丘排球（雙人）', '單字憤怒鳥（雙人）', '單字方塊陣', '單字吞食天地', '單字塔羅21點', '單字塔羅鍊金術', '單字塔羅UNO對決'];
@@ -84,8 +84,13 @@ const pvpTotalEscapes = computed(() => historyRecords.value.filter(r => getBattl
         <button class="type-btn" :class="{ active: selectedGameType === '單字開心農場' }" @click="selectedGameType = '單字開心農場'; fetchHistory()">🌻 開心農場</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字異世界悠閒農莊' }" @click="selectedGameType = '單字異世界悠閒農莊'; fetchHistory()">✧ 異世界農莊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字鍊金工房' }" @click="selectedGameType = '單字鍊金工房'; fetchHistory()">⚗️ 鍊金工房</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字城市建造家' }" @click="selectedGameType = '單字城市建造家'; fetchHistory()">🏙️ 城市建造家</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字模擬動物園' }" @click="selectedGameType = '單字模擬動物園'; fetchHistory()">🦁 模擬動物園</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字小朋友下樓梯' }" @click="selectedGameType = '單字小朋友下樓梯'; fetchHistory()">🪜 小朋友下樓梯</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字馬戲團' }" @click="selectedGameType = '單字馬戲團'; fetchHistory()">🎪 單字馬戲團</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字Candy Crush' }" @click="selectedGameType = '單字Candy Crush'; fetchHistory()">🍬 單字 Candy Crush</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字地鐵跑酷' }" @click="selectedGameType = '單字地鐵跑酷'; fetchHistory()">🚇 地鐵跑酷</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字便利商店' }" @click="selectedGameType = '單字便利商店'; fetchHistory()">🏪 便利商店</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字西洋棋' }" @click="selectedGameType = '單字西洋棋'; fetchHistory()">♔ 西洋棋</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字圍棋' }" @click="selectedGameType = '單字圍棋'; fetchHistory()">⚫ 圍棋</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字象棋' }" @click="selectedGameType = '單字象棋'; fetchHistory()">帥 象棋</button>
@@ -177,7 +182,12 @@ const pvpTotalEscapes = computed(() => historyRecords.value.filter(r => getBattl
               <p v-if="item.game_type === '單字大富翁'">🏘️ 分數＝結算現金 · 第 {{ item.attempt_number || 1 }} 次</p>
               <p v-if="item.game_type === '單字開心農場'">🌻 每答對一題得 10 分 · 第 {{ item.attempt_number || 1 }} 次</p>
               <p v-if="item.game_type === '單字異世界悠閒農莊'">✧ 每答對一題得 10 分 · 第 {{ item.attempt_number || 1 }} 次</p>
+              <p v-if="item.game_type === '單字模擬動物園'">🦁 動物園經營與單字：{{ item.score }} 分 · 第 {{ item.attempt_number || 1 }} 次</p>
+              <p v-if="item.game_type === '單字便利商店'">🏪 便利商店經營與單字：{{ item.score }} 分 · 第 {{ item.attempt_number || 1 }} 次</p>
               <p v-if="item.game_type === '單字小朋友下樓梯'">🪜 下樓梯與單字：{{ item.score }} 分 · 第 {{ item.attempt_number || 1 }} 次</p>
+              <p v-if="item.game_type === '單字馬戲團'">🎪 馬戲演出與單字：{{ item.score }} 分 · 第 {{ item.attempt_number || 1 }} 次</p>
+              <p v-if="item.game_type === '單字Candy Crush'">🍬 糖果消除與單字：{{ item.score }} 分 · 第 {{ item.attempt_number || 1 }} 次</p>
+              <p v-if="item.game_type === '單字地鐵跑酷'">🚇 跑酷與單字：{{ item.score }} 分 · 第 {{ item.attempt_number || 1 }} 次</p>
               <p v-if="item.game_type === '單字鍊金工房'">⚗️ 每答對一題得 10 分 · 第 {{ item.attempt_number || 1 }} 次 · ❌ {{ item.mistakes || 0 }} 次</p>
               <p v-if="item.game_type === '單字鐵路旅遊高手'">🚂 經營分：{{ item.score }} · 第 {{ item.attempt_number || 1 }} 次 · ❌ {{ item.mistakes || 0 }} 次</p>
               <p v-if="verbMonopolyTypes.includes(item.game_type)">🏘️ 動詞變化購地 · 分數＝結算現金 · 第 {{ item.attempt_number || 1 }} 次</p>

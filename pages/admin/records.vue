@@ -148,8 +148,13 @@ const exportToCSV = () => {
         <button class="type-btn" :class="{ active: selectedGameType === '單字開心農場' }" @click="selectedGameType = '單字開心農場'">🌻 開心農場</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字異世界悠閒農莊' }" @click="selectedGameType = '單字異世界悠閒農莊'">✧ 異世界農莊</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字鍊金工房' }" @click="selectedGameType = '單字鍊金工房'">⚗️ 鍊金工房</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字城市建造家' }" @click="selectedGameType = '單字城市建造家'">🏙️ 城市建造家</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字模擬動物園' }" @click="selectedGameType = '單字模擬動物園'">🦁 模擬動物園</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字小朋友下樓梯' }" @click="selectedGameType = '單字小朋友下樓梯'">🪜 小朋友下樓梯</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字馬戲團' }" @click="selectedGameType = '單字馬戲團'">🎪 單字馬戲團</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字Candy Crush' }" @click="selectedGameType = '單字Candy Crush'">🍬 單字 Candy Crush</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字地鐵跑酷' }" @click="selectedGameType = '單字地鐵跑酷'">🚇 地鐵跑酷</button>
+        <button class="type-btn" :class="{ active: selectedGameType === '單字便利商店' }" @click="selectedGameType = '單字便利商店'">🏪 便利商店</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字西洋棋' }" @click="selectedGameType = '單字西洋棋'">♔ 西洋棋</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字圍棋' }" @click="selectedGameType = '單字圍棋'">⚫ 圍棋</button>
         <button class="type-btn" :class="{ active: selectedGameType === '單字象棋' }" @click="selectedGameType = '單字象棋'">帥 象棋</button>
