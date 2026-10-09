@@ -37,6 +37,7 @@ const saveNotice = ref('');
 const tiltSupported = ref(false);
 const tiltEnabled = ref(false);
 const tiltStatus = ref('');
+const needsLandscape = ref(false);
 const score = computed(() => meters.value * 2 + bonus.value);
 const stationName = computed(() => STATIONS[Math.floor(meters.value / 500) % STATIONS.length].name);
 const nextStation = computed(() => (Math.floor(meters.value / 500) + 1) * 500);
@@ -71,7 +72,7 @@ function resetWorld() {
   spawnAhead();
 }
 function startGame() {
-  if (words.value.length < 4) return;
+  if (words.value.length < 4 || needsLandscape.value) return;
   resetWorld();
   lives.value = 3;
   shields.value = 0;
@@ -305,8 +306,12 @@ function tick(timestamp) {
   frameId = requestAnimationFrame(tick);
   const dt = world.lastFrame ? Math.min((timestamp - world.lastFrame) / 1000, .04) : 0;
   world.lastFrame = timestamp;
-  if (phase.value === 'playing' && !document.hidden && dt > 0) advance(dt);
+  if (phase.value === 'playing' && !document.hidden && !needsLandscape.value && dt > 0) advance(dt);
   draw();
+}
+function updateLandscapeHint() {
+  needsLandscape.value = window.matchMedia('(max-width: 700px) and (orientation: portrait)').matches;
+  world.lastFrame = 0;
 }
 async function saveRecord() {
   if (!student.value?.id || !recordId) return;
@@ -334,6 +339,9 @@ async function saveRecord() {
   if (recordId === currentId) saveNotice.value = error ? `儲存失敗：${error.message}` : '分數與單字對錯已記錄。';
 }
 onMounted(async () => {
+  updateLandscapeHint();
+  window.addEventListener('resize', updateLandscapeHint);
+  window.addEventListener('orientationchange', updateLandscapeHint);
   window.addEventListener('keydown', keyDown);
   runnerSprite = new Image();
   runnerSprite.onload = () => { runnerSpriteReady = true; };
@@ -369,6 +377,8 @@ onBeforeUnmount(() => {
   cancelAnimationFrame(frameId);
   window.removeEventListener('keydown', keyDown);
   window.removeEventListener('deviceorientation', readTilt);
+  window.removeEventListener('resize', updateLandscapeHint);
+  window.removeEventListener('orientationchange', updateLandscapeHint);
 });
 
 function project(lane, depth) {
@@ -534,6 +544,7 @@ function drawRunner(ctx, p) {
 
 <template>
   <main class="runner-page">
+    <div v-if="needsLandscape" class="landscape-prompt" role="status"><span aria-hidden="true">📱 ↻</span><strong>請將手機轉為橫向</strong><p>橫向時才會開始或繼續跑酷，轉向期間遊戲會暫停。</p></div>
     <header class="topbar"><div><span>VOCABULARY · METRO RUN</span><h1>🚇 單字地鐵跑酷</h1><p>換道・跳躍・滑行・收集單字票券</p></div><nav><NuxtLink to="/">← 回首頁</NuxtLink><NuxtLink :to="historyLink">學習紀錄</NuxtLink><NuxtLink :to="leaderboardLink">全校英雄榜</NuxtLink></nav></header>
     <div class="layout">
       <section class="game-panel"><div class="stage-head"><strong>🚉 {{ stationName }}</strong><span>下一站 {{ Math.max(0, nextStation - meters) }} m</span></div>
@@ -554,4 +565,23 @@ function drawRunner(ctx, p) {
 
 <style scoped>
 .runner-page{min-height:100dvh;padding:12px clamp(10px,1.7vw,25px);background:radial-gradient(circle at top left,#31858f,#183856 53%,#152440);font-family:system-ui,-apple-system,'Noto Sans TC',sans-serif;color:#edfaff}.topbar{max-width:1450px;margin:0 auto 12px;display:flex;align-items:end;justify-content:space-between;gap:14px}.topbar span{font-size:11px;letter-spacing:.17em;color:#bdebdc;font-weight:900}.topbar h1{font-size:clamp(27px,3vw,43px);margin:2px 0;color:#fff5d8}.topbar p{margin:0;color:#d5e9ed}.topbar nav{display:flex;gap:7px;flex-wrap:wrap}.topbar a{background:#f3e8c8;color:#24445b;text-decoration:none;border-radius:8px;padding:8px 11px;font-weight:900;font-size:13px}.layout{max-width:1450px;margin:auto;display:grid;grid-template-columns:minmax(0,1fr) minmax(275px,315px);gap:12px}.game-panel,.side-panel{border:2px solid #6fbbc5;background:#193952;border-radius:17px;box-shadow:0 12px 28px #06192b77;overflow:hidden}.stage-head{display:flex;justify-content:space-between;gap:8px;padding:8px 12px;background:#24556c;font-size:14px}.canvas-wrap{position:relative;background:#88bdd5}.canvas-wrap canvas{display:block;width:100%;height:auto;aspect-ratio:16/9;margin-inline:auto;touch-action:none}.overlay{position:absolute;inset:0;display:grid;place-items:center;background:#102e4bbd;padding:9px}.overlay-card{width:min(100%,430px);max-height:100%;overflow:auto;background:#f6faf4;color:#24465b;border:4px solid #f2d895;border-radius:17px;padding:clamp(12px,2vw,22px);text-align:center;box-shadow:0 10px 22px #07172a88}.overlay-card h2{margin:4px 0 9px;color:#285e77}.overlay-card p{line-height:1.45}.overlay-card small{display:block;margin-top:9px;color:#74646c}.overlay-card button{border:0;border-radius:9px;background:#f5bb69;color:#344461;padding:9px 13px;font-weight:900;cursor:pointer}.overlay-card button:disabled{opacity:.55}.choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}.choices button{min-width:0;overflow-wrap:anywhere;background:#d8eaf0}.quiz-label{font-weight:900;color:#4f8d93}.end-actions{display:flex;justify-content:center;gap:8px;margin-top:11px}.controls{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;padding:9px}.controls button{border:2px solid #c7e9e8;background:#4b99a1;color:white;border-radius:10px;min-height:50px;font-weight:900;font-size:16px;cursor:pointer;touch-action:manipulation}.controls button:nth-child(2){background:#cb7868}.controls button:nth-child(3){background:#7d81bc}.controls .gyro-control{grid-column:1/-1;min-height:35px;background:#28766c;font-size:13px}.side-panel{padding:12px}.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}.stat-grid>div{display:flex;align-items:center;justify-content:space-between;background:#23506a;border-radius:9px;padding:8px}.stat-grid small{color:#b6e9e5;font-size:11px}.stat-grid strong{font-size:20px}.notice{min-height:57px;background:#27516a;border-radius:10px;padding:10px;font-weight:800;font-size:13px;line-height:1.45}.tilt-panel{background:#254f67;border:1px solid #72b8c3;border-radius:10px;padding:9px}.tilt-panel strong{font-size:13px}.tilt-panel small{display:block;margin-top:5px;color:#d0ecec;font-size:11px;line-height:1.4}.tilt-buttons{display:flex;gap:6px;margin-top:5px}.tilt-buttons button{border:0;border-radius:7px;padding:6px 9px;background:#e8da9d;color:#23425b;font-weight:900;cursor:pointer}.mission h2{font-size:17px;margin:12px 0 4px}.mission p,.help p{font-size:12px;line-height:1.5}.route{display:grid;gap:5px}.route span{padding:6px 8px;background:#24475e;border-left:3px solid #6f9da3;border-radius:4px;font-size:12px}.route span.active{background:#32677a;border-color:#ffd679;color:#fff7d1;font-weight:900}.help{margin-top:12px;border-top:1px solid #5c9ba6;padding-top:9px;font-size:12px}.help summary{cursor:pointer;font-weight:900}.side-actions{display:flex;gap:7px;margin-top:12px}.side-actions button{flex:1;border:0;border-radius:9px;background:#9dcbd0;color:#1b4356;padding:10px;font-weight:900;cursor:pointer}.side-actions .stop{background:#e89990;color:#472c39}@media(min-width:950px) and (min-height:680px){.runner-page{height:100dvh;min-height:0;overflow:hidden;display:flex;flex-direction:column}.topbar{width:100%;flex:0 0 auto}.layout{width:100%;flex:1;min-height:0;align-items:stretch}.game-panel{display:flex;flex-direction:column;min-height:0}.canvas-wrap{margin:auto 0}.canvas-wrap canvas{max-width:calc((100dvh - 205px)*16/9)}.side-panel{overflow-y:auto}.help{margin-top:auto}}@media(max-width:950px){.layout{grid-template-columns:1fr}.canvas-wrap canvas{max-width:none}.side-panel{display:grid;grid-template-columns:1fr 1fr;gap:9px}.stat-grid{grid-row:span 2}.mission{grid-column:1/-1}.route{grid-template-columns:repeat(2,1fr)}.help{grid-column:1/-1}.side-actions{grid-column:1/-1}}@media(max-width:620px){.runner-page{padding:7px}.topbar{display:block}.topbar h1{font-size:26px}.topbar p{font-size:11px}.topbar nav{margin-top:7px;gap:5px}.topbar a{font-size:11px;padding:6px}.stage-head{font-size:11px}.controls{padding:6px;gap:4px}.controls button{min-height:53px;font-size:14px}.controls .gyro-control{min-height:36px}.side-panel{display:block;padding:10px}.mission p{margin:5px 0}.route{display:none}.notice{min-height:0;padding:7px}.overlay-card{padding:9px}.overlay-card h2{font-size:19px}.overlay-card p{font-size:12px;margin:7px 0}.choices button{font-size:12px;padding:7px}}
+</style>
+
+<style scoped>
+.landscape-prompt{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;background:#102e4bf2;color:#fff8dc;text-align:center}
+.landscape-prompt span{font-size:52px}.landscape-prompt strong{font-size:25px}.landscape-prompt p{max-width:25em;margin:0;line-height:1.5}
+@media (max-height:600px) and (orientation:landscape) and (pointer:coarse){
+  .runner-page{height:100dvh;min-height:0;overflow:hidden;display:flex;flex-direction:column;box-sizing:border-box;padding:4px max(6px,env(safe-area-inset-right)) 4px max(6px,env(safe-area-inset-left))}
+  .topbar{width:100%;flex:0 0 auto;margin:0 0 4px;align-items:center}
+  .topbar span,.topbar p{display:none}.topbar h1{font-size:18px;margin:0}
+  .topbar nav{margin:0;gap:4px}.topbar a{font-size:11px;padding:4px 6px}
+  .layout{width:100%;flex:1;min-height:0;grid-template-columns:minmax(0,1fr) clamp(150px,23vw,210px);gap:6px}
+  .game-panel{display:flex;flex-direction:column;min-height:0}.stage-head{flex:0 0 auto;padding:4px 7px;font-size:11px}
+  .canvas-wrap{flex:1;min-height:0;display:grid;place-items:center}.canvas-wrap canvas{width:100%;height:100%;max-height:100%;object-fit:contain}
+  .controls{flex:0 0 auto;gap:4px;padding:4px}.controls button{min-height:38px;font-size:12px}.controls .gyro-control{display:none}
+  .side-panel{display:block;min-height:0;overflow-y:auto;padding:6px}.stat-grid{gap:3px}.stat-grid>div{padding:3px 5px}.stat-grid strong{font-size:14px}
+  .notice{min-height:0;padding:5px;margin:5px 0;font-size:11px}.tilt-panel{padding:5px}.tilt-panel small{font-size:10px}
+  .mission,.route,.help{display:none}.side-actions{margin-top:5px}.side-actions button{padding:6px;font-size:11px}
+  .overlay-card{max-height:100%;padding:7px}.overlay-card h2{font-size:18px;margin:2px 0}.overlay-card p{font-size:11px;margin:5px 0}.choices{gap:4px;margin-top:5px}.choices button{padding:5px;font-size:11px}
+}
 </style>

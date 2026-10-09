@@ -385,3 +385,17 @@ watch(() => city.value.paused, persist);
 .map-zoom-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:6px 0 0;color:#d2e4e0;font-size:12px}.map-zoom-bar span{margin-right:auto;font-weight:700}.map-zoom-bar button{border:1px solid #819fa0;border-radius:7px;background:#2b4c5e;color:#f5efdf;padding:5px 9px;cursor:pointer;font-size:12px}.map-zoom-bar button.active{background:#e1ba78;color:#172b37;font-weight:800}.map-zoom-bar button:disabled{opacity:.45;cursor:not-allowed}.network-overlay{filter:drop-shadow(0 1px 1px #17273599)}
 .preview-bill{flex-basis:100%;color:#ffe0a0;font-weight:800;font-size:12px}
 </style>
+
+<style scoped>
+@media (max-width:600px){
+  .city-page{box-sizing:border-box;overflow-x:hidden;padding:8px}
+  .city-header{margin-bottom:8px}.city-header h1{font-size:25px}.city-header nav{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}.city-header a{text-align:center;padding:7px 4px;font-size:12px}
+  .city-shell{height:auto;min-height:0;gap:8px}.city-main{min-height:0;padding:7px}.city-bar strong{font-size:18px}.city-bar-actions{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.city-bar button{min-height:40px;font-size:12px}
+  .map-layer-bar,.map-zoom-bar{display:flex;flex-wrap:wrap;gap:4px}.map-layer-bar button,.map-zoom-bar button{min-height:38px;padding:5px 7px;font-size:12px}.map-zoom-bar span{width:100%}
+  .city-map-wrap{height:min(56dvh,470px);min-height:300px;flex:none;margin:6px 0}.city-map{height:100%;min-height:0;touch-action:none}
+  .city-notice{font-size:12px;padding:7px}.city-metrics{gap:4px;padding-top:6px}.city-metrics span{font-size:11px;padding:4px 6px}
+  .city-sidebar{max-height:none;overflow:visible}.side-body{overflow:visible;padding:9px}.side-tabs{padding:5px 5px 0}.side-tabs button{min-height:40px}
+  .tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.tool-grid button{min-height:56px}.tool-grid strong{font-size:13px}.tool-grid small{font-size:12px}
+  .quiz-card{max-height:calc(100dvh - 20px);overflow-y:auto;padding:14px}.quiz-card h2{font-size:25px}.quiz-choices{gap:6px}.quiz-choices button{min-height:44px;padding:8px;font-size:13px;overflow-wrap:anywhere}
+}
+</style>

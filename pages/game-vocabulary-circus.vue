@@ -34,6 +34,7 @@ const notice = ref('正在讀取本課單字…');
 const sensorStatus = ref('可使用鍵盤或畫面上的「向上／向下」按鍵。');
 const sensorEnabled = ref(false);
 const sensorInverted = ref(false);
+const needsLandscape = ref(false);
 const stage = ref(0);
 const lives = ref(3);
 const points = ref(0);
@@ -68,7 +69,7 @@ function resetAct() {
   notice.value = `第 ${stage.value + 1} 幕：${acts[stage.value].name}。${acts[stage.value].tip}`;
 }
 function startGame() {
-  if (loading.value || words.value.length < 4) return;
+  if (loading.value || words.value.length < 4 || needsLandscape.value) return;
   stage.value = 0;
   lives.value = 3;
   points.value = 0;
@@ -178,7 +179,7 @@ function tick(timestamp) {
     phase.value = 'playing';
     notice.value = '暫停結束，演出繼續！';
   }
-  if (phase.value === 'playing' && !document.hidden && dt > 0) {
+  if (phase.value === 'playing' && !document.hidden && !needsLandscape.value && dt > 0) {
     world.time += dt;
     advance(dt);
     if (phase.value === 'playing') {
@@ -188,6 +189,10 @@ function tick(timestamp) {
     }
   }
   draw();
+}
+function updateLandscapeHint() {
+  needsLandscape.value = window.matchMedia('(max-width: 700px) and (orientation: portrait)').matches;
+  world.lastFrame = 0;
 }
 function keyDown(event) {
   if (['ArrowUp', 'ArrowDown', ' ', 'w', 'W', 's', 'S'].includes(event.key)) event.preventDefault();
@@ -262,6 +267,9 @@ async function saveRecord() {
   if (recordId === currentId) saveNotice.value = error ? `紀錄儲存失敗：${error.message}。請按「重試儲存」。` : '分數與單字答題已記錄。';
 }
 onMounted(async () => {
+  updateLandscapeHint();
+  window.addEventListener('resize', updateLandscapeHint);
+  window.addEventListener('orientationchange', updateLandscapeHint);
   window.addEventListener('keydown', keyDown);
   window.addEventListener('keyup', keyUp);
   frameId = requestAnimationFrame(tick);
@@ -288,6 +296,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', keyDown);
   window.removeEventListener('keyup', keyUp);
   window.removeEventListener('deviceorientation', orientation);
+  window.removeEventListener('resize', updateLandscapeHint);
+  window.removeEventListener('orientationchange', updateLandscapeHint);
   window.clearTimeout(sensorTimer);
 });
 
@@ -488,6 +498,7 @@ function drawArtist(ctx, x, floorY, mount) {
 
 <template>
   <main class="circus-page">
+    <div v-if="needsLandscape" class="landscape-prompt" role="status"><span aria-hidden="true">📱 ↻</span><strong>請將手機轉為橫向</strong><p>橫向時才會開始或繼續演出，轉向期間遊戲會暫停。</p></div>
     <header class="page-header">
       <div><span class="eyebrow">VOCABULARY · CIRCUS STAGE</span><h1>🎪 單字馬戲團</h1><p>五幕懷舊馬戲挑戰，跳躍、蹲低並完成單字題</p></div>
       <nav><NuxtLink to="/">← 回首頁</NuxtLink><NuxtLink :to="historyLink">學習紀錄</NuxtLink><NuxtLink :to="leaderboardLink">全校英雄榜</NuxtLink></nav>
@@ -525,4 +536,21 @@ function drawArtist(ctx, x, floorY, mount) {
 
 <style scoped>
 .circus-page{min-height:100dvh;padding:12px clamp(10px,2vw,30px);background:radial-gradient(circle at 50% -15%,#70435f,#261936 55%,#120e26);color:#fff5da;font-family:system-ui,-apple-system,'Noto Sans TC',sans-serif}.page-header{max-width:1500px;margin:0 auto 12px;display:flex;justify-content:space-between;align-items:center;gap:15px}.eyebrow{font-size:11px;letter-spacing:.18em;color:#ffd587;font-weight:900}.page-header h1{font-size:clamp(26px,3vw,42px);margin:2px 0}.page-header p{margin:0;color:#efd5c5}.page-header nav{display:flex;gap:8px;flex-wrap:wrap}.page-header a{color:#3f2346;background:#ffe4ab;border-radius:9px;padding:8px 11px;text-decoration:none;font-weight:800}.layout{max-width:1500px;margin:auto;display:grid;grid-template-columns:minmax(0,1.75fr) minmax(285px,.65fr);gap:14px}.stage-panel,.side-panel{background:#382440;border:2px solid #e2ac6e;border-radius:18px;box-shadow:0 12px 30px #0006;overflow:hidden}.stage-status{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:9px 14px;color:#ffedbd;font-size:14px}.canvas-wrap{position:relative;background:#130d27}.canvas-wrap canvas{display:block;width:100%;aspect-ratio:800/440;max-height:69dvh}.stage-shade{position:absolute;inset:0;display:grid;place-items:center;background:#160f2aaa;padding:12px}.shade-card{width:min(100%,450px);max-height:100%;overflow:auto;background:#fff4d8;color:#42283b;border:4px solid #e6a75f;border-radius:18px;padding:18px;text-align:center;box-shadow:0 16px 34px #0007}.shade-card h2{margin:5px 0 9px;font-size:clamp(20px,3vw,31px)}.shade-card p{line-height:1.45}.shade-card small{font-weight:900;color:#a95361}.choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:10px 0}.choices button,.shade-card>button{padding:10px;border:2px solid #c18c62;border-radius:9px;background:#f9dda5;color:#44273d;font-weight:900;cursor:pointer}.choices button:hover,.shade-card>button:hover{background:#f5b975}.shade-card>button:disabled{opacity:.5;cursor:not-allowed}.touch-controls{display:flex;gap:8px;padding:10px;background:#2e2037}.touch-controls button{flex:1;min-height:53px;border:2px solid #f2c280;border-radius:12px;background:#af485f;color:white;font-size:16px;font-weight:900;touch-action:none;user-select:none;cursor:pointer}.touch-controls button:last-child{background:#4c8095}.side-panel{padding:16px}.side-panel h2{margin:0 0 10px;color:#ffe1a0}.side-panel p{font-size:14px;line-height:1.5}.side-panel small{font-size:12px;color:#f2d0b4}.side-panel hr{border:0;border-top:1px solid #b88070;margin:14px 0}.actions{display:flex;gap:7px;flex-wrap:wrap;margin:9px 0}.actions button{background:#ffd890;color:#432741;border:0;border-radius:9px;padding:8px 10px;font-weight:900;cursor:pointer}.actions .end{background:#e66c71;color:#fff}.notice{background:#4a3653;border-radius:10px;padding:10px}.word-counts{display:flex;gap:8px}.word-counts span{background:#5b3f60;border-radius:8px;padding:7px 10px;font-weight:800}@media(max-width:930px){.layout{grid-template-columns:1fr}.side-panel{padding:12px}.canvas-wrap canvas{max-height:55dvh}}@media(max-width:600px){.circus-page{padding:8px}.page-header{align-items:flex-start;flex-direction:column}.page-header p{font-size:12px}.page-header nav a{font-size:12px}.stage-status{font-size:12px}.touch-controls button{font-size:14px;min-height:58px}.side-panel p{font-size:12px}.shade-card{padding:9px}.choices button{padding:7px;font-size:13px}}
+</style>
+
+<style scoped>
+.landscape-prompt{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;background:#24162ff2;color:#fff5d6;text-align:center}
+.landscape-prompt span{font-size:52px}.landscape-prompt strong{font-size:25px}.landscape-prompt p{max-width:25em;margin:0;line-height:1.5}
+@media (max-height:600px) and (orientation:landscape) and (pointer:coarse){
+  .circus-page{height:100dvh;min-height:0;overflow:hidden;display:flex;flex-direction:column;box-sizing:border-box;padding:4px max(6px,env(safe-area-inset-right)) 4px max(6px,env(safe-area-inset-left))}
+  .page-header{width:100%;flex:0 0 auto;margin:0 0 4px;align-items:center}.eyebrow,.page-header p{display:none}.page-header h1{font-size:18px;margin:0}
+  .page-header nav{gap:4px}.page-header a{padding:4px 6px;font-size:11px}
+  .layout{width:100%;flex:1;min-height:0;grid-template-columns:minmax(0,1fr) clamp(150px,23vw,210px);gap:6px}
+  .stage-panel{display:flex;flex-direction:column;min-height:0}.stage-status{flex:0 0 auto;padding:4px 7px;font-size:11px}
+  .canvas-wrap{flex:1;min-height:0;display:grid;place-items:center}.canvas-wrap canvas{width:100%;height:100%;max-height:100%;object-fit:contain}
+  .touch-controls{flex:0 0 auto;padding:4px}.touch-controls button{min-height:38px;font-size:12px}
+  .side-panel{min-height:0;overflow-y:auto;padding:6px}.side-panel h2{font-size:14px;margin:0 0 4px}.side-panel p{font-size:11px;margin:4px 0}.side-panel hr{margin:5px 0}
+  .actions{margin:4px 0;gap:4px}.actions button{padding:5px 6px;font-size:11px}.notice{padding:5px}.word-counts span{padding:4px;font-size:11px}
+  .shade-card{max-height:100%;padding:7px}.shade-card h2{font-size:18px;margin:2px 0}.shade-card p{font-size:11px;margin:5px 0}.choices{gap:4px;margin:5px 0}.choices button{padding:5px;font-size:11px}
+}
 </style>

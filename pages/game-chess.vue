@@ -256,6 +256,32 @@ onBeforeUnmount(() => { disposed = true; if (aiTimer) clearTimeout(aiTimer); });
 .rule-source{display:inline-block;color:#f3dba8;font-size:12px;margin:0 0 5px}
 </style>
 <style scoped>
+@media(max-width:700px){
+  .chess-page{overflow-x:hidden;padding:8px 7px max(14px,env(safe-area-inset-bottom))}
+  .chess-header{margin-bottom:8px;gap:6px}
+  .chess-header h1{font-size:27px}
+  .chess-header p{font-size:12px}
+  .chess-header nav{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+  .chess-header a{min-width:0;text-align:center;padding:8px 3px;font-size:12px}
+  .chess-layout{gap:8px}
+  .play-panel,.guide-panel{min-width:0;padding:8px}
+  .toolbar{gap:6px;margin-bottom:7px}
+  .toolbar strong{font-size:18px}
+  .toolbar-actions{width:100%;gap:5px}
+  .toolbar-actions select,.toolbar-actions button{min-height:40px;padding:6px 8px;font-size:13px}
+  .board-wrap{min-width:0}
+  .chess-board{width:min(100%,calc(100vw - 32px));border-width:5px}
+  .piece{font-size:clamp(27px,8vw,50px)}
+  .game-notice{min-height:0;margin:7px 0;padding:8px;font-size:13px}
+  .stats{gap:5px}
+  .stats span{padding:5px 7px;font-size:12px}
+  .modal-backdrop{padding:8px}
+  .dialog{max-height:calc(100dvh - 16px);overflow-y:auto;padding:13px}
+  .dialog h2{font-size:25px;overflow-wrap:anywhere}
+  .dialog button{min-height:44px;padding:8px;font-size:14px;overflow-wrap:anywhere}
+}
+</style>
+<style scoped>
 @media (min-width: 901px) {
   .chess-page{height:100vh;min-height:690px;overflow:hidden;padding:12px clamp(14px,2vw,32px);background:radial-gradient(circle at 15% 0%,#566876 0,#253948 42%,#171f32 100%)}
   .chess-header{max-width:1540px;margin-bottom:12px;align-items:center}
