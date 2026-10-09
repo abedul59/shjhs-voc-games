@@ -11,8 +11,13 @@ const allGames = [
   { id: 'happyFarm', name: '🌻 單字開心農場' },
   { id: 'isekaiFarm', name: '✧ 單字異世界悠閒農莊' },
   { id: 'alchemyAtelier', name: '⚗️ 單字鍊金工房' },
+  { id: 'vocabularyCity', name: '🏙️ 單字城市建造家' },
+  { id: 'convenienceStore', name: '🏪 單字便利商店' },
   { id: 'vocabularyZoo', name: '🦁 單字模擬動物園' },
   { id: 'vocabularyStairs', name: '🪜 單字小朋友下樓梯' },
+  { id: 'vocabularyCircus', name: '🎪 單字馬戲團' },
+  { id: 'vocabularyCandy', name: '🍬 單字 Candy Crush' },
+  { id: 'vocabularySubway', name: '🚇 單字地鐵跑酷' },
   { id: 'chess', name: '♔ 單字西洋棋' },
   { id: 'go', name: '⚫ 單字圍棋' },
   { id: 'xiangqi', name: '帥 單字象棋' },
@@ -83,7 +88,7 @@ onMounted(async () => {
         name: cat.name || cat.category_name || `分類 ${index + 1}`,
         games: Array.isArray(cat.games) ? [...cat.games] : []
       }));
-      for (const gameId of ['chess', 'go', 'xiangqi', 'vocabularyZoo']) {
+      for (const gameId of ['chess', 'go', 'xiangqi', 'vocabularyZoo', 'vocabularyCity', 'convenienceStore']) {
         if (categories.value.length && !categories.value.some(cat => cat.games.includes(gameId))) {
           categories.value[0].games.push(gameId);
         }
@@ -91,6 +96,12 @@ onMounted(async () => {
       if (categories.value.length && !categories.value.some(cat => cat.games.includes('vocabularyStairs'))) {
         const arcade = categories.value.find(cat => cat.games.includes('tetris')) || categories.value[0];
         arcade.games.push('vocabularyStairs');
+      }
+      for (const gameId of ['vocabularyCircus', 'vocabularyCandy', 'vocabularySubway']) {
+        if (categories.value.length && !categories.value.some(cat => cat.games.includes(gameId))) {
+          const arcade = categories.value.find(cat => cat.games.includes('tetris')) || categories.value[0];
+          arcade.games.push(gameId);
+        }
       }
     }
   } catch (error) {
