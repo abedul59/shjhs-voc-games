@@ -6,3 +6,26 @@
 .bg-rule-link{display:inline-block;color:#ffdfa5;font-size:12px;margin-bottom:4px}
 
 .xq-palaces{position:absolute;inset:10px;width:calc(100% - 20px);height:calc(100% - 20px);pointer-events:none;z-index:1;overflow:visible}.xq-palaces path{fill:none;stroke:#704b32;stroke-width:.025}@media(max-width:600px){.xq-palaces{inset:4px;width:calc(100% - 8px);height:calc(100% - 8px)}}
+@media(max-width:700px){
+  .bg-page{overflow-x:hidden;padding:8px 7px max(12px,env(safe-area-inset-bottom))}
+  .bg-head{margin-bottom:8px;gap:7px}
+  .bg-head h1{font-size:26px}
+  .bg-head p{font-size:12px}
+  .bg-head nav{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+  .bg-head nav a{text-align:center;padding:8px 3px;font-size:12px}
+  .bg-layout{gap:8px}
+  .bg-play,.bg-guide{min-width:0;padding:8px}
+  .bg-toolbar{gap:7px;margin-bottom:5px}
+  .bg-toolbar>div:last-child{width:100%;gap:5px}
+  .bg-toolbar button{min-height:38px;padding:6px 9px}
+  .bg-board-container{flex:none;min-width:0;padding:3px 0}
+  .xq-board,.go-board{width:min(100%,calc(100vw - 32px))}
+  .xq-piece{font-size:clamp(17px,6vw,30px)}
+  .bg-status{min-height:0;padding:7px 9px;font-size:13px}
+  .bg-stats{gap:4px;margin-top:5px}
+  .bg-stats span{padding:4px 6px}
+  .bg-overlay{padding:8px}
+  .bg-dialog{max-height:calc(100dvh - 16px);overflow:auto;padding:14px}
+  .bg-dialog h2{font-size:25px;overflow-wrap:anywhere}
+  .bg-dialog button{min-height:44px;padding:9px 6px;font-size:14px;overflow-wrap:anywhere}
+}

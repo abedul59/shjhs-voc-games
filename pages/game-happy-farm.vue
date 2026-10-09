@@ -1893,4 +1893,28 @@ onUnmounted(() => {
 .panel-tabs button,.panel-subtabs button,.economy-tabs button,.worker-view-tabs button,.professional-card .worker-view-tabs button{flex:0 0 auto;min-width:max-content;white-space:nowrap;padding:7px 11px;font-size:.85rem;line-height:1.2}
 .panel-tabs button.active,.panel-subtabs button.active,.economy-tabs button.active,.worker-view-tabs button.active{background:#357d50;color:#fff;border-color:#236545}
 @media(max-width:620px){.civic-entry-grid{grid-template-columns:1fr}.panel-tabs button,.panel-subtabs button,.economy-tabs button,.worker-view-tabs button,.professional-card .worker-view-tabs button{font-size:.84rem;padding:8px 11px}}
+@media(max-width:700px){
+  .farm-page{overflow-x:hidden;padding:9px 8px max(20px,env(safe-area-inset-bottom))}
+  .farm-header{flex-wrap:wrap;gap:7px}
+  .farm-header>div:first-child{min-width:0}
+  .farm-top-actions{width:100%;justify-content:space-between;gap:6px}
+  .farm-top-actions a,.farm-top-actions button{min-height:40px;display:inline-flex;align-items:center;justify-content:center}
+  .feedback,.farm-layout,.farm-controls,.farm-field,.animal-field{min-width:0}
+  .status-bar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+  .status-bar>div,.status-bar>a,.status-bar>.hero-chip{min-width:0;margin:0;padding:7px 8px;line-height:1.35;overflow-wrap:anywhere}
+  .status-bar>.hero-chip{grid-column:1/-1;text-align:left}
+  .status-bar>div{display:flex;flex-wrap:wrap;gap:3px 6px}
+  .status-bar>div strong{font-size:.9rem}
+  .status-bar>a{text-align:center;justify-content:center}
+  .field-grid{grid-template-columns:repeat(3,minmax(0,1fr));max-height:none;overflow:visible;transform:none;padding:4px;gap:6px}
+  .plot{min-width:0;min-height:94px;padding:5px 2px}
+  .plot-name,.plot-progress{font-size:.76rem;line-height:1.25;overflow-wrap:anywhere}
+  .village-field .field-grid{max-width:none}
+  .panel-tabs,.panel-subtabs,.economy-tabs,.worker-view-tabs{scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;max-width:100%}
+  .panel-tabs button,.panel-subtabs button,.economy-tabs button,.worker-view-tabs button{scroll-snap-align:start;min-height:42px;font-size:.86rem}
+  .farm-controls input,.farm-controls select,.farm-controls button{max-width:100%}
+  .quiz-shade,.hero-shade{padding:8px}
+  .quiz-card,.hero-dialog{max-height:calc(100dvh - 16px);overflow-y:auto;padding:14px}
+  .quiz-actions button{min-height:44px}
+}
 </style>

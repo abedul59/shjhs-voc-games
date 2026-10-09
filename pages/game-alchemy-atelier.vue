@@ -531,6 +531,7 @@ onMounted(async () => {
           <div class="panel map-panel">
             <div class="panel-title"><div><span class="eyebrow">ATLAS</span><h2>大陸十五區圖誌</h2></div><span class="weather">{{ weather === '晴朗' ? '☀️' : weather === '細雨' ? '🌧️' : weather === '薄霧' ? '🌫️' : '🍃' }} {{ weather }}</span></div>
             <div class="scale-tabs"><button :class="{ on: mapScale === 'continent' }" @click="mapScale = 'continent'">大陸圖</button><button :class="{ on: mapScale === 'region' }" @click="mapScale = 'region'">區域圖</button><button :class="{ on: mapScale === 'site' }" @click="mapScale = 'site'">採集地</button></div>
+            <p v-if="mapScale === 'continent'" class="mobile-map-hint">左右滑動地圖可查看全部探索區域。</p>
             <div v-if="mapScale === 'continent'" class="continent-map"><img src="/maps/alchemy-continent.svg" alt="大陸由西向東分成十五個探索區域的地圖"/><button v-for="(region, index) in REGIONS" :key="region.id" class="map-pin" :class="{ current: workshop.regionId === region.id, locked: !workshop.unlocked.includes(region.id) }" :style="{ left: region.x + '%', top: region.y + '%' }" :title="`${index + 1}. ${region.name}`" :aria-label="`${index + 1}. ${region.name}${workshop.unlocked.includes(region.id) ? '' : '，尚未解鎖'}`" @click="chooseRegion(region.id)">{{ workshop.unlocked.includes(region.id) ? index + 1 : '🔒' }}</button></div>
             <div v-else-if="mapScale === 'region'" class="region-map" :style="{ '--region-color': activeRegion.color }"><div class="region-orb"><span>✦</span><h3>{{ activeRegion.name }}</h3><p>{{ activeRegion.subtitle }}</p></div><div class="site-grid"><button v-for="spot in activeRegion.spots" :key="spot.id" :class="{ on: activeSpot.id === spot.id }" @click="chooseSpot(spot.id)"><span>{{ spot.icon }}</span>{{ spot.name }}</button></div></div>
             <div v-else class="site-map" :style="{ '--region-color': activeRegion.color }"><span class="site-icon">{{ activeSpot.icon }}</span><h3>{{ activeSpot.name }}</h3><p>{{ activeRegion.name }} · {{ weather }}</p><div class="site-materials"><span v-for="id in activeSpot.materials" :key="id"><img v-if="materialById(id)?.image" class="material-art" :src="materialById(id).image" :alt="materialById(id).name + '圖案'"/> <template v-else>{{ materialById(id)?.icon }}</template> {{ materialById(id)?.name }}</span></div><p>採集消耗 1 體力，天氣可能改變素材與品質。</p><button class="primary-button" :disabled="busy || workshop.energy < 1 || words.length < 4" @click="chooseQuestion({ type: 'gather', regionId: activeRegion.id, spotId: activeSpot.id })">採集素材 · 答單字題</button></div>
@@ -649,4 +650,34 @@ onMounted(async () => {
 @media(max-width:950px){.starter-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.starter-companions{grid-template-columns:repeat(3,minmax(0,1fr))}.starter-grid img{height:170px}}
 @media(max-width:600px){.character-card{padding:12px}.character-card h2{font-size:25px}.starter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.starter-grid img{height:170px}.starter-companions{grid-template-columns:repeat(2,minmax(0,1fr))}.hero-summary img{width:85px;height:115px}.hero-summary p{font-size:12px}.stock-actions{flex-direction:column;align-items:flex-end}}
 @media(max-width:1050px){.main-grid,.party-layout{grid-template-columns:1fr}.side-stack{display:grid;grid-template-columns:1fr 1fr}.portrait-frame{height:250px}}@media(max-width:700px){.atelier-page{padding:8px}.hero{display:block;padding:14px}.hero-actions{margin-top:12px}.status-row{grid-template-columns:repeat(2,1fr)}.status-row>div:last-child{grid-column:span 2}.tabs button{flex:1 1 40%}.panel{padding:12px}.continent-map{min-width:680px}.map-pin{font-size:10px;padding:4px}.side-stack{display:flex}.recipe-grid,.fighter-list,.portrait-grid{grid-template-columns:repeat(2,1fr)}.portrait-frame{height:260px}.recipe-detail{display:block}.recipe-detail button{margin-top:12px}.battle-actions>*{flex:1 1 43%}.discovery-grid{grid-template-columns:repeat(2,1fr)}}
+.mobile-map-hint{display:none}
+@media(max-width:700px){
+  .atelier-page{overflow-x:hidden;padding:8px 8px max(20px,env(safe-area-inset-bottom))}
+  .atelier-shell,.main-grid,.panel,.side-stack{min-width:0}
+  .hero{padding:10px}
+  .hero h1{font-size:clamp(24px,7vw,34px)}
+  .hero-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+  .hero-actions a{min-width:0;min-height:40px;text-align:center;padding:8px 3px;font-size:12px}
+  .status-row{gap:5px}
+  .status-row>div{min-width:0;padding:7px;overflow-wrap:anywhere}
+  .tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+  .tabs button{min-height:43px;min-width:0}
+  .side-stack{display:flex;flex-direction:column}
+  .map-panel{overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+  .mobile-map-hint{display:block;margin:5px 0;color:#f0d492;font-size:12px}
+  .continent-map{min-width:640px}
+  .active-party-grid{grid-template-columns:1fr;gap:7px}
+  .active-party-card{display:flex;min-height:112px}
+  .active-party-portrait{display:block;width:90px;flex:0 0 90px}
+  .active-party-portrait img{width:100%;height:100%;min-height:112px;object-fit:cover}
+  .active-party-info{flex:1;min-width:0;padding:7px}
+  .active-party-info h3{font-size:17px}
+  .active-party-empty{min-height:85px}
+  .quiz-overlay,.character-viewer{padding:8px}
+  .quiz-card,.character-card,.character-viewer-card{max-height:calc(100dvh - 16px);overflow-y:auto;padding:11px}
+  .quiz-card>p{font-size:19px}
+  .quiz-choices button,.submit-quiz{min-height:44px;font-size:15px;overflow-wrap:anywhere}
+  .character-viewer-card img{max-height:45dvh}
+  .recipe-detail .primary-button{width:100%;min-height:44px}
+}
 </style>

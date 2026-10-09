@@ -989,4 +989,29 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); interactionCleanup?.
 @media(max-width:480px){.land-switcher{align-items:stretch;flex-direction:column;gap:4px}.land-switcher select{width:100%}}
 .battle-card{width:min(920px,100%)}.battle-round{margin:0 0 10px;color:#e7cf9f;font-size:13px}.battle-armies{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;max-height:48vh;overflow:auto}.battle-roster{min-width:0;display:grid;align-content:start;gap:5px;padding:9px;border:1px solid #b89c6b;border-radius:6px;background:#0e252a80}.battle-roster h3{display:flex;justify-content:space-between;gap:8px;margin:0 0 3px;font-size:15px}.battle-roster h3 small{font-size:11px;color:#e3c993}.battle-unit{display:grid;grid-template-columns:34px minmax(0,1fr);gap:6px;align-items:center;min-height:54px;padding:5px 7px;border:1px solid #bda47559;border-radius:4px;background:#aa956020}.battle-unit.fallen{opacity:.48;filter:grayscale(1)}.battle-unit-icon{font-size:26px}.battle-unit>div{display:grid;min-width:0;gap:1px}.battle-unit b{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.battle-unit b small,.battle-unit>div>small{color:#d8d2bc;font-size:10px}.battle-unit meter{width:100%;height:10px}.battle-commands{position:sticky;bottom:0;z-index:1;padding:7px 0;background:#243137}.battle-log{max-height:100px}
 @media(max-width:620px){.battle-armies{grid-template-columns:1fr}.battle-roster{grid-template-columns:repeat(2,minmax(0,1fr))}.battle-roster h3{grid-column:1/-1}.battle-unit{grid-template-columns:26px minmax(0,1fr)}.battle-unit-icon{font-size:20px}}
+@media(max-width:700px){
+  .isekai-page{overflow-x:hidden;padding:8px 8px max(20px,env(safe-area-inset-bottom))}
+  .isekai-header{margin-bottom:8px}
+  .isekai-header h1{font-size:23px}
+  .isekai-header nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+  .isekai-header nav a,.isekai-header nav button{text-align:center;min-width:0;min-height:40px;padding:7px 4px;white-space:normal}
+  .isekai-layout,.homestead,.atlas,.workbench{min-width:0}
+  .panel{padding:10px}
+  .resource-bar span{padding:6px 3px}
+  .resource-bar b{font-size:15px}
+  .field-scene{height:auto;min-height:260px}
+  .field-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;padding:8px}
+  .field-tile{height:100px}
+  .field-tile strong,.field-tile small{font-size:12px}
+  .operation-tabs,.map-toolbar,.atlas-overlay .map-toolbar{display:flex;flex-wrap:nowrap;gap:5px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;padding-bottom:5px}
+  .operation-tabs button,.map-toolbar button,.atlas-overlay .map-toolbar button{flex:0 0 auto;min-width:78px;min-height:42px;scroll-snap-align:start;font-size:13px;padding:6px 9px}
+  .map-toolbar .atlas-expand,.atlas-overlay .map-toolbar .atlas-expand{min-width:112px}
+  .map-frame{min-height:0}
+  .ledger{inset:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);width:100vw;border-radius:0;padding:13px;overflow-y:auto}
+  .atlas-overlay{inset:0;padding:10px 8px max(14px,env(safe-area-inset-bottom));border-radius:0}
+  .profile-scrim,.quiz-scrim,.battle-scrim{padding:8px}
+  .profile-dialog,.quiz-card,.battle-card{max-height:calc(100dvh - 16px);overflow-y:auto;padding:12px}
+  .identity-options,.identity-options.race-options,.identity-options.profession-options{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .quiz-options button,.quiz-actions button{min-height:44px}
+}
 </style>
