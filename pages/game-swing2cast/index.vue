@@ -110,12 +110,11 @@ const requestPermission = async (mode) => {
   if (mode === 'B') {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      permissionError.value = "您的瀏覽器不支援語音辨識，請使用 Chrome 或 Safari，或改玩基本版！";
-      gameMode.value = '';
-      return;
+      permissionError.value = "瀏覽器不支援語音辨識，請用畫面上的充能鍵。";
     }
     
-    recognition = new SpeechRecognition();
+    if (SpeechRecognition) recognition = new SpeechRecognition();
+    if (recognition) {
     recognition.lang = 'en-US';
     recognition.continuous = true;
     recognition.interimResults = true;
@@ -140,6 +139,7 @@ const requestPermission = async (mode) => {
       if (!isGameOver.value && gameMode.value === 'B') recognition.start();
     };
     recognition.start();
+    }
   }
 
   // 請求動作感測器權限 (iOS 13+)
@@ -150,14 +150,14 @@ const requestPermission = async (mode) => {
         permissionGranted.value = true;
         startGame();
       } else {
-        permissionError.value = "需要動作感測器權限才能揮動魔杖！";
-        if (recognition) recognition.stop();
-        gameMode.value = '';
+        permissionError.value = "未允許動作感測，請用畫面上的發射鍵。";
+        if (recognition) { recognition.onend = null; recognition.stop(); }
+        startGame();
       }
     } catch (e) {
-      permissionError.value = "授權發生錯誤：" + e.message;
-      if (recognition) recognition.stop();
-      gameMode.value = '';
+      permissionError.value = "無法啟用動作感測，請用畫面上的發射鍵。";
+      if (recognition) { recognition.onend = null; recognition.stop(); }
+      startGame();
     }
   } else {
     permissionGranted.value = true;
@@ -393,6 +393,7 @@ const uploadRecord = async (gameName) => {
 
 <template>
   <div class="magic-container">
+    <LandscapeGameMode />
     <div class="header">
       <NuxtLink to="/" class="back-btn">⬅ 返回</NuxtLink>
       <div class="stats">
@@ -405,7 +406,7 @@ const uploadRecord = async (gameName) => {
 
     <div v-else-if="!gameMode" class="intro-screen">
       <h1>🪄 霍格華茲單字杖</h1>
-      <p>請選擇施法模式，並允許動作感測器權限。</p>
+      <p>請選擇施法模式；也可用畫面按鍵充能與發射。</p>
       
       <div class="mode-cards">
         <div class="mode-card" @click="requestPermission('A')">
@@ -451,8 +452,8 @@ const uploadRecord = async (gameName) => {
       </transition>
 
       <div class="pc-controls">
-        <button v-if="gameMode === 'B'" @click="manualCharge">🎙️ (測試)模擬詠唱充能</button>
-        <button @click="manualFire" :disabled="isFiring">🪄 (測試)點此模擬揮動</button>
+        <button v-if="gameMode === 'B'" @click="manualCharge">✨ 點按充能</button>
+        <button @click="manualFire" :disabled="isFiring">🪄 點按發射</button>
       </div>
     </div>
 
@@ -537,9 +538,10 @@ h1 { color: #b39ddb; font-size: 2.2rem; text-shadow: 0 0 10px #7e57c2; margin-bo
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
-.pc-controls { position: absolute; bottom: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 100; width: 100%; align-items: center;}
-.pc-controls button { background: rgba(255,255,255,0.2); border: 1px solid #fff; color: #fff; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 1rem; width: 80%;}
+.pc-controls { position: absolute; bottom: max(8px,env(safe-area-inset-bottom)); display: flex; flex-direction: row; gap: 10px; z-index: 100; width: 100%; align-items: center; justify-content:center; padding:0 12px;box-sizing:border-box;}
+.pc-controls button { background: #5e35b1; border: 2px solid #eee; color: #fff; padding: 10px 20px; min-height:48px; border-radius: 8px; cursor: pointer; font-size: 1rem; flex:1;max-width:240px;touch-action:manipulation;}
 .pc-controls button:disabled { opacity: 0.5; }
+@media (orientation:landscape) and (pointer:coarse){.magic-container{max-width:none;height:100dvh;min-height:0}.header{padding:5px 10px}.hud-top{top:40px;gap:3px}.target-zh{font-size:20px;padding:4px 14px}.wand-status{padding:3px}.wand-icon,.speech-debug{display:none}.pc-controls button{padding:5px;min-height:44px}.mode-cards{flex-direction:row}.mode-card{flex:1;padding:8px}.mode-card p{font-size:13px}}
 
 .action-btn {
   background: #673ab7; color: #fff; font-size: 1.2rem; font-weight: bold;

@@ -96,7 +96,7 @@ const requestMotionPermission = () => {
           isSensorReady.value = true;
           window.addEventListener('devicemotion', handleMotion);
         } else {
-          alert('需要開啟動作感測器權限才能偵測跳躍喔！請重新整理頁面允許權限。');
+          alert('未開啟動作感測；可直接使用畫面上的跳躍按鍵。');
         }
       })
       .catch(console.error);
@@ -211,6 +211,7 @@ onUnmounted(() => { window.removeEventListener('devicemotion', handleMotion); })
 
 <template>
   <div class="game-container">
+    <LandscapeGameMode />
     <div class="header">
       <NuxtLink to="/" class="back-btn">⬅ 返回首頁</NuxtLink>
       <div class="stats-board">
@@ -253,7 +254,7 @@ onUnmounted(() => { window.removeEventListener('devicemotion', handleMotion); })
         </div>
       </div>
 
-      <button class="manual-btn retro-btn" @click="manualJump">💻 電腦版測試：點我模擬跳躍</button>
+      <button class="manual-btn retro-btn" @click="manualJump">⬆ 點按跳躍（手機與電腦都可用）</button>
     </div>
 
     <div v-else-if="gameState === 'end'" class="result-box retro-element">
@@ -298,7 +299,8 @@ onUnmounted(() => { window.removeEventListener('devicemotion', handleMotion); })
 .current-jump { font-size: 6rem; color: #e65100;}
 .progress-bar { width: 100%; height: 20px; background: #eee; border-radius: 10px; overflow: hidden; margin-bottom: 20px;}
 .progress-bar .fill { height: 100%; background: #ff9800; transition: width 0.2s ease-out;}
-.manual-btn { background: #f5f5f5; color: #777; border-color: #ccc; margin-top: 20px; font-size: 0.9rem; padding: 10px; width: 100%;}
+.manual-btn { background: #1976d2; color: #fff; border-color: #0d47a1; margin-top: 12px; font-size: 1.1rem; padding: 14px; min-height: 50px; width: 100%; touch-action:manipulation;}
+@media (orientation:landscape) and (pointer:coarse){.game-container{max-width:none;height:100dvh;box-sizing:border-box;margin:0;padding:6px 12px;overflow:auto}.header{margin-bottom:6px}.jump-box,.quiz-box,.result-box{max-width:760px;margin:auto;padding:8px 18px}.jump-box h2{margin:3px}.jump-rule{margin:4px}.jump-counter{margin:5px;font-size:20px}.current-jump{font-size:42px}.word-display,.jump-word{font-size:27px;margin:4px}.start-jump-btn{font-size:16px;padding:9px;margin:5px 0}.manual-btn{margin-top:5px;padding:7px;min-height:44px}.progress-bar{margin-bottom:5px}}
 
 .final-stats { display: flex; justify-content: center; gap: 20px; margin: 30px 0;}
 .stat-card { background: #f9f9f9; border: 2px solid #ddd; padding: 20px; border-radius: 12px; min-width: 150px;}

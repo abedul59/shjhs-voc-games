@@ -161,10 +161,14 @@ const requestPermission = async (mode) => {
         permissionGranted.value = true;
         startGame(mode);
       } else {
-        permissionError.value = "需要動作感測器權限才能遊玩！";
+        permissionError.value = "未允許動作感測，改用畫面按鍵搖晃。";
+        permissionGranted.value = true;
+        startGame(mode);
       }
     } catch (e) {
-      permissionError.value = "授權發生錯誤：" + e.message;
+      permissionError.value = "無法啟用動作感測，改用畫面按鍵搖晃。";
+      permissionGranted.value = true;
+      startGame(mode);
     }
   } else {
     permissionGranted.value = true;
@@ -303,6 +307,7 @@ onUnmounted(() => {
 
 <template>
   <div class="shake-container">
+    <LandscapeGameMode />
     <div class="header">
       <NuxtLink to="/" class="back-btn">⬅ 返回首頁</NuxtLink>
       <div class="score-board">分數: {{ score }} / {{ vocabList.length * 10 }}</div>
@@ -352,7 +357,7 @@ onUnmounted(() => {
         <button class="action-btn grab-btn" @click="checkAnswerB">✋ 抓住它！</button>
       </div>
 
-      <button class="test-shake-btn" @click="manualShake">💻 電腦版點此模擬搖晃</button>
+      <button class="test-shake-btn" @click="manualShake">🔀 點按搖晃／洗牌（手機與電腦都可用）</button>
     </div>
 
     <div v-else class="result-screen">
@@ -412,7 +417,8 @@ h1 { color: #e65100; font-size: 2.2rem; text-shadow: 2px 2px 0px #ffe0b2; margin
 }
 .action-btn:active { transform: translateY(5px); box-shadow: none; }
 
-.test-shake-btn { margin-top: 50px; background: transparent; border: 1px dashed #9e9e9e; color: #757575; padding: 5px 10px; cursor: pointer; border-radius: 6px;}
+.test-shake-btn { margin-top: 10px; background: #e65100; border: 2px solid #9a3500; color: #fff; padding: 12px 18px; min-height: 48px; width: min(100%,340px); font-weight: 800; cursor: pointer; border-radius: 9px; touch-action: manipulation;}
+@media (orientation:landscape) and (pointer:coarse){.shake-container{max-width:none;height:100dvh;min-height:0;box-sizing:border-box;padding:5px 12px;overflow:auto}.header{margin-bottom:5px}.game-screen{min-height:0}.target-zh{font-size:24px;margin-bottom:5px}.letter-container{margin:5px 0;gap:5px}.letter-box{font-size:20px;padding:4px 10px}.flashcard{font-size:26px;padding:8px;margin:5px 0;min-width:0}.action-btn{font-size:16px;padding:7px 20px}.test-shake-btn{margin-top:5px;padding:7px}}
 
 @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
 </style>

@@ -408,6 +408,7 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="stairs-page">
+    <LandscapeGameMode />
     <header class="page-header">
       <div><span class="eyebrow">VOCABULARY · DOWNSTAIRS</span><h1>🪜 單字小朋友下樓梯</h1><p>踩下一階、避開危險，邊玩邊複習英文單字</p></div>
       <nav><NuxtLink to="/">← 回首頁</NuxtLink><NuxtLink :to="historyLink">學習紀錄</NuxtLink><NuxtLink :to="leaderboardLink">全校英雄榜</NuxtLink></nav>
@@ -621,5 +622,23 @@ onBeforeUnmount(() => {
   .page-header p { display: none; }
   .page-header h1 { font-size: 25px; }
   .side-panel p { font-size: 13px; }
+}
+@media (orientation: landscape) and (pointer: coarse) {
+  .stairs-page { height: 100dvh; min-height: 0; overflow: hidden; padding: 4px max(6px, env(safe-area-inset-right)) 4px max(6px, env(safe-area-inset-left)); }
+  .page-header { flex-direction: row; align-items: center; margin-bottom: 3px; }
+  .page-header h1 { font-size: 17px; }
+  .page-header p, .eyebrow { display: none; }
+  .page-header nav a { font-size: 11px; padding: 4px 6px; }
+  .layout { grid-template-columns: minmax(0, 1fr) minmax(150px, 25vw); gap: 5px; }
+  .game-panel, .side-panel { min-height: 0; padding: 4px; }
+  .side-panel { overflow: auto; margin: 0; }
+  .status { font-size: 11px; margin-bottom: 3px; }
+  .status strong { font-size: 13px; }
+  .stage-wrap { width: min(100%, calc((100dvh - 75px) * 420 / 620)); }
+  .stage-row { flex: 1; min-height: 0; }
+  .move-control { position: static; min-height: 48px; flex: 0 0 48px; font-size: 18px; }
+  .move-control span { font-size: 10px; margin-top: 0; }
+  .mobile-sensor { margin-bottom: 2px; }
+  .mobile-sensor small { display: none; }
 }
 </style>

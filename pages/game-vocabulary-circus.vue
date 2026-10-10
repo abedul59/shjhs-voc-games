@@ -34,7 +34,6 @@ const notice = ref('正在讀取本課單字…');
 const sensorStatus = ref('可使用鍵盤或畫面上的「向上／向下」按鍵。');
 const sensorEnabled = ref(false);
 const sensorInverted = ref(false);
-const needsLandscape = ref(false);
 const stage = ref(0);
 const lives = ref(3);
 const points = ref(0);
@@ -69,7 +68,7 @@ function resetAct() {
   notice.value = `第 ${stage.value + 1} 幕：${acts[stage.value].name}。${acts[stage.value].tip}`;
 }
 function startGame() {
-  if (loading.value || words.value.length < 4 || needsLandscape.value) return;
+  if (loading.value || words.value.length < 4) return;
   stage.value = 0;
   lives.value = 3;
   points.value = 0;
@@ -179,7 +178,7 @@ function tick(timestamp) {
     phase.value = 'playing';
     notice.value = '暫停結束，演出繼續！';
   }
-  if (phase.value === 'playing' && !document.hidden && !needsLandscape.value && dt > 0) {
+  if (phase.value === 'playing' && !document.hidden && dt > 0) {
     world.time += dt;
     advance(dt);
     if (phase.value === 'playing') {
@@ -190,10 +189,7 @@ function tick(timestamp) {
   }
   draw();
 }
-function updateLandscapeHint() {
-  needsLandscape.value = window.matchMedia('(max-width: 700px) and (orientation: portrait)').matches;
-  world.lastFrame = 0;
-}
+function updateLandscapeHint() { world.lastFrame = 0; }
 function keyDown(event) {
   if (['ArrowUp', 'ArrowDown', ' ', 'w', 'W', 's', 'S'].includes(event.key)) event.preventDefault();
   if (event.repeat) return;
@@ -498,7 +494,7 @@ function drawArtist(ctx, x, floorY, mount) {
 
 <template>
   <main class="circus-page">
-    <div v-if="needsLandscape" class="landscape-prompt" role="status"><span aria-hidden="true">📱 ↻</span><strong>請將手機轉為橫向</strong><p>橫向時才會開始或繼續演出，轉向期間遊戲會暫停。</p></div>
+    <LandscapeGameMode />
     <header class="page-header">
       <div><span class="eyebrow">VOCABULARY · CIRCUS STAGE</span><h1>🎪 單字馬戲團</h1><p>五幕懷舊馬戲挑戰，跳躍、蹲低並完成單字題</p></div>
       <nav><NuxtLink to="/">← 回首頁</NuxtLink><NuxtLink :to="historyLink">學習紀錄</NuxtLink><NuxtLink :to="leaderboardLink">全校英雄榜</NuxtLink></nav>
@@ -539,8 +535,6 @@ function drawArtist(ctx, x, floorY, mount) {
 </style>
 
 <style scoped>
-.landscape-prompt{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;background:#24162ff2;color:#fff5d6;text-align:center}
-.landscape-prompt span{font-size:52px}.landscape-prompt strong{font-size:25px}.landscape-prompt p{max-width:25em;margin:0;line-height:1.5}
 @media (max-height:600px) and (orientation:landscape) and (pointer:coarse){
   .circus-page{height:100dvh;min-height:0;overflow:hidden;display:flex;flex-direction:column;box-sizing:border-box;padding:4px max(6px,env(safe-area-inset-right)) 4px max(6px,env(safe-area-inset-left))}
   .page-header{width:100%;flex:0 0 auto;margin:0 0 4px;align-items:center}.eyebrow,.page-header p{display:none}.page-header h1{font-size:18px;margin:0}
