@@ -21,6 +21,7 @@ const lives = ref(3);
 const isGameOver = ref(false);
 const permissionGranted = ref(false);
 const permissionError = ref('');
+const heldDirection = ref('');
 
 // Physics & Tilt State
 let baseBeta = null;
@@ -92,10 +93,10 @@ const requestPermission = async () => {
         permissionGranted.value = true;
         startGame();
       } else {
-        permissionError.value = "需要陀螺儀權限才能遊玩！";
+        permissionError.value = "未取得陀螺儀權限，可改用畫面方向鍵。";
       }
     } catch (e) {
-      permissionError.value = "授權發生錯誤：" + e.message;
+      permissionError.value = "無法啟用陀螺儀，可改用畫面方向鍵。";
     }
   } else {
     permissionGranted.value = true;
@@ -135,6 +136,13 @@ const handleKeyDown = (e) => {
   if (e.key === 'ArrowLeft' || e.key === 'a') ball.value.vx -= speed;
   if (e.key === 'ArrowRight' || e.key === 'd') ball.value.vx += speed;
 };
+const steer = (direction) => {
+  heldDirection.value = direction;
+  if (direction === 'up') ball.value.vy -= 1.5;
+  if (direction === 'down') ball.value.vy += 1.5;
+  if (direction === 'left') ball.value.vx -= 1.5;
+  if (direction === 'right') ball.value.vx += 1.5;
+};
 
 const setupNextQuestion = () => {
   if (currentIndex.value >= vocabList.value.length || lives.value <= 0) {
@@ -164,6 +172,11 @@ const isProcessingHole = ref(false);
 
 const updatePhysics = () => {
   if (isGameOver.value || isProcessingHole.value) return;
+
+  if (heldDirection.value === 'up') ball.value.vy -= 0.2;
+  if (heldDirection.value === 'down') ball.value.vy += 0.2;
+  if (heldDirection.value === 'left') ball.value.vx -= 0.2;
+  if (heldDirection.value === 'right') ball.value.vx += 0.2;
 
   ball.value.vx *= 0.95;
   ball.value.vy *= 0.95;
@@ -319,6 +332,7 @@ const uploadRecord = async (gameName) => {
 
 <template>
   <div class="maze-container">
+    <LandscapeGameMode />
     <div class="header">
       <NuxtLink to="/" class="back-btn">⬅ 返回首頁</NuxtLink>
       <div class="stats">
@@ -335,7 +349,7 @@ const uploadRecord = async (gameName) => {
          請<b>平穩地傾斜手機</b>，<br>將鋼球滾進符合上方「中文提示」的洞裡！</p>
       
       <button class="action-btn" @click="requestPermission">📱 手機版：準備好並點此開始</button>
-      <button class="test-btn" @click="() => { permissionGranted = true; startGame(); }">💻 電腦版：使用方向鍵控制</button>
+      <button class="test-btn" @click="() => { permissionGranted = true; startGame(); }">使用畫面方向鍵開始（不需感測器）</button>
       
       <p v-if="permissionError" class="error">{{ permissionError }}</p>
     </div>
@@ -354,6 +368,13 @@ const uploadRecord = async (gameName) => {
         </div>
 
         <div class="ball" :style="{ left: ball.x + '%', top: ball.y + '%' }"></div>
+      </div>
+
+      <div class="touch-pad" aria-label="畫面方向鍵">
+        <button type="button" class="up" aria-label="向上滾動" @pointerdown.prevent="steer('up')" @pointerup="heldDirection = ''" @pointercancel="heldDirection = ''" @pointerleave="heldDirection = ''">▲</button>
+        <button type="button" class="left" aria-label="向左滾動" @pointerdown.prevent="steer('left')" @pointerup="heldDirection = ''" @pointercancel="heldDirection = ''" @pointerleave="heldDirection = ''">◀</button>
+        <button type="button" class="down" aria-label="向下滾動" @pointerdown.prevent="steer('down')" @pointerup="heldDirection = ''" @pointercancel="heldDirection = ''" @pointerleave="heldDirection = ''">▼</button>
+        <button type="button" class="right" aria-label="向右滾動" @pointerdown.prevent="steer('right')" @pointerup="heldDirection = ''" @pointercancel="heldDirection = ''" @pointerleave="heldDirection = ''">▶</button>
       </div>
 
       <p class="hint">💡 提示：手機平拿，像托盤一樣微微傾斜即可控制方向。</p>
@@ -430,4 +451,7 @@ h1 { color: #2e7d32; font-size: 2rem; text-shadow: 1px 1px 0px #a5d6a7; margin-b
 }
 
 .hint { margin-top: 20px; color: #555; font-size: 0.9rem; }
+.touch-pad{display:grid;grid-template-columns:repeat(3,54px);grid-template-rows:repeat(2,46px);gap:3px;justify-content:center;margin-top:8px;touch-action:none}
+.touch-pad button{border:2px solid #2e7d32;border-radius:9px;background:#c8e6c9;color:#174c20;font-size:22px;font-weight:900;touch-action:none;user-select:none}.touch-pad .up{grid-column:2}.touch-pad .left{grid-column:1;grid-row:2}.touch-pad .down{grid-column:2;grid-row:2}.touch-pad .right{grid-column:3;grid-row:2}
+@media (orientation:landscape) and (pointer:coarse){.maze-container{max-width:none;height:100dvh;min-height:0;padding:5px 12px;box-sizing:border-box}.game-screen{height:calc(100dvh - 50px);display:grid;grid-template-columns:1fr 180px;grid-template-rows:auto auto 1fr;gap:4px}.progress,.target-zh{grid-column:1/-1;margin:0;padding:2px;font-size:18px}.play-area{grid-column:1;grid-row:3;width:min(100%,calc((100dvh - 110px)/1.1));height:100%;aspect-ratio:1/1.1;justify-self:center}.touch-pad{grid-column:2;grid-row:3;align-self:center}.hint{display:none}.header{margin-bottom:3px}}
 </style>

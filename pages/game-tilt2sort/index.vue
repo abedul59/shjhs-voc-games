@@ -18,6 +18,7 @@ const permissionError = ref('');
 
 // Physics & Tilt State
 const tiltX = ref(0); // -10 到 10 之間，代表傾斜程度
+const manualHeld = ref(false);
 const itemX = ref(50); // 掉落物的 X 座標 (0-100%)
 const itemY = ref(0);  // 掉落物的 Y 座標 (0-100%)
 let gameLoop = null;
@@ -82,10 +83,10 @@ const requestPermission = async () => {
         permissionGranted.value = true;
         startGame();
       } else {
-        permissionError.value = "需要陀螺儀權限才能遊玩！";
+        permissionError.value = "未取得陀螺儀權限，可改用畫面左右鍵。";
       }
     } catch (e) {
-      permissionError.value = "授權發生錯誤：" + e.message;
+      permissionError.value = "無法啟用陀螺儀，可改用畫面左右鍵。";
     }
   } else {
     // Non-iOS 13+ devices or HTTP fallback
@@ -100,6 +101,7 @@ const startGame = () => {
 };
 
 const handleOrientation = (event) => {
+  if (manualHeld.value) return;
   // gamma is the left-to-right tilt in degrees, where right is positive
   let tilt = event.gamma; 
   if (tilt === null) return;
@@ -188,9 +190,9 @@ const checkCollision = () => {
 };
 
 // 網頁測試用：按鈕控制
-const tiltLeft = () => { tiltX.value = -3; };
-const tiltRight = () => { tiltX.value = 3; };
-const stopTilt = () => { tiltX.value = 0; };
+const tiltLeft = () => { manualHeld.value = true; tiltX.value = -3; };
+const tiltRight = () => { manualHeld.value = true; tiltX.value = 3; };
+const stopTilt = () => { manualHeld.value = false; tiltX.value = 0; };
 const manualStart = () => { permissionGranted.value = true; startGame(); };
 
 // 🌟 修正點：加上 async/await
@@ -276,6 +278,7 @@ const uploadRecord = async (gameName) => {
 
 <template>
   <div class="tilt-container">
+    <LandscapeGameMode />
     <div class="header">
       <NuxtLink to="/" class="back-btn">⬅ 返回首頁</NuxtLink>
       <div class="stats">
@@ -291,7 +294,7 @@ const uploadRecord = async (gameName) => {
       <p>天上會掉下「中文意思」，<br>請像拿著平衡木一樣，<br><b>將手機向左或向右傾斜</b>，<br>讓單字滑進正確的英文籃子裡！</p>
       
       <button class="action-btn" @click="requestPermission">📱 手機版：點此開始 (需授權)</button>
-      <button class="test-btn" @click="manualStart">💻 電腦版：點此開始測試</button>
+      <button class="test-btn" @click="manualStart">使用畫面左右鍵開始（不需感測器）</button>
       
       <p v-if="permissionError" class="error">{{ permissionError }}</p>
     </div>
@@ -313,8 +316,8 @@ const uploadRecord = async (gameName) => {
       </div>
 
       <div class="pc-controls">
-        <button @mousedown="tiltLeft" @mouseup="stopTilt" @mouseleave="stopTilt" @touchstart="tiltLeft" @touchend="stopTilt">⬅️ 向左傾斜</button>
-        <button @mousedown="tiltRight" @mouseup="stopTilt" @mouseleave="stopTilt" @touchstart="tiltRight" @touchend="stopTilt">向右傾斜 ➡️</button>
+        <button @pointerdown.prevent="tiltLeft" @pointerup="stopTilt" @pointercancel="stopTilt" @pointerleave="stopTilt">⬅ 向左</button>
+        <button @pointerdown.prevent="tiltRight" @pointerup="stopTilt" @pointercancel="stopTilt" @pointerleave="stopTilt">向右 ➡</button>
       </div>
     </div>
 
@@ -391,4 +394,5 @@ h1 { color: #00796b; font-size: 2rem; text-shadow: 1px 1px 0px #b2dfdb; margin-b
   border: 2px solid #9e9e9e; border-radius: 8px; cursor: pointer; user-select: none;
 }
 .pc-controls button:active { background: #bdbdbd; }
+@media (orientation:landscape) and (pointer:coarse){.tilt-container{max-width:none;height:100dvh;min-height:0;box-sizing:border-box;padding:5px 12px;overflow:hidden}.header{margin-bottom:3px}.game-screen{height:calc(100dvh - 50px)}.progress{margin-bottom:3px}.play-area{flex:1;min-height:0;height:auto}.pc-controls{margin-top:4px;gap:8px}.pc-controls button{min-height:44px;padding:5px 15px;touch-action:none}.falling-item{font-size:18px;padding:5px 10px}.basket-label{font-size:16px;padding:4px 8px}}
 </style>

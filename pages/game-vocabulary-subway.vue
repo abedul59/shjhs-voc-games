@@ -37,7 +37,6 @@ const saveNotice = ref('');
 const tiltSupported = ref(false);
 const tiltEnabled = ref(false);
 const tiltStatus = ref('');
-const needsLandscape = ref(false);
 const score = computed(() => meters.value * 2 + bonus.value);
 const stationName = computed(() => STATIONS[Math.floor(meters.value / 500) % STATIONS.length].name);
 const nextStation = computed(() => (Math.floor(meters.value / 500) + 1) * 500);
@@ -72,7 +71,7 @@ function resetWorld() {
   spawnAhead();
 }
 function startGame() {
-  if (words.value.length < 4 || needsLandscape.value) return;
+  if (words.value.length < 4) return;
   resetWorld();
   lives.value = 3;
   shields.value = 0;
@@ -306,13 +305,10 @@ function tick(timestamp) {
   frameId = requestAnimationFrame(tick);
   const dt = world.lastFrame ? Math.min((timestamp - world.lastFrame) / 1000, .04) : 0;
   world.lastFrame = timestamp;
-  if (phase.value === 'playing' && !document.hidden && !needsLandscape.value && dt > 0) advance(dt);
+  if (phase.value === 'playing' && !document.hidden && dt > 0) advance(dt);
   draw();
 }
-function updateLandscapeHint() {
-  needsLandscape.value = window.matchMedia('(max-width: 700px) and (orientation: portrait)').matches;
-  world.lastFrame = 0;
-}
+function updateLandscapeHint() { world.lastFrame = 0; }
 async function saveRecord() {
   if (!student.value?.id || !recordId) return;
   const currentId = recordId;
@@ -544,7 +540,7 @@ function drawRunner(ctx, p) {
 
 <template>
   <main class="runner-page">
-    <div v-if="needsLandscape" class="landscape-prompt" role="status"><span aria-hidden="true">📱 ↻</span><strong>請將手機轉為橫向</strong><p>橫向時才會開始或繼續跑酷，轉向期間遊戲會暫停。</p></div>
+    <LandscapeGameMode />
     <header class="topbar"><div><span>VOCABULARY · METRO RUN</span><h1>🚇 單字地鐵跑酷</h1><p>換道・跳躍・滑行・收集單字票券</p></div><nav><NuxtLink to="/">← 回首頁</NuxtLink><NuxtLink :to="historyLink">學習紀錄</NuxtLink><NuxtLink :to="leaderboardLink">全校英雄榜</NuxtLink></nav></header>
     <div class="layout">
       <section class="game-panel"><div class="stage-head"><strong>🚉 {{ stationName }}</strong><span>下一站 {{ Math.max(0, nextStation - meters) }} m</span></div>
@@ -568,8 +564,6 @@ function drawRunner(ctx, p) {
 </style>
 
 <style scoped>
-.landscape-prompt{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;background:#102e4bf2;color:#fff8dc;text-align:center}
-.landscape-prompt span{font-size:52px}.landscape-prompt strong{font-size:25px}.landscape-prompt p{max-width:25em;margin:0;line-height:1.5}
 @media (max-height:600px) and (orientation:landscape) and (pointer:coarse){
   .runner-page{height:100dvh;min-height:0;overflow:hidden;display:flex;flex-direction:column;box-sizing:border-box;padding:4px max(6px,env(safe-area-inset-right)) 4px max(6px,env(safe-area-inset-left))}
   .topbar{width:100%;flex:0 0 auto;margin:0 0 4px;align-items:center}
