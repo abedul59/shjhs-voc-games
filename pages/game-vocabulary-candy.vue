@@ -209,12 +209,12 @@ function selectCandy(index) {
   } else selected.value = index;
 }
 function pointerDown(index, event) {
-  if (phase.value !== 'playing' || busy.value) return;
-  pointerStart = { index, x: event.clientX, y: event.clientY };
+  if (phase.value !== 'playing' || busy.value || !event.isPrimary) return;
+  pointerStart = { index, pointerId: event.pointerId, x: event.clientX, y: event.clientY };
   event.currentTarget.setPointerCapture?.(event.pointerId);
 }
 function pointerUp(event) {
-  if (!pointerStart) return;
+  if (!pointerStart || pointerStart.pointerId !== event.pointerId) return;
   const { index, x, y } = pointerStart;
   pointerStart = null;
   const dx = event.clientX - x, dy = event.clientY - y;
@@ -225,7 +225,9 @@ function pointerUp(event) {
     void swapCandy(index, neighbor);
   }
 }
-function pointerCancel() { pointerStart = null; }
+function pointerCancel(event) {
+  if (pointerStart?.pointerId === event.pointerId) pointerStart = null;
+}
 function expandSpecials(clear, cells) {
   const queue = [...clear];
   const triggered = new Set();
@@ -443,7 +445,7 @@ onBeforeUnmount(() => {
     <div class="game-shell">
       <section class="board-panel">
         <div class="board-heading"><span>{{ LEVELS[level].icon }} 第 {{ level + 1 }}/{{ LEVELS.length }} 關 · {{ LEVELS[level].name }}</span><strong>⭐ {{ score.toLocaleString() }} 分</strong></div>
-        <div class="board-frame">
+        <div class="board-frame" :class="{ 'is-playing': phase === 'playing' }" @gesturestart.prevent @gesturechange.prevent>
           <div class="board" role="grid" aria-label="糖果棋盤">
             <button v-for="(candy, index) in board" :key="candy.id" class="tile" :class="[{ selected: selected === index, flashed: flash.includes(index) }, `kind-${candy.kind}`, candy.special ? `special-${candy.special}` : '']" type="button" role="gridcell" :disabled="phase !== 'playing' || busy" :aria-label="`第 ${Math.floor(index / 8) + 1} 列第 ${index % 8 + 1} 格，${COLORS[candy.kind]}${candy.special ? '特殊糖果' : ''}`" @pointerdown="pointerDown(index, $event)" @pointerup="pointerUp" @pointercancel="pointerCancel" @keydown.enter.prevent="selectCandy(index)" @keydown.space.prevent="selectCandy(index)">
               <span class="sweet" aria-hidden="true"><span class="glyph">{{ candy.special === 'bomb' ? '✺' : SYMBOLS[candy.kind] }}</span><span v-if="candy.special === 'row' || candy.special === 'col'" class="stripe" :class="candy.special"></span><span v-if="candy.special === 'wrap'" class="wrapper">✧</span></span>
@@ -527,22 +529,33 @@ onBeforeUnmount(() => {
 @media (max-width:610px){
   .candy-page{padding:7px}
   .topbar h1{font-size:26px}
-  .topbar p,.eyebrow{font-size:10px}
+  .topbar p,.eyebrow{font-size:12px}
   .topbar nav{gap:5px;margin-top:7px}
-  .topbar a{padding:5px 8px;font-size:11px}
-  .board-heading{padding:7px 9px;font-size:12px}
+  .topbar a{padding:7px 5px;font-size:13px}
+  .board-heading{padding:7px 9px;font-size:15px}
+  .board-heading strong{font-size:15px}
   .board-heading span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .board-frame{border-radius:13px}
-  .board-footer{padding:3px 8px 7px}
+  .board-frame.is-playing,.board{touch-action:none;overscroll-behavior:contain;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+  .candy-page button,.candy-page a,.help summary{touch-action:manipulation}
+  .board .tile{touch-action:none}
+  .board-footer{padding:5px 8px 9px;font-size:14px;line-height:1.35}
+  .board-footer button{font-size:14px;min-height:36px}
   .side-panel{padding:10px}
+  .headline{font-size:17px}
   .chapter-progress{margin:6px 0}
+  .chapter-progress span{font-size:14px}
   .word-cards{gap:5px;margin:7px 0}
-  .word-card{padding:5px;gap:6px}
-  .notice{min-height:0;margin:7px 0;padding:7px;font-size:12px}
+  .word-card{padding:7px;gap:6px;opacity:1}
+  .word-card small,.word-card em{font-size:12px;line-height:1.3;color:#6c3970}
+  .word-card strong{font-size:15px;line-height:1.3}
+  .meter-copy,.help{font-size:14px}
+  .notice{min-height:0;margin:7px 0;padding:9px;font-size:14px}
+  .quit{font-size:15px;min-height:42px}
   .overlay-card{max-height:100%;padding:8px}
-  .overlay-card h2{font-size:19px;margin:2px 0 6px}
-  .overlay-card p{margin:5px 0;font-size:12px}
-  .overlay-card button{padding:7px 9px;font-size:12px}
+  .overlay-card h2{font-size:22px;margin:2px 0 6px}
+  .overlay-card p,.overlay-card small,.mini-label{margin:5px 0;font-size:14px}
+  .overlay-card button{padding:9px;font-size:16px;min-height:44px}
   .checkpoint-results{margin:6px 0}
 }
 </style>
