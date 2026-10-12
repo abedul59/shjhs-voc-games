@@ -1,5 +1,6 @@
 <script setup>
 import { prepareEnglishUtterance } from '~/utils/englishSpeech';
+import { SPEAKNO2_CATEGORIES, speakno2CategoryLabel, countSpeakno2Words, formatSpeakno2Duration, normalizeSpeakno2Links, isSafeSpeakno2Url } from '~/utils/speakno2Article';
 import { ref, onMounted, computed, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 
@@ -24,7 +25,38 @@ const score = ref(0);
 const gameStartTime = ref(0);
 const correctWordsList = ref([]);
 const wrongWordsSet = ref(new Set());
+const articleError = ref('');
+const readingElapsedMs = ref(0);
+const readingStartedAt = ref(0);
+const isTimingReading = ref(false);
+let readingTimer = null;
 let recognition = null;
+
+const articleWordCount = computed(() => countSpeakno2Words(selectedArticle.value?.content));
+const readingSeconds = computed(() => Math.floor(readingElapsedMs.value / 1000));
+const referenceLinks = computed(() => normalizeSpeakno2Links(selectedArticle.value?.resource_links).filter(link => isSafeSpeakno2Url(link.url)));
+
+const stopReadingTimer = () => {
+  if (!isTimingReading.value) return;
+  readingElapsedMs.value += Date.now() - readingStartedAt.value;
+  isTimingReading.value = false;
+  clearInterval(readingTimer);
+  readingTimer = null;
+};
+
+const startReadingTimer = () => {
+  if (isTimingReading.value) return;
+  readingElapsedMs.value = 0;
+  readingStartedAt.value = Date.now();
+  isTimingReading.value = true;
+  readingTimer = setInterval(() => {
+    // Keep the clock visible while reading; the final duration uses wall time.
+    const elapsed = Date.now() - readingStartedAt.value;
+    if (elapsed >= 0) displayedReadingMs.value = readingElapsedMs.value + elapsed;
+  }, 250);
+};
+const displayedReadingMs = ref(0);
+const displayedReadingSeconds = computed(() => Math.floor((isTimingReading.value ? displayedReadingMs.value : readingElapsedMs.value) / 1000));
 
 // 音效
 const playTone = (type) => {
@@ -48,8 +80,10 @@ onMounted(() => {
 });
 
 const chooseGrade = async (grade) => {
+  articleError.value = '';
   selectedGrade.value = grade;
-  const { data } = await supabase.from('speakno2_articles').select('*').eq('grade', grade).order('created_at', { ascending: false });
+  const { data, error } = await supabase.from('speakno2_articles').select('*').eq('grade', grade).order('created_at', { ascending: false });
+  if (error) articleError.value = `載入文章失敗：${error.message}`;
   articles.value = data || [];
   gameStatus.value = 'selectArticle';
 };
@@ -71,6 +105,9 @@ const parseText = (text) => {
 };
 
 const startArticle = (article) => {
+  stopReadingTimer();
+  readingElapsedMs.value = 0;
+  displayedReadingMs.value = 0;
   selectedArticle.value = article;
   parsedArticle.value = parseText(article.content);
   gameStartTime.value = Date.now();
@@ -142,6 +179,7 @@ const evaluateSpeech = (speech) => {
 };
 
 const endGame = async () => {
+  stopReadingTimer();
   gameStatus.value = 'end';
   if (!studentCookie.value || !studentCookie.value.id) return;
   try {
@@ -160,7 +198,7 @@ const endGame = async () => {
   } catch(err) { console.error('成績上傳失敗', err); }
 };
 
-onUnmounted(() => { if (recognition) recognition.abort(); });
+onUnmounted(() => { stopReadingTimer(); if (recognition) recognition.abort(); });
 </script>
 
 <template>
@@ -172,27 +210,38 @@ onUnmounted(() => { if (recognition) recognition.abort(); });
 
     <div v-if="gameStatus === 'selectGrade'" class="center-screen">
       <h1>📖 口說學霸 2<br><small>朗讀與說故事</small></h1>
-      <p>請選擇你要挑戰的年級！</p>
+      <p>請選擇年級或競賽文章！</p>
       <div class="grade-btns">
-        <button @click="chooseGrade(7)" class="grade-btn g7">七年級區</button>
-        <button @click="chooseGrade(8)" class="grade-btn g8">八年級區</button>
+        <button v-for="category in SPEAKNO2_CATEGORIES" :key="category.grade" @click="chooseGrade(category.grade)" class="grade-btn" :class="`g${category.grade}`">{{ category.label }}</button>
       </div>
     </div>
 
     <div v-else-if="gameStatus === 'selectArticle'" class="center-screen">
-      <h2>請選擇 {{ selectedGrade }} 年級的文章</h2>
+      <h2>請選擇 {{ speakno2CategoryLabel(selectedGrade) }}的文章</h2>
       <div class="article-grid">
         <button v-for="art in articles" :key="art.id" class="article-btn" @click="startArticle(art)">
-          📜 {{ art.title }}
+          📜 {{ art.title }} <small>（{{ countSpeakno2Words(art.content) }} 字）</small>
         </button>
       </div>
-      <p v-if="articles.length === 0" class="empty-msg">老師還沒新增文章喔！</p>
+      <p v-if="articleError" class="empty-msg" role="alert">{{ articleError }}</p>
+      <p v-else-if="articles.length === 0" class="empty-msg">老師還沒新增文章喔！</p>
       <button @click="gameStatus = 'selectGrade'" class="text-btn">返回重新選擇</button>
     </div>
 
     <div v-else-if="gameStatus === 'playing'" class="play-screen">
       <h2 class="article-title">{{ selectedArticle.title }}</h2>
+      <div class="reading-info">
+        <span>📝 {{ articleWordCount }} 字</span>
+        <span>⏱️ 朗讀時間 {{ formatSpeakno2Duration(displayedReadingSeconds) }}</span>
+        <button v-if="!isTimingReading" type="button" @click="startReadingTimer">{{ readingElapsedMs ? '重新開始計時' : '開始計時朗讀' }}</button>
+        <button v-else type="button" @click="stopReadingTimer">完成朗讀</button>
+      </div>
       <div class="tip">💡 提示：點擊 🔊 可整句發音，點擊「英文單字」可單獨發音與測驗。</div>
+
+      <div v-if="referenceLinks.length" class="reference-links">
+        <strong>相關網址：</strong>
+        <a v-for="(link, index) in referenceLinks" :key="index" :href="link.url" target="_blank" rel="noopener noreferrer">{{ link.name }} ↗</a>
+      </div>
 
       <div class="article-content retro-element">
         <span v-for="(sentence, sIdx) in parsedArticle" :key="sIdx" class="sentence-box" :class="{ 'active-target': currentTarget?.raw === sentence.raw }">
@@ -235,6 +284,7 @@ onUnmounted(() => { if (recognition) recognition.abort(); });
     <div v-else-if="gameStatus === 'end'" class="center-screen">
       <h1>🎉 恭喜完成朗讀！</h1>
       <h2>總得分：{{ score }} pt</h2>
+      <p>文章 {{ articleWordCount }} 字 · 朗讀計時 {{ formatSpeakno2Duration(readingSeconds) }}</p>
       <NuxtLink to="/" class="end-home-btn">返回首頁</NuxtLink>
     </div>
   </div>
@@ -250,11 +300,13 @@ onUnmounted(() => { if (recognition) recognition.abort(); });
 h1 { font-size: 2.5rem; color: #2c3e50; margin-bottom: 10px;}
 h1 small { font-size: 1.5rem; color: #7f8c8d; display: block; margin-top: 5px;}
 
-.grade-btns { display: flex; gap: 20px; margin-top: 30px;}
+.grade-btns { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; margin-top: 30px;}
 .grade-btn { font-size: 1.5rem; font-weight: bold; padding: 20px 40px; border-radius: 16px; border: none; cursor: pointer; color: white; box-shadow: 0 6px 0 rgba(0,0,0,0.2); transition: 0.1s;}
 .grade-btn:active { transform: translateY(6px); box-shadow: none;}
 .grade-btn.g7 { background: #ff9800; box-shadow: 0 6px 0 #e65100;}
 .grade-btn.g8 { background: #9c27b0; box-shadow: 0 6px 0 #6a1b9a;}
+.grade-btn.g9 { background: #1976d2; box-shadow: 0 6px 0 #0d47a1;}
+.grade-btn.g10 { background: #00796b; box-shadow: 0 6px 0 #004d40;}
 
 .article-grid { display: flex; flex-direction: column; gap: 15px; width: 100%; max-width: 500px; margin: 20px 0;}
 .article-btn { background: white; border: 2px solid #3498db; padding: 15px; border-radius: 12px; font-size: 1.2rem; font-weight: bold; color: #2980b9; cursor: pointer; transition: 0.2s;}
@@ -262,6 +314,10 @@ h1 small { font-size: 1.5rem; color: #7f8c8d; display: block; margin-top: 5px;}
 .text-btn { background: transparent; border: none; color: #7f8c8d; text-decoration: underline; cursor: pointer; margin-top: 20px;}
 
 .article-title { text-align: center; color: #2c3e50; font-size: 1.8rem; margin-bottom: 5px;}
+.reading-info { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; margin: 10px 0; color: #263238; font-weight: bold; }
+.reading-info button { border: 0; background: #1565c0; color: white; border-radius: 8px; padding: 8px 14px; font-weight: bold; cursor: pointer; }
+.reference-links { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.reference-links a { background: #e3f2fd; color: #0d47a1; padding: 6px 10px; border-radius: 8px; overflow-wrap: anywhere; }
 .tip { text-align: center; color: #e65100; font-weight: bold; margin-bottom: 15px; font-size: 0.95rem;}
 
 .article-content { background: #fff; padding: 20px; border-radius: 16px; border: 2px solid #e0e0e0; line-height: 2.2; font-size: 1.2rem; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);}
