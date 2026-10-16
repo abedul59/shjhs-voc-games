@@ -11,6 +11,9 @@ const lessonIndex = computed(() => activeLessons.findIndex(item => item.id === l
 const previous = computed(() => lessonIndex.value > 0 ? activeLessons[lessonIndex.value - 1] : null);
 const next = computed(() => lessonIndex.value >= 0 && lessonIndex.value < activeLessons.length - 1 ? activeLessons[lessonIndex.value + 1] : null);
 const stage = computed(() => rustStages.find(item => item.id === lesson.value?.stage));
+const stageLessons = computed(() => activeLessons.filter(item => item.stage === lesson.value?.stage));
+const stagePosition = computed(() => stageLessons.value.findIndex(item => item.id === lesson.value?.id) + 1);
+const stagePercent = computed(() => stageLessons.value.length ? stagePosition.value / stageLessons.value.length * 100 : 0);
 const progress = ref(createDefaultRustProgress());
 const notes = ref('');
 const status = ref('learning');
@@ -84,7 +87,7 @@ onMounted(async () => {
   <main v-if="lesson" class="lesson-page" :style="{ '--stage': stage?.color || '#c2410c' }">
     <aside class="sidebar">
       <NuxtLink to="/admin/law-exam/rust" class="brand">🦀 <span>Rust<br><small>私人工作台</small></span></NuxtLink>
-      <div class="side-progress"><span>基礎階段</span><b>{{ lesson.order }}/5</b><i><em :style="{ width: `${lesson.order / 5 * 100}%` }"></em></i></div>
+      <div class="side-progress"><span>{{ stage?.title }}</span><b>{{ stagePosition }}/{{ stageLessons.length }}</b><i><em :style="{ width: `${stagePercent}%` }"></em></i></div>
       <nav><NuxtLink v-for="item in activeLessons" :key="item.id" :to="`/admin/law-exam/rust/lesson/${item.id}`" :class="{ active: item.id === lesson.id, done: progress.lessons[item.id]?.status === 'completed' }"><span>{{ String(item.order).padStart(2, '0') }}</span>{{ item.title }}</NuxtLink></nav>
       <NuxtLink to="/admin/law-exam" class="law-link">← 回司律專區</NuxtLink>
     </aside>
@@ -115,7 +118,7 @@ onMounted(async () => {
 
       <section class="notes-block"><div><span>私人筆記與掌握度</span><h2>留下自己的理解</h2><p class="sync-note">☁️ 內容會同步至資料庫，可在新舊網站與不同裝置繼續使用。</p></div><textarea v-model="notes" :disabled="!loaded || isSaving || !!syncError" placeholder="例如：今天終於理解運算式不加分號會成為回傳值……"></textarea><div class="notes-actions"><label>狀態<select v-model="status" :disabled="!loaded || isSaving || !!syncError"><option value="learning">學習中</option><option value="review">待複習</option><option value="completed">已理解</option></select></label><label>投入分鐘<input v-model.number="minutes" :disabled="!loaded || isSaving || !!syncError" type="number" min="0" step="5"></label><button :disabled="!loaded || isSaving || !!syncError" @click="saveProgress()">{{ isSaving ? '同步中…' : savedFlash ? '✓ 已保存' : '保存筆記' }}</button></div><p v-if="syncError" class="sync-error">⚠️ {{ syncError }}</p></section>
 
-      <footer class="lesson-footer"><NuxtLink v-if="previous" :to="`/admin/law-exam/rust/lesson/${previous.id}`">← {{ previous.title }}</NuxtLink><span v-else></span><button v-if="status !== 'completed'" @click="completeLesson">標記為已理解</button><NuxtLink v-if="next" :to="`/admin/law-exam/rust/lesson/${next.id}`">{{ next.title }} →</NuxtLink><NuxtLink v-else to="/admin/law-exam/rust">完成基礎階段 →</NuxtLink></footer>
+      <footer class="lesson-footer"><NuxtLink v-if="previous" :to="`/admin/law-exam/rust/lesson/${previous.id}`">← {{ previous.title }}</NuxtLink><span v-else></span><button v-if="status !== 'completed'" @click="completeLesson">標記為已理解</button><NuxtLink v-if="next" :to="`/admin/law-exam/rust/lesson/${next.id}`">{{ next.title }} →</NuxtLink><NuxtLink v-else to="/admin/law-exam/rust">完成完整學習路線 →</NuxtLink></footer>
     </div>
   </main>
 </template>
