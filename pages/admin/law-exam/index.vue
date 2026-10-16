@@ -89,6 +89,9 @@ const deleteCourse = async (id, subject) => {
       <NuxtLink to="/admin/law-exam/manage" class="dash-card manage-card">
         <div class="icon">📚</div><h2>題庫與解析管理</h2>
       </NuxtLink>
+      <NuxtLink to="/admin/law-exam/rust" class="dash-card rust-card">
+        <div class="icon">🦀</div><h2>Rust 私人自學工作台</h2>
+      </NuxtLink>
     </div>
 
     <hr class="section-divider" />
@@ -218,6 +221,7 @@ const deleteCourse = async (id, subject) => {
 /* 舊有樣式不變 */
 .dashboard-container { font-family: sans-serif; max-width: 1100px; margin: 0 auto; padding: 40px 20px; }
 .header { text-align: center; margin-bottom: 40px; }
+.rust-card { background: linear-gradient(135deg, #1f2428, #9a3412) !important; color: white !important; border-color: #fb923c !important; }
 .back-btn { color: #64748b; text-decoration: none; font-weight: bold; background: white; padding: 6px 16px; border-radius: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: inline-block; margin-bottom: 20px; transition: 0.2s;}
 .back-btn:hover { background: #f1f5f9; color: #1e293b;}
 .header h1 { font-size: 32px; color: #1e293b; margin: 0 0 10px 0;}
