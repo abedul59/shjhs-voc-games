@@ -47,7 +47,7 @@ const statusLabel = lesson => ({ completed: '已理解', review: '待複習', le
     </section>
 
     <section class="roadmap">
-      <div class="section-heading"><div><p>LEARNING ROADMAP</p><h2>從基礎到進階</h2></div><span>六大階段、21 堂課程與三個實作專案皆已開放。</span></div>
+      <div class="section-heading"><div><p>LEARNING ROADMAP</p><h2>從基礎到進階</h2></div><span>六大階段、50 堂課程與完整實作專案皆已開放。</span></div>
 
       <div v-for="stage in rustStages" :key="stage.id" class="stage" :style="{ '--stage': stage.color }">
         <div class="stage-title"><span>{{ stage.number }}</span><div><h3>{{ stage.icon }} {{ stage.title }}</h3><p>{{ stage.subtitle }}</p></div></div>
