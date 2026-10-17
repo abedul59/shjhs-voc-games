@@ -1,0 +1,36 @@
+<script setup>
+import { computed, onMounted, ref } from 'vue';
+
+const props = defineProps({ course: { type: Object, required: true }, progressApi: { type: Object, required: true } });
+const progress = ref(props.course.createDefault());
+const loaded = ref(false);
+const { isLoading, syncError, migratedFromBrowser, loadProgress } = props.progressApi;
+
+onMounted(async () => {
+  progress.value = await loadProgress();
+  loaded.value = true;
+});
+
+const completedCount = computed(() => props.course.lessons.filter(item => progress.value.lessons[item.id]?.status === 'completed').length);
+const reviewCount = computed(() => props.course.lessons.filter(item => progress.value.lessons[item.id]?.status === 'review').length);
+const percent = computed(() => Math.round(completedCount.value / props.course.lessons.length * 100));
+const totalMinutes = computed(() => Object.values(progress.value.lessons).reduce((sum, item) => sum + Number(item.minutes || 0), 0));
+const continueLesson = computed(() => props.course.lessons.find(item => item.id === progress.value.lastLesson) || props.course.lessons.find(item => progress.value.lessons[item.id]?.status !== 'completed') || props.course.lessons[0]);
+const statusLabel = item => ({ completed: '已理解', review: '待複習', learning: '學習中' }[progress.value.lessons[item.id]?.status] || '未開始');
+</script>
+
+<template>
+  <main class="course-page" :style="{ '--accent': course.accent, '--secondary': course.secondary }">
+    <header class="hero">
+      <div><NuxtLink to="/admin/law-exam" class="back">← 回司律與私人學習後台</NuxtLink><p class="eyebrow">{{ course.eyebrow }}</p><h1><span>{{ course.primary }}</span> {{ course.secondaryTitle }}</h1><p class="lead">{{ course.lead }}</p><NuxtLink v-if="!isLoading" :to="`${course.base}/lesson/${continueLesson.id}`" class="continue">繼續：{{ continueLesson.title }} <b>→</b></NuxtLink></div>
+      <div class="logo" aria-hidden="true"><strong>{{ course.logo }}</strong><small>{{ course.tagline }}</small></div>
+    </header>
+    <section class="stats"><article><small>完整課程進度</small><strong>{{ percent }}%</strong><div class="bar"><i :style="{ width: `${percent}%` }"></i></div></article><article><small>已理解</small><strong>{{ completedCount }}<em>/{{ course.lessons.length }}</em></strong><p>全部課程皆已開放</p></article><article><small>待複習</small><strong>{{ reviewCount }}</strong><p>集中回顧標記內容</p></article><article><small>投入時間</small><strong>{{ totalMinutes }}<em> 分</em></strong><p>跨裝置同步累計</p></article></section>
+    <section class="roadmap"><div class="heading"><div><p>LEARNING ROADMAP</p><h2>{{ course.roadmap }}</h2></div><span>六大階段、50 堂完整課程與實作專案皆已開放。</span></div><div v-for="stage in course.stages" :key="stage.id" class="stage" :style="{ '--stage': stage.color }"><div class="stage-title"><span>{{ stage.number }}</span><div><h3>{{ stage.icon }} {{ stage.title }}</h3><p>{{ stage.subtitle }}</p></div></div><div class="lesson-grid"><NuxtLink v-for="item in course.lessons.filter(lesson => lesson.stage === stage.id)" :key="item.id" :to="`${course.base}/lesson/${item.id}`" class="lesson-card" :class="{ complete: progress.lessons[item.id]?.status === 'completed' }"><div class="number">{{ String(item.order).padStart(2, '0') }}</div><div><span>{{ item.duration }} 分鐘 · {{ statusLabel(item) }}</span><h4>{{ item.title }}</h4><p>{{ item.subtitle }}</p></div><b>→</b></NuxtLink></div></div></section>
+    <p v-if="syncError" class="cloud error">⚠️ {{ syncError }}</p><p v-else-if="loaded" class="cloud">☁️ 進度、程式碼與筆記會同步至資料庫，可跨裝置繼續學習。<span v-if="migratedFromBrowser">已完成本機舊資料搬移。</span></p>
+  </main>
+</template>
+
+<style scoped>
+.course-page{min-height:100vh;background:#f7f7fb;color:#191b25;font-family:Inter,'Noto Sans TC',system-ui,sans-serif;padding:28px}.hero{max-width:1240px;min-height:350px;margin:auto;padding:50px clamp(26px,6vw,76px);box-sizing:border-box;border-radius:30px;display:flex;align-items:center;justify-content:space-between;gap:32px;background:linear-gradient(120deg,#111827 0 64%,var(--secondary) 64%);color:#fff;box-shadow:0 24px 60px #11182725;overflow:hidden}.hero>div:first-child{max-width:780px}.back{display:inline-block;margin-bottom:36px;color:#c7d2fe;text-decoration:none;font-weight:800}.eyebrow,.heading p{margin:0;color:var(--accent);font-size:12px;font-weight:900;letter-spacing:.18em}.hero h1{font-size:clamp(38px,5vw,66px);line-height:1.05;margin:8px 0 18px}.hero h1 span{color:var(--accent)}.lead{max-width:720px;color:#e5e7eb;font-size:clamp(16px,2vw,20px);line-height:1.75}.continue{display:inline-flex;gap:20px;margin-top:16px;padding:14px 20px;border-radius:11px;background:var(--accent);color:#111827;text-decoration:none;font-weight:900}.logo{width:230px;text-align:center}.logo strong{display:block;font-size:86px;color:var(--accent);text-shadow:0 15px 24px #0006}.logo small{display:block;color:#fff;font-weight:900}.stats{position:relative;max-width:1160px;margin:-27px auto 46px;display:grid;grid-template-columns:1.5fr repeat(3,1fr);gap:12px}.stats article{padding:20px;border:1px solid #e1e3ec;border-radius:16px;background:#fff;box-shadow:0 8px 28px #11182710}.stats small{color:#666b7a;font-weight:800}.stats strong{display:block;margin:5px 0;font-size:30px}.stats em{font-size:14px;color:#73798a;font-style:normal}.stats p{margin:0;color:#858a98;font-size:12px}.bar{height:8px;border-radius:99px;background:#e9ebf1;overflow:hidden}.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--secondary))}.roadmap{max-width:1160px;margin:auto}.heading{display:flex;align-items:end;justify-content:space-between;gap:20px;margin-bottom:28px}.heading h2{font-size:34px;margin:5px 0}.heading>span{color:#696e7d}.stage{display:grid;grid-template-columns:240px 1fr;gap:24px;padding:27px 0;border-top:1px solid #dddfe7}.stage-title{display:flex;gap:13px}.stage-title>span{color:var(--stage);font-size:13px;font-weight:900}.stage-title h3{margin:0;font-size:21px}.stage-title p{margin:7px 0;color:#6d7180;line-height:1.5}.lesson-grid{display:grid;gap:10px}.lesson-card{display:grid;grid-template-columns:48px 1fr auto;align-items:center;gap:15px;padding:17px;border:1px solid #dfe1e8;border-left:5px solid var(--stage);border-radius:14px;background:#fff;color:inherit;text-decoration:none;transition:.18s}.lesson-card:hover{transform:translateX(6px);box-shadow:0 8px 24px #11182715}.lesson-card.complete{background:#f0fdf4}.number{display:grid;place-items:center;width:42px;height:42px;border-radius:10px;background:#f1f3f7;color:var(--stage);font-weight:900}.lesson-card span{font-size:11px;color:var(--stage);font-weight:900}.lesson-card h4{margin:3px 0;font-size:18px}.lesson-card p{margin:0;color:#707584}.lesson-card>b{color:var(--stage)}.cloud{max-width:1160px;margin:32px auto 0;padding:15px;border-radius:12px;background:#ecfdf5;color:#065f46;text-align:center;font-weight:700}.cloud.error{background:#fef2f2;color:#991b1b}@media(max-width:800px){.course-page{padding:10px}.hero{min-height:0;padding:30px 22px}.logo{display:none}.stats{grid-template-columns:1fr 1fr;margin:12px auto 32px}.stage{grid-template-columns:1fr}.heading{display:block}.lesson-card{grid-template-columns:42px 1fr}.lesson-card>b{display:none}}@media(max-width:480px){.stats{grid-template-columns:1fr}.hero h1{font-size:36px}}
+</style>
