@@ -95,6 +95,9 @@ const deleteCourse = async (id, subject) => {
       <NuxtLink to="/admin/law-exam/go" class="dash-card go-card">
         <div class="icon">ʕ◔ϖ◔ʔ</div><h2>Go 私人自學工作台</h2>
       </NuxtLink>
+      <NuxtLink to="/admin/law-exam/nuxt" class="dash-card nuxt-card">
+        <div class="icon">▲</div><h2>Nuxt.js / Vue.js 私人課程</h2>
+      </NuxtLink>
     </div>
 
     <hr class="section-divider" />
@@ -226,6 +229,7 @@ const deleteCourse = async (id, subject) => {
 .header { text-align: center; margin-bottom: 40px; }
 .rust-card { background: linear-gradient(135deg, #1f2428, #9a3412) !important; color: white !important; border-color: #fb923c !important; }
 .go-card { background: linear-gradient(135deg, #10252e, #087e8b) !important; color: white !important; border-color: #22d3ee !important; }
+.nuxt-card { background: linear-gradient(135deg, #17132b, #075e54) !important; color: white !important; border-color: #34d399 !important; }
 .back-btn { color: #64748b; text-decoration: none; font-weight: bold; background: white; padding: 6px 16px; border-radius: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: inline-block; margin-bottom: 20px; transition: 0.2s;}
 .back-btn:hover { background: #f1f5f9; color: #1e293b;}
 .header h1 { font-size: 32px; color: #1e293b; margin: 0 0 10px 0;}
