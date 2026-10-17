@@ -98,6 +98,12 @@ const deleteCourse = async (id, subject) => {
       <NuxtLink to="/admin/law-exam/nuxt" class="dash-card nuxt-card">
         <div class="icon">▲</div><h2>Nuxt.js / Vue.js 私人課程</h2>
       </NuxtLink>
+      <NuxtLink to="/admin/law-exam/react" class="dash-card react-card">
+        <div class="icon">⚛</div><h2>React.js / Next.js 私人課程</h2>
+      </NuxtLink>
+      <NuxtLink to="/admin/law-exam/svelte" class="dash-card svelte-card">
+        <div class="icon">S</div><h2>Svelte.js / SvelteKit 私人課程</h2>
+      </NuxtLink>
     </div>
 
     <hr class="section-divider" />
@@ -230,6 +236,8 @@ const deleteCourse = async (id, subject) => {
 .rust-card { background: linear-gradient(135deg, #1f2428, #9a3412) !important; color: white !important; border-color: #fb923c !important; }
 .go-card { background: linear-gradient(135deg, #10252e, #087e8b) !important; color: white !important; border-color: #22d3ee !important; }
 .nuxt-card { background: linear-gradient(135deg, #17132b, #075e54) !important; color: white !important; border-color: #34d399 !important; }
+.react-card { background: linear-gradient(135deg, #111827, #164e63) !important; color: white !important; border-color: #61dafb !important; }
+.svelte-card { background: linear-gradient(135deg, #251510, #9a3412) !important; color: white !important; border-color: #ff6a3d !important; }
 .back-btn { color: #64748b; text-decoration: none; font-weight: bold; background: white; padding: 6px 16px; border-radius: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: inline-block; margin-bottom: 20px; transition: 0.2s;}
 .back-btn:hover { background: #f1f5f9; color: #1e293b;}
 .header h1 { font-size: 32px; color: #1e293b; margin: 0 0 10px 0;}
