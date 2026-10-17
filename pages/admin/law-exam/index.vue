@@ -113,6 +113,9 @@ const deleteCourse = async (id, subject) => {
       <NuxtLink to="/admin/law-exam/c-cpp" class="dash-card programming-card c-cpp-card">
         <div class="icon">C++</div><h2>C / C++ 私人課程</h2>
       </NuxtLink>
+      <NuxtLink to="/admin/law-exam/python-mojo" class="dash-card programming-card python-mojo-card">
+        <div class="icon">🐍🔥</div><h2>Python / Mojo 私人課程</h2>
+      </NuxtLink>
     </div>
 
     <hr class="section-divider" />
@@ -250,6 +253,7 @@ const deleteCourse = async (id, subject) => {
 .java-kotlin-card { background: linear-gradient(135deg, #3f1d0b, #5b21b6) !important; color: white !important; border-color: #f59e0b !important; }
 .csharp-card { background: linear-gradient(135deg, #1e1b4b, #6d28d9) !important; color: white !important; border-color: #a78bfa !important; }
 .c-cpp-card { background: linear-gradient(135deg, #0f172a, #1d4ed8) !important; color: white !important; border-color: #60a5fa !important; }
+.python-mojo-card { background: linear-gradient(135deg, #1e3a5f, #c2410c) !important; color: white !important; border-color: #facc15 !important; }
 .programming-card,
 .programming-card h2,
 .programming-card .icon { color: #fff !important; }
