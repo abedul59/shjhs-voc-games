@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { createDefaultSpanishProgress, spanishVocabulary } from '~/lib/spanish-course';
+import { primeSpanishVoices, speakSpanish } from '~/utils/spanishSpeech';
 definePageMeta({ middleware: ['auth', 'law-auth'] });
 
 const route = useRoute();
@@ -34,6 +35,7 @@ const level = ref(levels.includes(String(route.query.level)) ? String(route.quer
 const started = ref(false); const finished = ref(false); const questionIndex = ref(0); const score = ref(0); const questions = ref([]);
 const options = ref([]); const locked = ref(false); const selected = ref(''); const spelling = ref(''); const revealed = ref(false);
 const cards = ref([]); const firstCard = ref(null); const secondCard = ref(null); const matched = ref([]);
+const speechError = ref('');
 const activeMode = computed(() => modes.find(item => item.id === mode.value) || modes[0]);
 const engine = computed(() => activeMode.value.engine);
 const targetTotal = computed(() => engine.value === 'match' ? activeMode.value.pairs : activeMode.value.rounds);
@@ -46,12 +48,14 @@ const accuracy = computed(() => progress.value.games.played ? Math.round(progres
 const shuffle = values => [...values].sort(() => Math.random() - 0.5);
 const normalize = value => value.trim().toLocaleLowerCase('es');
 
-function speak(text) {
-  if (!import.meta.client || !('speechSynthesis' in window)) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'es-ES'; utterance.rate = 0.82;
-  window.speechSynthesis.speak(utterance);
+async function speak(text) {
+  speechError.value = '';
+  const result = await speakSpanish(text, { rate: 0.82 });
+  if (!result.ok && result.reason !== 'empty') {
+    speechError.value = result.reason === 'missing-spanish-voice'
+      ? '這台裝置尚未提供西班牙語語音，已停止使用英文語音代念。請在系統語音設定安裝西班牙語語音後重試。'
+      : '目前的瀏覽器不支援語音朗讀。';
+  }
 }
 function prepareQuestion() {
   selected.value = ''; spelling.value = ''; revealed.value = false; locked.value = false;
@@ -102,13 +106,14 @@ function flip(card) {
   }
 }
 function cardVisible(card) { return matched.value.includes(card.pair) || firstCard.value?.key === card.key || secondCard.value?.key === card.key; }
-onMounted(async () => { progress.value = await progressApi.loadProgress(); });
+onMounted(async () => { primeSpanishVoices(); progress.value = await progressApi.loadProgress(); });
 </script>
 
 <template>
   <main class="game-page">
     <header><NuxtLink to="/admin/law-exam/spanish">← 回西班牙語課程</NuxtLink><p>PRIVATE SPANISH ARCADE</p><h1>西語單字遊戲室</h1><span>沿用前台英語遊戲的核心玩法，改為私人西班牙語詞庫與個人成績。</span></header>
     <section class="stats"><article><small>累計作答</small><b>{{ progress.games.played }}</b></article><article><small>總正確率</small><b>{{ accuracy }}%</b></article><article><small>單局最佳</small><b>{{ progress.games.best }}</b></article><article><small>詞庫規模</small><b>{{ spanishVocabulary.length }}</b></article></section>
+    <p v-if="speechError" class="speech-error">⚠️ {{ speechError }}</p>
     <section v-if="!started" class="setup">
       <div class="filters"><label>程度<select v-model="level"><option v-for="item in levels" :key="item">{{ item }}</option></select></label><span>20 種遊戲 · 目前可練習 {{ pool.length }} 個詞彙</span></div>
       <div class="mode-grid"><button v-for="item in modes" :key="item.id" :class="{ active: mode === item.id }" @click="mode = item.id"><i>{{ item.icon }}</i><strong>{{ item.title }}</strong><span>{{ item.text }}</span></button></div>
@@ -128,6 +133,7 @@ onMounted(async () => { progress.value = await progressApi.loadProgress(); });
 </template>
 
 <style scoped>
+.speech-error{max-width:970px;margin:12px auto;padding:12px 15px;border:1px solid #f59e0b;border-radius:10px;background:#fffbeb;color:#92400e;font-weight:800}
 .game-page{min-height:100vh;padding:28px;background:radial-gradient(circle at top,#7c2d12,#1c1917 55%);color:#fff;font-family:Inter,'Noto Sans TC',system-ui,sans-serif}.game-page>header,.setup,.play,.stats,.error{max-width:1000px;margin-left:auto;margin-right:auto}.game-page>header{padding:35px 0}.game-page>header a{color:#fde68a;text-decoration:none;font-weight:900}.game-page>header p{margin:30px 0 4px;color:#fbbf24;font-weight:900;letter-spacing:.18em}.game-page>header h1{margin:0;font-size:clamp(40px,7vw,72px)}.game-page>header span{color:#fed7aa}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.stats article{padding:18px;border:1px solid #ffffff20;border-radius:14px;background:#ffffff0d}.stats small{display:block;color:#fdba74}.stats b{font-size:30px}.setup,.play{margin-top:22px;padding:26px;border-radius:22px;background:#fff;color:#292524}.filters{display:flex;justify-content:space-between;align-items:center}.filters label{font-weight:900}.filters select{margin-left:8px;padding:9px;border-radius:8px}.mode-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:20px 0}.mode-grid button{display:flex;flex-direction:column;gap:6px;min-height:150px;padding:17px;border:2px solid #fed7aa;border-radius:15px;background:#fff7ed;text-align:left}.mode-grid button.active{border-color:#ea580c;background:#ffedd5}.mode-grid i{font-size:32px;font-style:normal}.mode-grid strong{color:#9a3412}.mode-grid span{color:#78716c}.start,.play form button{padding:13px 25px;border:0;border-radius:10px;background:#ea580c;color:#fff;font-weight:900;cursor:pointer}.result{text-align:center}.result b{font-size:55px;color:#ea580c}.history{margin-top:25px;padding-top:15px;border-top:1px solid #e7e5e4}.history p{display:inline-block;margin:5px;padding:7px 10px;border-radius:8px;background:#f5f5f4}.play{text-align:center}.play-head{display:flex;justify-content:space-between;color:#9a3412}.play h2{font-size:clamp(27px,5vw,45px)}.options{display:grid;grid-template-columns:1fr 1fr;gap:12px}.options button,.rating button,.match-grid button{padding:20px;border:2px solid #fed7aa;border-radius:12px;background:#fff7ed;font-size:17px;font-weight:900;cursor:pointer}.options button.selected{border-color:#ea580c;background:#ffedd5}.speaker{padding:12px 20px;border:0;border-radius:99px;background:#fef3c7;cursor:pointer}.play form{display:flex;justify-content:center;gap:10px}.play form input{min-width:260px;padding:13px;border:2px solid #fed7aa;border-radius:10px;font-size:18px}.flash{max-width:480px;margin:25px auto;padding:50px 25px;border-radius:22px;background:linear-gradient(135deg,#fff7ed,#fde68a);box-shadow:0 15px 35px #7c2d1220;cursor:pointer}.flash h2{color:#9a3412}.rating{display:flex;justify-content:center;gap:10px}.match-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.match-grid button{min-height:95px}.match-grid button.open{border-color:#f97316;background:#ffedd5}.match-grid button.matched{border-color:#16a34a;background:#dcfce7;color:#166534}.error{padding:12px;color:#fecaca}@media(max-width:760px){.stats{grid-template-columns:1fr 1fr}.mode-grid{grid-template-columns:1fr 1fr}.match-grid{grid-template-columns:repeat(3,1fr)}.options{grid-template-columns:1fr}}@media(max-width:460px){.game-page{padding:12px}.mode-grid,.match-grid{grid-template-columns:1fr 1fr}.filters{display:block}.play form{display:grid}.play form input{min-width:0}.stats{grid-template-columns:1fr}}
 .match-help{padding:12px;border-radius:10px;background:#f5f5f4;color:#57534e}.match-grid button{position:relative;display:grid;place-items:center;min-height:105px;padding-top:32px}.match-grid .card-es{border-color:#fb923c;background:#fff7ed}.match-grid .card-zh{border-color:#60a5fa;background:#eff6ff}.card-side{position:absolute;top:7px;left:8px;padding:3px 7px;border-radius:6px;background:#ea580c;color:#fff;font-size:12px;font-weight:900}.card-zh .card-side{background:#2563eb}.match-grid button.open{box-shadow:0 0 0 3px #fbbf24}.match-grid button.matched{border-color:#16a34a;background:#dcfce7;color:#166534;opacity:.75}
 </style>
