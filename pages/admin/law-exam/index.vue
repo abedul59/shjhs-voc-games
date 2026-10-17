@@ -89,26 +89,29 @@ const deleteCourse = async (id, subject) => {
       <NuxtLink to="/admin/law-exam/manage" class="dash-card manage-card">
         <div class="icon">📚</div><h2>題庫與解析管理</h2>
       </NuxtLink>
-      <NuxtLink to="/admin/law-exam/rust" class="dash-card rust-card">
+      <NuxtLink to="/admin/law-exam/rust" class="dash-card programming-card rust-card">
         <div class="icon">🦀</div><h2>Rust 私人自學工作台</h2>
       </NuxtLink>
-      <NuxtLink to="/admin/law-exam/go" class="dash-card go-card">
+      <NuxtLink to="/admin/law-exam/go" class="dash-card programming-card go-card">
         <div class="icon">ʕ◔ϖ◔ʔ</div><h2>Go 私人自學工作台</h2>
       </NuxtLink>
-      <NuxtLink to="/admin/law-exam/nuxt" class="dash-card nuxt-card">
+      <NuxtLink to="/admin/law-exam/nuxt" class="dash-card programming-card nuxt-card">
         <div class="icon">▲</div><h2>Nuxt.js / Vue.js 私人課程</h2>
       </NuxtLink>
-      <NuxtLink to="/admin/law-exam/react" class="dash-card react-card">
+      <NuxtLink to="/admin/law-exam/react" class="dash-card programming-card react-card">
         <div class="icon">⚛</div><h2>React.js / Next.js 私人課程</h2>
       </NuxtLink>
-      <NuxtLink to="/admin/law-exam/svelte" class="dash-card svelte-card">
+      <NuxtLink to="/admin/law-exam/svelte" class="dash-card programming-card svelte-card">
         <div class="icon">S</div><h2>Svelte.js / SvelteKit 私人課程</h2>
       </NuxtLink>
-      <NuxtLink to="/admin/law-exam/java-kotlin" class="dash-card java-kotlin-card">
+      <NuxtLink to="/admin/law-exam/java-kotlin" class="dash-card programming-card java-kotlin-card">
         <div class="icon">☕</div><h2>Java / Kotlin 私人課程</h2>
       </NuxtLink>
-      <NuxtLink to="/admin/law-exam/csharp" class="dash-card csharp-card">
+      <NuxtLink to="/admin/law-exam/csharp" class="dash-card programming-card csharp-card">
         <div class="icon">C#</div><h2>C# / .NET 私人課程</h2>
+      </NuxtLink>
+      <NuxtLink to="/admin/law-exam/c-cpp" class="dash-card programming-card c-cpp-card">
+        <div class="icon">C++</div><h2>C / C++ 私人課程</h2>
       </NuxtLink>
     </div>
 
@@ -246,6 +249,10 @@ const deleteCourse = async (id, subject) => {
 .svelte-card { background: linear-gradient(135deg, #251510, #9a3412) !important; color: white !important; border-color: #ff6a3d !important; }
 .java-kotlin-card { background: linear-gradient(135deg, #3f1d0b, #5b21b6) !important; color: white !important; border-color: #f59e0b !important; }
 .csharp-card { background: linear-gradient(135deg, #1e1b4b, #6d28d9) !important; color: white !important; border-color: #a78bfa !important; }
+.c-cpp-card { background: linear-gradient(135deg, #0f172a, #1d4ed8) !important; color: white !important; border-color: #60a5fa !important; }
+.programming-card,
+.programming-card h2,
+.programming-card .icon { color: #fff !important; }
 .back-btn { color: #64748b; text-decoration: none; font-weight: bold; background: white; padding: 6px 16px; border-radius: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: inline-block; margin-bottom: 20px; transition: 0.2s;}
 .back-btn:hover { background: #f1f5f9; color: #1e293b;}
 .header h1 { font-size: 32px; color: #1e293b; margin: 0 0 10px 0;}
