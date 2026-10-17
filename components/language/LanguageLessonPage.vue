@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
+import { primeSpanishVoices, speakSpanish } from '~/utils/spanishSpeech';
 
 const props = defineProps({ course: { type: Object, required: true }, progressApi: { type: Object, required: true } });
 const route = useRoute();
@@ -11,14 +12,17 @@ const stage = computed(() => props.course.stages.find(item => item.id === lesson
 const progress = ref(props.course.createDefault());
 const notes = ref(''); const answer = ref(''); const status = ref('learning'); const minutes = ref(0);
 const selected = ref(null); const checked = ref(false); const showModel = ref(false); const saved = ref(false); const loaded = ref(false);
+const speechError = ref('');
 const { isSaving, syncError, loadProgress: loadCloudProgress, saveProgress: saveCloudProgress } = props.progressApi;
 
-function speak(text, rate = 0.85) {
-  if (!import.meta.client || !('speechSynthesis' in window)) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'es-ES'; utterance.rate = rate;
-  window.speechSynthesis.speak(utterance);
+async function speak(text, rate = 0.85) {
+  speechError.value = '';
+  const result = await speakSpanish(text, { rate });
+  if (!result.ok && result.reason !== 'empty') {
+    speechError.value = result.reason === 'missing-spanish-voice'
+      ? '這台裝置尚未提供西班牙語語音，已停止使用英文語音代念。請在系統語音設定安裝西班牙語語音後重試。'
+      : '目前的瀏覽器不支援語音朗讀。';
+  }
 }
 
 async function loadProgress() {
@@ -42,13 +46,14 @@ async function saveProgress(flash = true) {
 }
 async function complete() { status.value = 'completed'; await saveProgress(); }
 watch(() => route.params.id, async () => { selected.value = null; checked.value = false; showModel.value = false; await loadProgress(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
-onMounted(async () => { if (!lesson.value) return navigateTo(props.course.base); await loadProgress(); });
+onMounted(async () => { primeSpanishVoices(); if (!lesson.value) return navigateTo(props.course.base); await loadProgress(); });
 </script>
 
 <template>
   <main v-if="lesson" class="language-page" :style="{ '--accent': stage?.color || course.accent }">
     <aside><NuxtLink :to="course.base" class="brand"><b>ES</b><span>西班牙語<br><small>私人學習專區</small></span></NuxtLink><NuxtLink :to="`${course.base}/games`" class="games-link">🎮 西語單字遊戲</NuxtLink><nav><NuxtLink v-for="item in course.lessons" :key="item.id" :to="`${course.base}/lesson/${item.id}`" :class="{ active: item.id === lesson.id, done: progress.lessons[item.id]?.status === 'completed' }"><span>{{ String(item.order).padStart(3, '0') }}</span>{{ item.title }}</NuxtLink></nav><NuxtLink to="/admin/law-exam" class="back">← 回司律專區</NuxtLink></aside>
     <div class="content">
+      <p v-if="speechError" class="speech-error">⚠️ {{ speechError }}</p>
       <header><div><p>{{ stage?.icon }} {{ lesson.level }} · 第 {{ lesson.order }} 課</p><h1>{{ lesson.title }}</h1><span>{{ lesson.subtitle }}</span></div><button @click="speak(lesson.sections[0].body)">🔊 聆聽核心句型</button></header>
       <section class="objectives"><h2>本課目標</h2><ul><li v-for="item in lesson.objectives" :key="item">{{ item }}</li></ul></section>
       <section class="vocabulary"><div class="section-title"><div><span>VOCABULARIO</span><h2>本課核心詞彙</h2></div><NuxtLink :to="`${course.base}/games?level=${lesson.level}`">用遊戲複習 →</NuxtLink></div><div class="word-grid"><button v-for="word in lesson.vocabulary" :key="word.id" @click="speak(word.es)"><strong>{{ word.es }}</strong><span>{{ word.zh }}</span><i>🔊</i></button></div></section>
@@ -62,5 +67,6 @@ onMounted(async () => { if (!lesson.value) return navigateTo(props.course.base);
 </template>
 
 <style scoped>
+.speech-error{padding:12px 15px;border:1px solid #f59e0b;border-radius:10px;background:#fffbeb;color:#92400e;font-weight:800}
 .language-page{min-height:100vh;background:#fffaf2;color:#27231d;font-family:Inter,'Noto Sans TC',system-ui,sans-serif}.language-page>aside{position:fixed;inset:0 auto 0 0;width:280px;display:flex;flex-direction:column;box-sizing:border-box;padding:22px 16px;background:#201a17;color:#fff}.brand{display:flex;align-items:center;gap:12px;color:#fff;text-decoration:none}.brand b{display:grid;place-items:center;width:48px;height:48px;border-radius:50%;background:#fbbf24;color:#7c2d12;font-size:20px}.brand span{font-weight:900}.brand small{color:#d6d3d1}.games-link{margin:20px 0 12px;padding:12px;border-radius:10px;background:#f97316;color:#fff;text-align:center;text-decoration:none;font-weight:900}nav{flex:1;display:grid;gap:3px;overflow:auto}nav a{display:flex;gap:9px;padding:8px;border-radius:7px;color:#d6d3d1;text-decoration:none;font-size:12px}nav a span{color:#78716c;font-weight:900}nav a.active{background:var(--accent);color:#fff;font-weight:900}nav a.done:not(.active){color:#86efac}.back{margin-top:12px;color:#a8a29e;text-decoration:none}.content{max-width:980px;margin-left:280px;padding:38px clamp(24px,5vw,70px) 70px}.content>header{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:34px;border-radius:22px;background:linear-gradient(135deg,#7c2d12,#b45309);color:#fff;box-shadow:0 12px 32px #7c2d1225}.content>header p,.panel>span,.section-title span{color:#fde68a;font-weight:900;letter-spacing:.1em}.content>header h1{margin:7px 0;font-size:clamp(34px,5vw,54px)}button{padding:10px 13px;border:1px solid #d6d3d1;border-radius:9px;background:#fff;cursor:pointer;font-weight:800}.objectives,.vocabulary,.panel{margin-top:24px;padding:25px;border:1px solid #eadfce;border-radius:18px;background:#fff}.objectives ul{line-height:1.9}.section-title{display:flex;justify-content:space-between;align-items:end}.section-title h2{margin:4px 0}.section-title a{color:#c2410c;font-weight:900;text-decoration:none}.word-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:17px}.word-grid button{display:grid;grid-template-columns:1fr auto;text-align:left}.word-grid strong{font-size:17px;color:#9a3412}.word-grid span{grid-row:2;color:#78716c}.word-grid i{grid-row:1/3;grid-column:2;align-self:center;font-style:normal}.chapter{display:grid;grid-template-columns:44px 1fr;gap:18px;padding:34px 0;border-bottom:1px solid #e7ded2}.chapter>div{color:var(--accent);font-weight:900}.chapter h2{margin-top:0}.chapter p{line-height:1.85;color:#57534e}.chapter .spanish{padding:18px;border-left:5px solid var(--accent);border-radius:8px;background:#fff;color:#292524;font-size:20px;white-space:pre-line}.required{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.required em{padding:4px 9px;border-radius:99px;background:#ffedd5;color:#9a3412;font-style:normal}.panel textarea{width:100%;min-height:130px;box-sizing:border-box;padding:14px;border:1px solid #d6d3d1;border-radius:10px;font-size:16px}.actions,.note-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}.model{padding:12px;border-radius:9px;background:#fef3c7}.choices{display:grid;gap:8px;margin:14px 0}.choices button{text-align:left}.choices .selected{border-color:var(--accent)}.choices .correct{background:#dcfce7;border-color:#16a34a}.choices .wrong{background:#fee2e2;border-color:#dc2626}.primary{border-color:var(--accent)!important;background:var(--accent)!important;color:#fff!important}.note-actions label{display:flex;align-items:center;gap:6px}.note-actions select,.note-actions input{padding:8px;border:1px solid #d6d3d1;border-radius:7px}.error{color:#991b1b}footer{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;margin-top:30px}footer a{color:#9a3412;text-decoration:none;font-weight:900}footer a:last-child{text-align:right}@media(max-width:900px){.language-page>aside{position:static;width:auto;max-height:340px}.content{margin-left:0;padding:18px}.word-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:560px){.content>header,.section-title{display:block}.word-grid{grid-template-columns:1fr}.chapter{grid-template-columns:1fr}.chapter>div{display:none}footer{grid-template-columns:1fr}}
 </style>
