@@ -1,4 +1,5 @@
 <script setup>
+import PrivateLanguageGames from '~/components/language/PrivateLanguageGames.vue';
 import { getPrivateLanguageCourse } from '~/lib/private-language-courses';
 definePageMeta({ middleware: ['auth','law-auth'] });
 const route = useRoute(); const course = getPrivateLanguageCourse(route.params.language);
