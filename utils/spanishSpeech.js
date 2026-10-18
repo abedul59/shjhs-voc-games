@@ -1,4 +1,6 @@
 let embeddedEnginePromise;
+let activeSpanishAudio;
+let activeSpanishUrl;
 
 async function loadEmbeddedSpanishEngine() {
   if (!import.meta.client) throw new Error('client-only');
@@ -36,18 +38,28 @@ export async function speakSpanish(text, options = {}) {
 
   try {
     const engine = await loadEmbeddedSpanishEngine();
-    engine.stop();
-    engine.resetQueue();
     const rate = Math.min(1.25, Math.max(0.65, Number(options.rate) || 0.85));
-    const playbackId = engine.speak(content, {
+    const wav = engine.speak(content, {
       voice: 'es',
       speed: Math.round(185 * rate),
       pitch: 48,
       amplitude: 100,
       wordgap: 1,
-      volume: 1
+      rawdata: 'array'
     });
-    if (!playbackId) throw new Error('playback-failed');
+    if (!wav?.length) throw new Error('playback-failed');
+    if (activeSpanishAudio) { activeSpanishAudio.pause(); activeSpanishAudio.removeAttribute('src'); activeSpanishAudio.load(); }
+    if (activeSpanishUrl) URL.revokeObjectURL(activeSpanishUrl);
+    activeSpanishUrl = URL.createObjectURL(new Blob([Uint8Array.from(wav)], { type: 'audio/wav' }));
+    const audio = new Audio(activeSpanishUrl);
+    activeSpanishAudio = audio; audio.preload = 'auto'; audio.volume = 1;
+    const release = () => {
+      if (activeSpanishAudio === audio) activeSpanishAudio = undefined;
+      if (activeSpanishUrl === audio.src) { URL.revokeObjectURL(activeSpanishUrl); activeSpanishUrl = undefined; }
+    };
+    audio.addEventListener('ended', release, { once: true });
+    audio.addEventListener('error', release, { once: true });
+    await audio.play();
     return { ok: true, voice: 'meSpeak Spanish', lang: 'es' };
   } catch {
     return { ok: false, reason: 'spanish-engine-unavailable' };
