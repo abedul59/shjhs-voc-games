@@ -1,5 +1,10 @@
 let embeddedConfigPromise;
 const embeddedEngines = new Map();
+let activeEmbeddedAudio;
+let activeEmbeddedUrl;
+let nativeStartTimer;
+let activeNativeUtterance;
+let nativePlaybackToken = 0;
 
 const embeddedVoiceLoaders = {
   fr: () => import('mespeak/voices/fr.json'),
@@ -51,17 +56,43 @@ export async function speakPrivateLanguage(text, speech, rate = 0.85) {
   try {
     if (speech.engine === 'embedded') {
       const engine = await loadEmbeddedVoice(speech.voice);
-      engine.stop(); engine.resetQueue();
-      const playbackId = engine.speak(content, { voice: speech.voice, speed: Math.round(185 * rate), pitch: 48, wordgap: 1, volume: 1 });
-      return playbackId ? { ok: true } : { ok: false, reason: 'playback-failed' };
+      const wav = engine.speak(content, { voice: speech.voice, speed: Math.round(185 * rate), pitch: 48, amplitude: 100, wordgap: 1, rawdata: 'array' });
+      if (!wav?.length) return { ok: false, reason: 'playback-failed' };
+      if (activeEmbeddedAudio) { activeEmbeddedAudio.pause(); activeEmbeddedAudio.removeAttribute('src'); activeEmbeddedAudio.load(); }
+      if (activeEmbeddedUrl) URL.revokeObjectURL(activeEmbeddedUrl);
+      activeEmbeddedUrl = URL.createObjectURL(new Blob([Uint8Array.from(wav)], { type: 'audio/wav' }));
+      const audio = new Audio(activeEmbeddedUrl);
+      activeEmbeddedAudio = audio; audio.preload = 'auto'; audio.volume = 1;
+      const release = () => {
+        if (activeEmbeddedAudio === audio) activeEmbeddedAudio = undefined;
+        if (activeEmbeddedUrl === audio.src) { URL.revokeObjectURL(activeEmbeddedUrl); activeEmbeddedUrl = undefined; }
+      };
+      audio.addEventListener('ended', release, { once: true });
+      audio.addEventListener('error', release, { once: true });
+      await audio.play();
+      return { ok: true };
     }
     const voice = await waitForNativeVoice(speech.lang);
     if (!voice) return { ok: false, reason: 'missing-language-voice' };
-    window.speechSynthesis.cancel();
+    const synthesis = window.speechSynthesis;
+    const token = ++nativePlaybackToken;
+    if (nativeStartTimer) window.clearTimeout(nativeStartTimer);
+    synthesis.cancel(); synthesis.resume();
     const utterance = new SpeechSynthesisUtterance(content);
-    utterance.lang = speech.lang; utterance.voice = voice; utterance.rate = rate;
-    window.setTimeout(() => window.speechSynthesis.speak(utterance), 60);
-    return { ok: true };
+    utterance.lang = speech.lang; utterance.voice = voice; utterance.rate = rate; utterance.pitch = 1; utterance.volume = 1;
+    activeNativeUtterance = utterance;
+    return await new Promise(resolve => {
+      let settled = false;
+      const finish = result => { if (!settled) { settled = true; resolve(result); } };
+      utterance.onstart = () => finish({ ok: true });
+      utterance.onerror = () => finish({ ok: false, reason: 'playback-failed' });
+      utterance.onend = () => { if (activeNativeUtterance === utterance) activeNativeUtterance = undefined; };
+      nativeStartTimer = window.setTimeout(() => {
+        if (token !== nativePlaybackToken) return finish({ ok: false, reason: 'superseded' });
+        synthesis.resume(); synthesis.speak(utterance);
+        window.setTimeout(() => finish(synthesis.speaking || synthesis.pending ? { ok: true } : { ok: false, reason: 'playback-failed' }), 1000);
+      }, 140);
+    });
   } catch {
     return { ok: false, reason: 'playback-failed' };
   }
