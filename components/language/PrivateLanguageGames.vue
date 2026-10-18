@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { primePrivateLanguageSpeech, speakPrivateLanguage } from '~/utils/privateLanguageSpeech';
+import { activatePrivateLanguageSpeech, primePrivateLanguageSpeech, speakPrivateLanguage } from '~/utils/privateLanguageSpeech';
 
 const props = defineProps({ course: { type: Object, required: true }, progressApi: { type: Object, required: true } });
 const route = useRoute(); const progress = ref(props.course.createDefault());
@@ -28,7 +28,7 @@ const shuffle = values => [...values].sort(() => Math.random() - .5); const norm
 async function speak(text) { speechError.value=''; const result=await speakPrivateLanguage(text,props.course.speech,.82); if(!result.ok&&!['empty','superseded'].includes(result.reason)) speechError.value=result.reason==='missing-language-voice'?`這台裝置尚未安裝${props.course.name}語音，請在系統語音設定新增後再試。`:`${props.course.name}語音引擎載入失敗。`; }
 function prepareQuestion(){selected.value='';spelling.value='';revealed.value=false;locked.value=false;if(!current.value)return;options.value=shuffle([current.value,...shuffle(pool.value.filter(word=>word.id!==current.value.id)).slice(0,3)]);if(engine.value==='listen'||engine.value==='dictation')window.setTimeout(()=>speak(current.value.term),150);}
 function prepareMatch(){const words=shuffle(pool.value).slice(0,activeMode.value.pairs);cards.value=shuffle(words.flatMap(word=>[{key:`${word.id}-target`,pair:word.id,text:word.term,lang:'target'},{key:`${word.id}-zh`,pair:word.id,text:word.zh,lang:'zh'}])).map((card,index)=>({...card,number:index+1}));firstCard.value=null;secondCard.value=null;matched.value=[];locked.value=false;}
-function start(){score.value=0;questionIndex.value=0;finished.value=false;started.value=true;if(engine.value==='match')prepareMatch();else{questions.value=shuffle(pool.value).slice(0,activeMode.value.rounds);prepareQuestion();}}
+function start(){activatePrivateLanguageSpeech(props.course.speech);score.value=0;questionIndex.value=0;finished.value=false;started.value=true;if(engine.value==='match')prepareMatch();else{questions.value=shuffle(pool.value).slice(0,activeMode.value.rounds);prepareQuestion();}}
 async function finish(total){finished.value=true;started.value=false;const games=progress.value.games||props.course.createDefault().games;games.played+=total;games.correct+=score.value;games.best=Math.max(games.best,score.value);games.history=[{mode:mode.value,level:level.value,score:score.value,total,at:new Date().toISOString()},...(games.history||[])].slice(0,20);progress.value.games=games;try{await props.progressApi.saveProgress(progress.value);}catch{/* composable 顯示錯誤 */}}
 function next(correct){if(correct)score.value++;locked.value=true;window.setTimeout(()=>{if(questionIndex.value>=questions.value.length-1)finish(questions.value.length);else{questionIndex.value++;prepareQuestion();}},500);}
 function choose(option){if(!locked.value){selected.value=option.id;next(option.id===current.value.id);}} function submitSpelling(){if(!locked.value&&spelling.value.trim())next(normalize(spelling.value)===normalize(current.value.term));} function rateFlash(known){if(!locked.value)next(known);}
