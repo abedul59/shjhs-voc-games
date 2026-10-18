@@ -19,8 +19,8 @@ async function speak(text, rate = 0.85) {
   speechError.value = '';
   const result = await speakSpanish(text, { rate });
   if (!result.ok && result.reason !== 'empty') {
-    speechError.value = result.reason === 'missing-spanish-voice'
-      ? '這台裝置尚未提供西班牙語語音，已停止使用英文語音代念。請在系統語音設定安裝西班牙語語音後重試。'
+    speechError.value = result.reason === 'spanish-engine-unavailable'
+      ? '西班牙語音引擎載入失敗，請重新整理頁面後再試一次。'
       : '目前的瀏覽器不支援語音朗讀。';
   }
 }
