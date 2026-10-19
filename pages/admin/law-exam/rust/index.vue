@@ -46,6 +46,8 @@ const statusLabel = lesson => ({ completed: '已理解', review: '待複習', le
       <article><small>投入時間</small><strong>{{ totalMinutes }}<em> 分</em></strong><p>在課程頁自行累計</p></article>
     </section>
 
+    <ProgrammingEnvironmentGuide environment-key="rust" />
+
     <section class="roadmap">
       <div class="section-heading"><div><p>LEARNING ROADMAP</p><h2>從基礎到進階</h2></div><span>六大階段、50 堂課程與完整實作專案皆已開放。</span></div>
 
