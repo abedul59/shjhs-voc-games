@@ -1,11 +1,14 @@
 <script setup>
 import { ref, onMounted, computed, onUnmounted } from 'vue';
+import { getGameActivityName } from '~/lib/student-activity-labels';
 
 definePageMeta({ middleware: 'auth' });
 const supabase = useSupabaseClient();
 
 const isLoading = ref(true);
 const lastRefreshTime = ref('');
+const errorMessage = ref('');
+const specialClasses = ref([]);
 let autoRefreshTimer = null;
 
 // 權限判斷
@@ -14,7 +17,7 @@ const isAdminCookie = useCookie('isAdmin');
 const allowedClasses = Array.isArray(authCookie.value?.classes) ? authCookie.value.classes : [];
 const isSuperAdmin = computed(() => isAdminCookie.value === true || isAdminCookie.value === 'superadmin' || allowedClasses.includes('ALL'));
 
-const displayClasses = computed(() => {
+const regularClasses = computed(() => {
   if (isSuperAdmin.value) {
     const list = ['000']; 
     for (let grade of [7, 8, 9]) { 
@@ -26,8 +29,22 @@ const displayClasses = computed(() => {
   return [...allowedClasses].sort();
 });
 
+const displayClasses = computed(() => [
+  ...regularClasses.value.map(name => ({ value: name, label: `${name} 班`, type: 'regular' })),
+  ...specialClasses.value.map(group => ({
+    value: `special:${group.id}`,
+    label: `📚 ${group.name}（特殊班級）`,
+    type: 'special'
+  }))
+]);
+
 const selectedClass = ref('ALL');
 const activityData = ref({}); 
+const selectedSpecialClass = computed(() => {
+  if (!selectedClass.value.startsWith('special:')) return null;
+  const id = selectedClass.value.slice('special:'.length);
+  return specialClasses.value.find(group => group.id === id) || null;
+});
 
 const timeAgo = (dateStr) => {
   if (!dateStr) return '';
@@ -37,19 +54,59 @@ const timeAgo = (dateStr) => {
   return `${Math.floor(diffSec / 3600)} 小時前`;
 };
 
+const loadSpecialClasses = async () => {
+  const { data, error } = await supabase.from('special_classes')
+    .select('id, grade, name').order('grade').order('name');
+  if (error) {
+    specialClasses.value = [];
+    if (!['42P01', 'PGRST205'].includes(error.code)) errorMessage.value = `特殊班級讀取失敗：${error.message}`;
+    return;
+  }
+  specialClasses.value = data || [];
+  if (selectedClass.value.startsWith('special:') && !selectedSpecialClass.value) selectedClass.value = 'ALL';
+};
+
 const fetchActivity = async () => {
   isLoading.value = true;
+  errorMessage.value = '';
+  const specialClass = selectedSpecialClass.value;
+  let specialMemberIds = null;
+
+  if (specialClass) {
+    const { data: memberships, error: memberError } = await supabase.from('special_class_members')
+      .select('student_id').eq('special_class_id', specialClass.id);
+    if (memberError) {
+      errorMessage.value = `特殊班級名單讀取失敗：${memberError.message}`;
+      activityData.value = {};
+      isLoading.value = false;
+      return;
+    }
+    specialMemberIds = (memberships || []).map(item => item.student_id);
+    if (!specialMemberIds.length) {
+      activityData.value = {};
+      lastRefreshTime.value = new Date().toLocaleTimeString('zh-TW');
+      isLoading.value = false;
+      return;
+    }
+  }
   
   // 1. 抓取學生名單
-  let query = supabase.from('students').select('student_id, real_name, seat_number, class_name');
-  if (selectedClass.value !== 'ALL') {
+  let query = supabase.from('students').select('id, student_id, real_name, seat_number, class_name');
+  if (specialMemberIds) {
+    query = query.in('id', specialMemberIds);
+  } else if (selectedClass.value !== 'ALL') {
     query = query.eq('class_name', selectedClass.value);
-  } else if (!isSuperAdmin.value && allowedClasses.length > 0) {
-    query = query.in('class_name', allowedClasses);
   }
-  const { data: students } = await query.order('class_name', { ascending: true }).order('seat_number', { ascending: true });
+  if (!isSuperAdmin.value && allowedClasses.length > 0) {
+    query = query.in('class_name', allowedClasses);
+  } else if (!isSuperAdmin.value) {
+    query = query.eq('class_name', '__NO_AUTHORIZED_CLASS__');
+  }
+  const { data: students, error: studentError } = await query.order('class_name', { ascending: true }).order('seat_number', { ascending: true });
   
-  if (!students) {
+  if (studentError || !students) {
+    errorMessage.value = `學生名單讀取失敗：${studentError?.message || '無法取得資料'}`;
+    activityData.value = {};
     isLoading.value = false;
     return;
   }
@@ -72,7 +129,8 @@ const fetchActivity = async () => {
   // 3. 整理與分類資料
   const grouped = {};
   students.forEach(stu => {
-    if (!grouped[stu.class_name]) grouped[stu.class_name] = [];
+    const groupName = specialClass ? `${specialClass.name}（特殊班級）` : `${stu.class_name} 班`;
+    if (!grouped[groupName]) grouped[groupName] = [];
 
     const stuIdStr = String(stu.student_id);
     
@@ -89,16 +147,16 @@ const fetchActivity = async () => {
     const myGames = games?.filter(g => String(g.student_id) === stuIdStr) || [];
     const latestGame = myGames.length > 0 ? myGames[0] : null;
 
-    grouped[stu.class_name].push({
+    grouped[groupName].push({
       ...stu,
       isOnline,
-      latestGameType: latestGame ? latestGame.game_type : '無紀錄',
+      latestGameType: getGameActivityName(latestGame?.game_type),
       latestGameTime: latestGame ? latestGame.played_at : null
     });
   });
 
   activityData.value = grouped;
-  lastRefreshTime.value = new Date().toLocaleTimeString();
+  lastRefreshTime.value = new Date().toLocaleTimeString('zh-TW');
   isLoading.value = false;
 };
 
@@ -131,11 +189,12 @@ const forceLogoutAll = async () => {
   }
 };
 
-onMounted(() => {
-  if (displayClasses.value.length > 0 && !isSuperAdmin.value) {
-    selectedClass.value = displayClasses.value[0];
+onMounted(async () => {
+  await loadSpecialClasses();
+  if (regularClasses.value.length > 0 && !isSuperAdmin.value) {
+    selectedClass.value = regularClasses.value[0];
   }
-  fetchActivity();
+  await fetchActivity();
   // 自動每 30 秒更新一次
   autoRefreshTimer = setInterval(fetchActivity, 30000);
 });
@@ -156,7 +215,7 @@ onUnmounted(() => {
       <div class="controls">
         <select v-model="selectedClass" @change="fetchActivity" class="retro-input">
           <option value="ALL">顯示全部授權班級</option>
-          <option v-for="cls in displayClasses" :key="cls" :value="cls">{{ cls }} 班</option>
+          <option v-for="cls in displayClasses" :key="cls.value" :value="cls.value">{{ cls.label }}</option>
         </select>
         
         <div class="action-buttons">
@@ -172,13 +231,14 @@ onUnmounted(() => {
     </div>
     
     <p class="refresh-note">最後更新時間：{{ lastRefreshTime }} (系統每 30 秒自動更新)</p>
+    <p v-if="errorMessage" class="error-msg" role="alert">⚠️ {{ errorMessage }}</p>
 
     <div v-if="Object.keys(activityData).length === 0 && !isLoading" class="empty-msg">
       目前沒有學生資料
     </div>
 
     <div v-for="(students, className) in activityData" :key="className" class="class-section">
-      <h2 class="class-title">🏫 {{ className }} 班</h2>
+      <h2 class="class-title">{{ selectedSpecialClass ? '📚' : '🏫' }} {{ className }}</h2>
       
       <div class="students-grid">
         <div v-for="stu in students" :key="stu.student_id" 
@@ -190,6 +250,7 @@ onUnmounted(() => {
             <span class="stu-name">{{ stu.real_name }}</span>
             <div class="status-indicator" :class="{ 'online': stu.isOnline }" :title="stu.isOnline ? '上線中' : '離線'"></div>
           </div>
+          <div v-if="selectedSpecialClass" class="original-class">原班：{{ stu.class_name }} 班</div>
           
           <div class="card-body">
             <div class="activity-text">
@@ -219,6 +280,7 @@ onUnmounted(() => {
 
 .refresh-note { text-align: right; color: #757575; font-size: 0.9rem; font-weight: bold; margin-bottom: 20px;}
 .empty-msg { text-align: center; color: #999; font-size: 1.2rem; margin-top: 50px; font-weight: bold; }
+.error-msg { padding: 12px; border: 2px solid #ef5350; border-radius: 8px; background: #ffebee; color: #b71c1c; font-weight: 800; }
 
 .class-section { margin-bottom: 40px; background: #f8f9fa; padding: 20px; border-radius: 12px; border: 2px solid #e0e0e0;}
 .class-title { margin-top: 0; color: #2e7d32; font-size: 1.5rem; border-bottom: 2px solid #c8e6c9; padding-bottom: 10px; margin-bottom: 20px;}
@@ -232,6 +294,7 @@ onUnmounted(() => {
 .seat-badge { background: #333; color: white; font-weight: bold; padding: 2px 8px; border-radius: 6px; font-size: 0.9rem; }
 .student-card.is-online .seat-badge { background: #2e7d32; }
 .stu-name { font-weight: 900; font-size: 1.1rem; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.original-class { color: #5d4037; font-size: .82rem; font-weight: 800; }
 
 .status-indicator { width: 12px; height: 12px; border-radius: 50%; background: #bdbdbd; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2); }
 .status-indicator.online { background: #00e676; box-shadow: 0 0 8px #00e676, inset 0 2px 4px rgba(0,0,0,0.2); animation: pulse 2s infinite; }
