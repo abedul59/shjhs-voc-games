@@ -4,6 +4,7 @@ import Papa from 'papaparse';
 import SpecialClassManager from '~/components/admin/SpecialClassManager.vue';
 import { getStrokeArrayAsync } from '~/utils/strokeCounter';
 import { allThemes } from '~/utils/themes';
+import { regularClassPermissions, schoolClassNames } from '~/lib/admin-class-permissions';
 
 definePageMeta({ middleware: 'auth' });
 const supabase = useSupabaseClient();
@@ -18,17 +19,11 @@ const allowedClasses = Array.isArray(authCookie.value?.classes)
   ? authCookie.value.classes 
   : [];
 const isSuperAdmin = allowedClasses.includes('ALL');
+const allowedRegularClasses = regularClassPermissions(allowedClasses);
 
 // 🌟 產生基本預設班級清單
 const generateAllClasses = () => {
-  const list = ['000']; 
-  for (let grade of [7, 8, 9]) {
-    for (let i = 1; i <= 14; i++) {
-      list.push(`${grade}${String(i).padStart(2, '0')}`);
-    }
-  }
-  list.push('999'); 
-  return list;
+  return schoolClassNames();
 };
 
 // 🌟 用來儲存從資料庫動態撈取的實際班級
@@ -40,7 +35,7 @@ const displayClasses = computed(() => {
     const allSet = new Set([...generateAllClasses(), ...dynamicClasses.value]);
     return Array.from(allSet).sort();
   }
-  return [...allowedClasses].sort();
+  return [...allowedRegularClasses].sort();
 });
 
 const selectedClass = ref('');
@@ -232,7 +227,7 @@ const exportToCSV = () => {
 const saveStudent = async () => {
   if (!formData.value.student_id || !formData.value.real_name || !formData.value.pin_code) { alert('必填欄位不可為空！'); return; }
   
-  if (!isSuperAdmin && !allowedClasses.includes(formData.value.class_name)) {
+  if (!isSuperAdmin && !allowedRegularClasses.includes(formData.value.class_name)) {
     alert('您無權修改此班級的資料！');
     return;
   }

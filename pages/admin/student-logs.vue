@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { getStudentActivity } from '~/lib/student-activity-labels';
+import { regularClassPermissions, specialClassPermissionIds } from '~/lib/admin-class-permissions';
 
 const supabase = useSupabaseClient();
 const authCookie = useCookie('teacher_auth');
@@ -9,9 +10,18 @@ const isAdminCookie = useCookie('isAdmin');
 const allLogs = ref([]); // 所有的足跡紀錄
 const studentsMap = ref({}); // 用來對應學號與學生資料的字典
 const classesList = ref([]); // 班級清單
+const specialClasses = ref([]);
+const specialMemberIds = ref({});
 const selectedClass = ref('ALL'); // 預設顯示全部班級
 const selectedStudentId = ref(null); // 當前選中要查看詳細資料的學生 ID
 const isLoading = ref(true);
+const errorMessage = ref('');
+const allowedClasses = computed(() => Array.isArray(authCookie.value?.classes) ? authCookie.value.classes : []);
+const isSuperAdmin = computed(() => isAdminCookie.value === true || isAdminCookie.value === 'superadmin' || allowedClasses.value.includes('ALL'));
+const classOptions = computed(() => [
+  ...classesList.value.map(name => ({ value: name, label: `${name} 班` })),
+  ...specialClasses.value.map(group => ({ value: `special:${group.id}`, label: `📚 ${group.name}（特殊班級）` }))
+]);
 
 onMounted(async () => {
   // 安全權限檢查
@@ -27,21 +37,35 @@ onMounted(async () => {
 
 // 🌟 1. 先抓取所有學生資料，建立「學號 -> 學生資訊」的字典
 const fetchStudentData = async () => {
-  const { data: sData } = await supabase.from('students').select('*').limit(10000);
-  if (sData) {
-    const isSuperAdmin = isAdminCookie.value === true || isAdminCookie.value === 'superadmin';
-    const allowedClasses = authCookie.value?.classes || [];
-    
-    const cSet = new Set();
-    sData.forEach(s => {
-      // 權限過濾：一般老師只能看到自己被授權的班級
-      if (!isSuperAdmin && allowedClasses.length > 0 && !allowedClasses.includes(s.class_name)) return;
-      
-      studentsMap.value[String(s.student_id)] = s;
-      if (s.class_name) cSet.add(s.class_name);
-    });
-    classesList.value = Array.from(cSet).sort();
+  errorMessage.value = '';
+  const regularAllowed = regularClassPermissions(allowedClasses.value);
+  const specialAllowed = specialClassPermissionIds(allowedClasses.value);
+  const [{ data: sData, error: studentError }, { data: groups, error: groupError }] = await Promise.all([
+    supabase.from('students').select('*').limit(10000),
+    supabase.from('special_classes').select('id,grade,name').order('grade').order('name')
+  ]);
+  if (studentError) { errorMessage.value = `學生資料讀取失敗：${studentError.message}`; return; }
+  if (groupError && !['42P01', 'PGRST205'].includes(groupError.code)) errorMessage.value = `特殊班級讀取失敗：${groupError.message}`;
+
+  specialClasses.value = isSuperAdmin.value ? (groups || []) : (groups || []).filter(group => specialAllowed.includes(group.id));
+  const membershipMap = {};
+  await Promise.all(specialClasses.value.map(async group => {
+    const { data } = await supabase.from('special_class_members').select('student_id').eq('special_class_id', group.id);
+    membershipMap[group.id] = new Set((data || []).map(item => item.student_id));
+  }));
+  specialMemberIds.value = membershipMap;
+
+  const cSet = new Set();
+  const nextStudentsMap = {};
+  for (const student of sData || []) {
+    const inSpecialClass = specialClasses.value.some(group => membershipMap[group.id]?.has(student.id));
+    const inRegularClass = isSuperAdmin.value || regularAllowed.includes(student.class_name);
+    if (!isSuperAdmin.value && !inRegularClass && !inSpecialClass) continue;
+    nextStudentsMap[String(student.student_id)] = student;
+    if (student.class_name && (isSuperAdmin.value || regularAllowed.includes(student.class_name))) cSet.add(student.class_name);
   }
+  studentsMap.value = nextStudentsMap;
+  classesList.value = [...cSet].sort();
 };
 
 // 🌟 2. 抓取足跡資料
@@ -69,7 +93,11 @@ const displayLogs = computed(() => {
     
     // 若在「全校/特定班級」總表模式
     if (!selectedStudentId.value) {
-       if (selectedClass.value === 'ALL') return isAdminCookie.value === true || isAdminCookie.value === 'superadmin' || !!studentInfo;
+       if (selectedClass.value === 'ALL') return isSuperAdmin.value || !!studentInfo;
+       if (selectedClass.value.startsWith('special:')) {
+         const specialId = selectedClass.value.slice('special:'.length);
+         return !!studentInfo && specialMemberIds.value[specialId]?.has(studentInfo.id);
+       }
        // 如果選了特定班級，只顯示該班的紀錄
        return studentInfo && studentInfo.class_name === selectedClass.value;
     }
@@ -87,7 +115,7 @@ const getStudentInfo = (id) => {
   const s = studentsMap.value[id];
   if (!s) return { displayName: id, class: '-', seat: '-', fullName: `未知生 (${id})` };
   
-  const seatNum = String(s.student_id).slice(-2); // 取學號後兩碼當座號
+  const seatNum = s.seat_number || String(s.student_id).slice(-2);
   const name = s.real_name || s.hidden_name;
   return { 
       displayName: name, 
@@ -126,7 +154,7 @@ const formatDuration = (seconds) => {
            <label style="font-weight: bold; font-size: 1.1rem;">過濾班級：</label>
            <select v-model="selectedClass" class="retro-input class-select">
                <option value="ALL">🌟 顯示全部班級紀錄</option>
-               <option v-for="c in classesList" :key="c" :value="c">{{ c }} 班</option>
+               <option v-for="option in classOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
            </select>
        </template>
        
@@ -137,6 +165,8 @@ const formatDuration = (seconds) => {
            </div>
        </template>
     </div>
+
+    <p v-if="errorMessage" class="error-msg" role="alert">⚠️ {{ errorMessage }}</p>
 
     <p v-if="isLoading" class="loading-msg">⏳ 資料讀取中...</p>
     <div v-else-if="displayLogs.length === 0" class="empty-msg retro-element">沒有符合條件的足跡紀錄！</div>
@@ -204,6 +234,7 @@ const formatDuration = (seconds) => {
 
 .loading-msg, .empty-msg { text-align: center; font-weight: bold; font-size: 1.2rem; padding: 30px; }
 .empty-msg { background: var(--box-bg); border: 2px dashed var(--border-color); border-radius: var(--radius-element);}
+.error-msg { padding:12px;border:2px solid #ef5350;border-radius:8px;background:#ffebee;color:#b71c1c;font-weight:800; }
 
 /* 表格樣式 */
 .table-wrapper { overflow-x: auto; background: var(--box-bg); padding: 10px; border-radius: var(--radius-element); border: var(--border-width) solid var(--border-color); }
