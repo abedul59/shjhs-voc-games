@@ -26,6 +26,7 @@ const statusLabel = item => ({ completed: '已理解', review: '待複習', lear
       <div class="logo" aria-hidden="true"><strong>{{ course.logo }}</strong><small>{{ course.tagline }}</small></div>
     </header>
     <section class="stats"><article><small>完整課程進度</small><strong>{{ percent }}%</strong><div class="bar"><i :style="{ width: `${percent}%` }"></i></div></article><article><small>已理解</small><strong>{{ completedCount }}<em>/{{ course.lessons.length }}</em></strong><p>全部課程皆已開放</p></article><article><small>待複習</small><strong>{{ reviewCount }}</strong><p>集中回顧標記內容</p></article><article><small>投入時間</small><strong>{{ totalMinutes }}<em> 分</em></strong><p>跨裝置同步累計</p></article></section>
+    <ProgrammingEnvironmentGuide v-if="course.environmentKey" :environment-key="course.environmentKey" />
     <section v-if="course.learnerProfile" class="learner-profile">
       <p class="profile-label">PERSONALISED LEARNING METHOD</p>
       <h2>{{ course.learnerProfile.title }}</h2>
