@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
+import { getStudentActivity } from '~/lib/student-activity-labels';
 
 const supabase = useSupabaseClient();
 const authCookie = useCookie('teacher_auth');
@@ -68,7 +69,7 @@ const displayLogs = computed(() => {
     
     // 若在「全校/特定班級」總表模式
     if (!selectedStudentId.value) {
-       if (selectedClass.value === 'ALL') return true; 
+       if (selectedClass.value === 'ALL') return isAdminCookie.value === true || isAdminCookie.value === 'superadmin' || !!studentInfo;
        // 如果選了特定班級，只顯示該班的紀錄
        return studentInfo && studentInfo.class_name === selectedClass.value;
     }
@@ -94,49 +95,6 @@ const getStudentInfo = (id) => {
       seat: seatNum, 
       fullName: `${s.class_name} 班 ${seatNum} 號 - ${name}` 
   };
-};
-
-// 網址翻譯字典
-const pathNames = {
-  '/': '🏠 首頁大廳',
-  '/history': '📜 歷史紀錄',
-  '/leaderboard': '🏆 英雄榜',
-  '/tarot': '🃏 塔羅牌',
-  '/game': '🟦 方塊消消樂',
-  '/game-move': '🔠 單字神移動',
-  '/game-choice': '✅ 單字選選樂',
-  '/game-fill': '⌨️ 單字填一填',
-  '/game-sentence': '📝 例句神絕配',
-  '/game-listen': '🎧 例句順風耳',
-  '/game-puzzle': '🧩 單字拼起來',
-  '/game-speak': '🎙️ 口說測一測',
-  '/game-cross': '🔠 單字填字FUN',
-  '/game-review': '✍️ 單字複習趣',
-  '/game-monopoly-dual': '🏘️ 單字大富翁（雙人）',
-  '/game-verb-monopoly': '🏘️ 動詞變化大富翁',
-  '/game-happy-farm': '🌻 單字開心農場',
-  '/game-isekai-farm': '✧ 單字異世界悠閒農莊',
-  '/game-alchemy-atelier': '⚗️ 單字鍊金工房',
-  '/game-vocabulary-city': '🏙️ 單字城市建造家',
-  '/game-vocabulary-zoo': '🦁 單字模擬動物園',
-  '/game-vocabulary-stairs': '🪜 單字小朋友下樓梯',
-  '/game-vocabulary-circus': '🎪 單字馬戲團',
-  '/game-vocabulary-candy': '🍬 單字 Candy Crush',
-  '/game-vocabulary-subway': '🚇 單字地鐵跑酷',
-  '/game-convenience-store': '🏪 單字便利商店',
-  '/game-railway-tour': '🚂 單字鐵路旅遊高手',
-  '/game-pikavolley-dual': '⚡ 皮卡丘排球（雙人）',
-  '/game-battle': '⚔️ 單字方塊陣',
-  '/game-tetris': '🧱 單字俄羅斯方塊',
-  '/game-pinball': '🎰 單字彈珠台',
-  '/game-angrybirds': '🐦 單字憤怒鳥',
-  '/game-angrybirds-dual': '🐦 單字憤怒鳥（雙人）'
-};
-
-const translatePath = (path) => {
-  if (!path) return '未知頁面';
-  const base = path.split('?')[0]; 
-  return pathNames[base] || `📄 其他頁面 (${base})`;
 };
 
 const formatTime = (timeStr) => {
@@ -212,7 +170,10 @@ const formatDuration = (seconds) => {
                {{ formatDuration(log.duration_seconds) }}
             </td>
             <td class="path-col">
-               <span class="path-badge">{{ translatePath(log.page_path) }}</span>
+               <span class="path-badge">{{ getStudentActivity(log.page_path).name }}</span>
+               <span v-if="getStudentActivity(log.page_path).details.length" class="activity-detail">
+                 {{ getStudentActivity(log.page_path).details.join('　') }}
+               </span>
                <br>
                <small class="raw-url">{{ log.page_path }}</small>
             </td>
@@ -266,6 +227,7 @@ const formatDuration = (seconds) => {
 
 .path-col { text-align: left !important; max-width: 350px; }
 .path-badge { background: #e8f5e9; color: #2e7d32; padding: 4px 8px; border-radius: 5px; font-weight: bold; display: inline-block; margin-bottom: 5px; border: 1px solid #a5d6a7;}
+.activity-detail { display: block; margin: 2px 0 5px; color: #0d47a1; font-size: .86rem; font-weight: 800; }
 .raw-url { color: #9e9e9e; font-family: monospace; font-size: 0.8rem; word-break: break-all;}
 
 /* 選中某學生時的強調色 */
