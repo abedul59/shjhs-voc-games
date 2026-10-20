@@ -1,11 +1,13 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
+import { schoolClassNames, specialClassPermission } from '~/lib/admin-class-permissions';
 
 definePageMeta({ middleware: 'auth' });
 const supabase = useSupabaseClient();
 const authCookie = useCookie('teacher_auth');
 
 const teachers = ref([]);
+const specialClasses = ref([]);
 const isLoading = ref(true);
 
 // 表單狀態
@@ -25,19 +27,23 @@ onMounted(() => {
     navigateTo('/admin');
     return;
   }
-  fetchTeachers();
+  void Promise.all([fetchTeachers(), fetchSpecialClasses()]);
 });
 
-// 🌟 2. 產生全校班級清單 (供勾選用：701~714, 801~814, 901~914)
-const allClasses = computed(() => {
-  const list = [];
-  for (let grade of [7, 8, 9]) {
-    for (let i = 1; i <= 14; i++) {
-      list.push(`${grade}${String(i).padStart(2, '0')}`);
-    }
-  }
-  return list;
-});
+const allClasses = computed(() => schoolClassNames());
+const specialClassNameMap = computed(() => Object.fromEntries(specialClasses.value
+  .map(group => [specialClassPermission(group.id), group.name])));
+
+const permissionLabel = value => {
+  if (value === 'ALL') return '全部班級';
+  return specialClassNameMap.value[value] ? `📚 ${specialClassNameMap.value[value]}` : value;
+};
+
+const fetchSpecialClasses = async () => {
+  const { data, error } = await supabase.from('special_classes')
+    .select('id, grade, name').order('grade').order('name');
+  if (!error) specialClasses.value = data || [];
+};
 
 // 載入教師名單
 const fetchTeachers = async () => {
@@ -153,7 +159,7 @@ const deleteTeacher = async (id, name) => {
             <td><code class="pwd-box">{{ teacher.password }}</code></td>
             <td>
               <div class="tags-container">
-                <span v-for="cls in teacher.allowed_classes" :key="cls" class="unit-tag">{{ cls }}</span>
+                <span v-for="cls in teacher.allowed_classes" :key="cls" class="unit-tag">{{ permissionLabel(cls) }}</span>
                 <span v-if="!teacher.allowed_classes || teacher.allowed_classes.length === 0" class="empty-text">尚未分配班級</span>
               </div>
             </td>
@@ -181,11 +187,23 @@ const deleteTeacher = async (id, name) => {
         </div>
         
         <div class="form-group">
-          <label class="section-title">3. 勾選負責班級 (可複選)</label>
+          <label class="section-title">3. 勾選普通班級（可複選）</label>
           <div class="classes-grid">
             <label v-for="cls in allClasses" :key="cls" class="checkbox-label" :class="{ 'is-checked': formData.allowed_classes.includes(cls) }">
               <input type="checkbox" :value="cls" v-model="formData.allowed_classes" />
               {{ cls }}
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="section-title">4. 勾選學習扶助／特殊班級（可複選）</label>
+          <p class="permission-note">儲存後，該教師需重新登入，新的特殊班級權限才會寫入登入狀態。</p>
+          <p v-if="!specialClasses.length" class="empty-text">目前尚未建立特殊班級。</p>
+          <div v-else class="classes-grid special-grid">
+            <label v-for="group in specialClasses" :key="group.id" class="checkbox-label special-option" :class="{ 'is-checked': formData.allowed_classes.includes(specialClassPermission(group.id)) }">
+              <input v-model="formData.allowed_classes" type="checkbox" :value="specialClassPermission(group.id)" />
+              <span>📚 {{ group.name }}</span>
             </label>
           </div>
         </div>
@@ -230,14 +248,17 @@ const deleteTeacher = async (id, name) => {
 .action-btn:hover { transform: scale(1.2); }
 
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; z-index: 100; padding: 20px; box-sizing: border-box;}
-.modal-box { background: var(--bg-color); padding: 30px; width: 100%; max-width: 500px; border: var(--box-border-width) solid var(--border-color); border-radius: var(--radius-box); box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+.modal-box { background: var(--bg-color); padding: 30px; width: 100%; max-width: 500px; max-height: 90vh; overflow-y: auto; border: var(--box-border-width) solid var(--border-color); border-radius: var(--radius-box); box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
 .modal-box h2 { margin-top: 0; border-bottom: 2px solid var(--text-main); padding-bottom: 10px; }
 .form-group { margin-bottom: 20px; text-align: left; }
 .form-group label { display: block; font-weight: bold; margin-bottom: 8px; color: var(--text-main); }
 .retro-input { width: 100%; padding: 10px; border: 2px solid var(--border-color); border-radius: 8px; font-size: 1.1rem; font-family: inherit; font-weight: bold; box-sizing: border-box; }
 
 .section-title { font-size: 1.1rem; color: #0277bd !important; border-bottom: 2px dashed #0277bd; padding-bottom: 5px; }
+.permission-note { margin: -2px 0 10px; color: var(--text-muted); font-size: .88rem; font-weight: 700; }
 .classes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; max-height: 250px; overflow-y: auto; background: var(--box-bg); padding: 15px; border: 2px solid var(--border-color); border-radius: 8px; }
+.special-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+.special-option { justify-content: flex-start; }
 .checkbox-label { display: flex; align-items: center; justify-content: center; gap: 5px; padding: 8px; background: #fff; border: 1px solid #ccc; border-radius: 6px; cursor: pointer; font-weight: bold; transition: all 0.2s;}
 .checkbox-label:hover { border-color: var(--text-main); }
 .checkbox-label.is-checked { background: var(--success-bg); color: var(--success-color); border-color: var(--success-color); box-shadow: inset 0 0 0 1px var(--success-color);}

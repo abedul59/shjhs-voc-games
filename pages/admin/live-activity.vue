@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed, onUnmounted } from 'vue';
 import { getGameActivityName } from '~/lib/student-activity-labels';
+import { regularClassPermissions, schoolClassNames, specialClassPermissionIds } from '~/lib/admin-class-permissions';
 
 definePageMeta({ middleware: 'auth' });
 const supabase = useSupabaseClient();
@@ -16,17 +17,14 @@ const authCookie = useCookie('teacher_auth');
 const isAdminCookie = useCookie('isAdmin');
 const allowedClasses = Array.isArray(authCookie.value?.classes) ? authCookie.value.classes : [];
 const isSuperAdmin = computed(() => isAdminCookie.value === true || isAdminCookie.value === 'superadmin' || allowedClasses.includes('ALL'));
+const allowedRegularClasses = computed(() => regularClassPermissions(allowedClasses));
+const allowedSpecialClassIds = computed(() => specialClassPermissionIds(allowedClasses));
 
 const regularClasses = computed(() => {
   if (isSuperAdmin.value) {
-    const list = ['000']; 
-    for (let grade of [7, 8, 9]) { 
-      for (let i = 1; i <= 14; i++) { list.push(`${grade}${String(i).padStart(2, '0')}`); } 
-    } 
-    list.push('999'); 
-    return list;
+    return schoolClassNames();
   }
-  return [...allowedClasses].sort();
+  return [...allowedRegularClasses.value].sort();
 });
 
 const displayClasses = computed(() => [
@@ -62,7 +60,9 @@ const loadSpecialClasses = async () => {
     if (!['42P01', 'PGRST205'].includes(error.code)) errorMessage.value = `特殊班級讀取失敗：${error.message}`;
     return;
   }
-  specialClasses.value = data || [];
+  specialClasses.value = isSuperAdmin.value
+    ? (data || [])
+    : (data || []).filter(group => allowedSpecialClassIds.value.includes(group.id));
   if (selectedClass.value.startsWith('special:') && !selectedSpecialClass.value) selectedClass.value = 'ALL';
 };
 
@@ -97,11 +97,6 @@ const fetchActivity = async () => {
   } else if (selectedClass.value !== 'ALL') {
     query = query.eq('class_name', selectedClass.value);
   }
-  if (!isSuperAdmin.value && allowedClasses.length > 0) {
-    query = query.in('class_name', allowedClasses);
-  } else if (!isSuperAdmin.value) {
-    query = query.eq('class_name', '__NO_AUTHORIZED_CLASS__');
-  }
   const { data: students, error: studentError } = await query.order('class_name', { ascending: true }).order('seat_number', { ascending: true });
   
   if (studentError || !students) {
@@ -109,6 +104,21 @@ const fetchActivity = async () => {
     activityData.value = {};
     isLoading.value = false;
     return;
+  }
+
+  let visibleStudents = students;
+  if (!isSuperAdmin.value && !specialClass) {
+    if (selectedClass.value === 'ALL') {
+      const memberIds = new Set();
+      for (const specialId of allowedSpecialClassIds.value) {
+        const { data: memberships } = await supabase.from('special_class_members')
+          .select('student_id').eq('special_class_id', specialId);
+        for (const membership of memberships || []) memberIds.add(membership.student_id);
+      }
+      visibleStudents = students.filter(student => allowedRegularClasses.value.includes(student.class_name) || memberIds.has(student.id));
+    } else if (!allowedRegularClasses.value.includes(selectedClass.value)) {
+      visibleStudents = [];
+    }
   }
 
   // 2. 抓取今天的登入與遊戲紀錄
@@ -128,7 +138,7 @@ const fetchActivity = async () => {
 
   // 3. 整理與分類資料
   const grouped = {};
-  students.forEach(stu => {
+  visibleStudents.forEach(stu => {
     const groupName = specialClass ? `${specialClass.name}（特殊班級）` : `${stu.class_name} 班`;
     if (!grouped[groupName]) grouped[groupName] = [];
 

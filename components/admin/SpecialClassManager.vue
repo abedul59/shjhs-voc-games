@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
+import { canAccessSpecialClass, regularClassPermissions, specialClassPermissionIds } from '~/lib/admin-class-permissions';
 
 const props = defineProps({
   allowedClasses: { type: Array, default: () => [] },
@@ -28,6 +29,9 @@ const missingSchema = ref(false);
 const errorMessage = ref('');
 
 const selectedSpecial = computed(() => specialClasses.value.find(item => item.id === selectedSpecialId.value));
+const regularAllowedClasses = computed(() => regularClassPermissions(props.allowedClasses));
+const allowedSpecialIds = computed(() => specialClassPermissionIds(props.allowedClasses));
+const canViewAllSelectedMembers = computed(() => props.isSuperAdmin || allowedSpecialIds.value.includes(selectedSpecialId.value));
 const canEditSelected = computed(() => props.isSuperAdmin || (
   !!selectedSpecial.value?.created_by && selectedSpecial.value.created_by === props.teacherName
 ));
@@ -56,7 +60,10 @@ async function loadSpecialClasses() {
     return;
   }
   missingSchema.value = false;
-  specialClasses.value = data || [];
+  specialClasses.value = props.isSuperAdmin
+    ? (data || [])
+    : (data || []).filter(item => canAccessSpecialClass(item.id, props.allowedClasses)
+      || (!!item.created_by && item.created_by === props.teacherName));
   if (!specialClasses.value.some(item => item.id === selectedSpecialId.value))
     selectedSpecialId.value = specialClasses.value[0]?.id || '';
 }
@@ -71,7 +78,7 @@ async function loadSourceClasses() {
     if (error) { showError(error, '原班名單讀取失敗'); return; }
     classes = (data || []).map(item => item.class_name);
   } else {
-    classes = props.allowedClasses;
+    classes = regularAllowedClasses.value;
   }
   sourceClasses.value = [...new Set(classes.filter(name =>
     new RegExp(`^${requestedGrade}[0-9]{2}$`).test(String(name || ''))))].sort();
@@ -102,13 +109,13 @@ async function loadMembers() {
   if (groupId !== selectedSpecialId.value) return;
   const ids = (data || []).map(item => item.student_id);
   memberIds.value = ids;
-  if (!ids.length || (!props.isSuperAdmin && !props.allowedClasses.length)) return;
+  if (!ids.length || (!props.isSuperAdmin && !regularAllowedClasses.value.length && !canViewAllSelectedMembers.value)) return;
   const visible = [];
   for (let index = 0; index < ids.length; index += 100) {
     let query = supabase.from('students')
       .select('id,student_id,real_name,class_name,seat_number')
       .in('id', ids.slice(index, index + 100));
-    if (!props.isSuperAdmin) query = query.in('class_name', props.allowedClasses);
+    if (!canViewAllSelectedMembers.value) query = query.in('class_name', regularAllowedClasses.value);
     const { data: students, error: studentsError } = await query;
     if (studentsError) { showError(studentsError, '編組學生讀取失敗'); return; }
     visible.push(...(students || []));
@@ -192,7 +199,7 @@ async function addStudents() {
 }
 
 async function removeStudent(student) {
-  if (working.value || (!props.isSuperAdmin && !props.allowedClasses.includes(student.class_name))) return;
+  if (working.value || (!canViewAllSelectedMembers.value && !regularAllowedClasses.value.includes(student.class_name))) return;
   const groupId = selectedSpecialId.value;
   working.value = true; errorMessage.value = '';
   const { error } = await supabase.from('special_class_members').delete()

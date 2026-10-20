@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue';
 import { farmLessonKey } from '~/lib/happy-farm-access';
+import { regularClassPermissions, schoolClassNames } from '~/lib/admin-class-permissions';
 
 const supabase = useSupabaseClient();
 const isLoading = ref(true);
@@ -11,6 +12,7 @@ const authCookie = useCookie('teacher_auth');
 const isAdminCookie = useCookie('isAdmin');
 const allowedClasses = Array.isArray(authCookie.value?.classes) ? authCookie.value.classes : [];
 const isSuperAdmin = computed(() => isAdminCookie.value === true || isAdminCookie.value === 'superadmin' || allowedClasses.includes('ALL'));
+const allowedRegularClasses = computed(() => regularClassPermissions(allowedClasses));
 
 const settings = ref({
   disabled_games: [], locked_units: [], restrict_play_time: false, allow_play_days: [1,2,3,4,5], allow_play_start: '08:00', allow_play_end: '17:00', 
@@ -58,9 +60,9 @@ const daysList = [{ val: 1, label: '一' }, { val: 2, label: '二' }, { val: 3, 
 // 學生個別權限管理狀態
 const displayClasses = computed(() => {
   if (isSuperAdmin.value) {
-    const list = ['000']; for (let grade of [7, 8, 9]) { for (let i = 1; i <= 14; i++) { list.push(`${grade}${String(i).padStart(2, '0')}`); } } list.push('999'); return list;
+    return schoolClassNames();
   }
-  return [...allowedClasses].sort();
+  return [...allowedRegularClasses.value].sort();
 });
 const selStudentClass = ref('');
 const classStudents = ref([]);
@@ -96,7 +98,7 @@ function addFarmVolume() {
   }
 }
 async function saveFarmPolicy() {
-  if (!selStudentClass.value || (!isSuperAdmin.value && !allowedClasses.includes(selStudentClass.value))) return;
+  if (!selStudentClass.value || (!isSuperAdmin.value && !allowedRegularClasses.value.includes(selStudentClass.value))) return;
   farmPolicySaving.value = true;
   const { error } = await supabase.from(farmPolicyTable.value).upsert({
     class_name: selStudentClass.value, mode: farmPolicy.value.mode, units: farmPolicy.value.units,
