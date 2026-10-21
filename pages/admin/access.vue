@@ -17,7 +17,8 @@ const allowedRegularClasses = computed(() => regularClassPermissions(allowedClas
 const settings = ref({
   disabled_games: [], locked_units: [], restrict_play_time: false, allow_play_days: [1,2,3,4,5], allow_play_start: '08:00', allow_play_end: '17:00', 
   login_blocked_message: '⚠️ 目前為系統管制時間，暫不開放登入喔！',
-  disable_anon_login: false // ✨ 新增：禁止匿名登入開關
+  disable_anon_login: false,
+  student_number_login_enabled: false
 });
 
 const vocabMenu = ref([]);
@@ -127,7 +128,8 @@ onMounted(async () => {
     settings.value.restrict_play_time = s.restrict_play_time || false; settings.value.allow_play_days = s.allow_play_days || [1,2,3,4,5];
     settings.value.allow_play_start = s.allow_play_start ? s.allow_play_start.substring(0,5) : '08:00'; settings.value.allow_play_end = s.allow_play_end ? s.allow_play_end.substring(0,5) : '17:00';
     settings.value.login_blocked_message = s.login_blocked_message || '⚠️ 目前為系統管制時間，暫不開放登入喔！'; 
-    settings.value.disable_anon_login = s.disable_anon_login || false; // ✨ 讀取禁止匿名設定
+    settings.value.disable_anon_login = s.disable_anon_login || false;
+    settings.value.student_number_login_enabled = s.student_number_login_enabled === true;
   }
   
   if (displayClasses.value.length > 0) selStudentClass.value = displayClasses.value[0];
@@ -149,13 +151,32 @@ const removeLockedUnit = (index) => { settings.value.locked_units.splice(index, 
 
 const saveSettings = async () => {
   isSaving.value = true;
-  await supabase.from('system_settings').update({
+  const { error } = await supabase.from('system_settings').update({
     disabled_games: settings.value.disabled_games, locked_units: settings.value.locked_units, restrict_play_time: settings.value.restrict_play_time,
     allow_play_days: settings.value.allow_play_days, allow_play_start: settings.value.allow_play_start, allow_play_end: settings.value.allow_play_end,
     login_blocked_message: settings.value.login_blocked_message,
-    disable_anon_login: settings.value.disable_anon_login // ✨ 儲存禁止匿名設定
+    disable_anon_login: settings.value.disable_anon_login,
+    student_number_login_enabled: settings.value.student_number_login_enabled
   }).eq('id', 1);
-  setTimeout(() => { isSaving.value = false; alert('✅ 全域權限與時間設定已成功儲存！'); }, 500);
+  isSaving.value = false;
+  if (error) alert('❌ 儲存失敗：' + error.message);
+  else alert('✅ 全域權限與時間設定已成功儲存！');
+};
+
+const restoreLegacyLogin = async () => {
+  if (!settings.value.student_number_login_enabled) return;
+  if (!confirm('確定立即關閉正式學號登入，回復為原本的「班級＋座號＋密碼」單軌制嗎？\n\n正式學號資料會保留，之後仍可重新啟用。')) return;
+  isSaving.value = true;
+  const { error } = await supabase.from('system_settings')
+    .update({ student_number_login_enabled: false })
+    .eq('id', 1);
+  isSaving.value = false;
+  if (error) {
+    alert('❌ 回復失敗：' + error.message);
+    return;
+  }
+  settings.value.student_number_login_enabled = false;
+  alert('✅ 已回復原有單軌制。學生重新整理登入頁後，只會看到班級與座號登入。');
 };
 
 // 學生個別權限管理邏輯
@@ -204,6 +225,23 @@ const saveStudentAccess = async () => {
     <div v-else class="content-grid">
       
       <template v-if="isSuperAdmin">
+
+        <div class="admin-card" style="border-color: #1565c0;">
+          <h3 style="color: #0d47a1;">🪪 學生雙重登入與回復機制</h3>
+          <label class="toggle-label">
+            <input type="checkbox" v-model="settings.student_number_login_enabled" />
+            <b>啟用七年級「正式學號＋原有密碼」登入</b>
+          </label>
+          <p style="font-size: 0.95rem; color: #555; line-height: 1.6;">
+            啟用後，七年級學生可選擇正式學號或原本的班級＋座號登入；兩種方式會連到同一個既有帳號與學習進度。變更一般開關後，請按右上角「儲存全域設定」。
+          </p>
+          <div class="rollback-box">
+            <b>回復現狀：</b>只關閉正式學號入口，不刪除學號、不改動密碼，也不移動任何進度。
+            <button type="button" class="retro-btn btn-danger" :disabled="!settings.student_number_login_enabled || isSaving" @click="restoreLegacyLogin">
+              ↩ 一鍵回復原有單軌制
+            </button>
+          </div>
+        </div>
         
         <div class="admin-card" style="border-color: #f44336;">
           <h3 style="color: #c62828;">🚫 訪客登入限制</h3>
@@ -345,6 +383,8 @@ const saveStudentAccess = async () => {
 .admin-card { background: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; padding: 20px; }
 .full-width { grid-column: 1 / -1; }
 .admin-card h3 { margin-top: 0; color: #495057; border-bottom: 2px dashed #ced4da; padding-bottom: 10px; }
+.rollback-box { display: grid; gap: 10px; margin-top: 14px; padding: 12px; border: 1px dashed #1565c0; border-radius: 6px; background: #e3f2fd; line-height: 1.5; }
+.rollback-box .retro-btn { justify-self: start; }
 
 .toggle-label { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 1.1rem; margin-bottom: 15px; }
 .time-settings-box { background: #e9ecef; padding: 15px; border-radius: 8px; border: 1px solid #ced4da; }

@@ -9,13 +9,16 @@ const classOptions = ref([]);
 const seatOptions = Array.from({ length: 40 }, (_, i) => i + 1);
 const selectedClass = ref('');
 const selectedSeat = ref('');
+const schoolStudentId = ref('');
 const pinCode = ref('');
 const errorMsg = ref('');
 const isLoading = ref(false);
 const loginMode = ref('student');
+const loginIdentifierMode = ref('legacy');
+const studentNumberSchemaAvailable = ref(false);
 
 // 登入阻擋機制相關變數
-const accessSettings = ref({ restrict_play_time: false });
+const accessSettings = ref({ restrict_play_time: false, student_number_login_enabled: false });
 const showBlockModal = ref(false);
 const blockMessage = ref('');
 
@@ -56,9 +59,13 @@ onMounted(async () => {
 
   // 2. 抓取系統開放時間設定
   const { data: sysData } = await supabase.from('system_settings')
-    .select('restrict_play_time, allow_play_days, allow_play_start, allow_play_end, login_blocked_message')
+    .select('*')
     .eq('id', 1).single();
-  if (sysData) accessSettings.value = sysData;
+  if (sysData) {
+    accessSettings.value = sysData;
+    studentNumberSchemaAvailable.value = Object.prototype.hasOwnProperty.call(sysData, 'student_number_login_enabled');
+    if (sysData.student_number_login_enabled === true) loginIdentifierMode.value = 'school_student_id';
+  }
 });
 
 // 驗證現在是否為開放時間的函數
@@ -86,12 +93,28 @@ const handleLogin = async () => {
   let newStudentData = null;
   
   if (loginMode.value === 'student') {
-    if (!selectedClass.value || !selectedSeat.value || !pinCode.value) { 
+    if (!pinCode.value) {
       errorMsg.value = '⚠️ 請填寫完整登入資料！'; isLoading.value = false; return; 
     }
-    const studentIdStr = `${selectedClass.value}${String(selectedSeat.value).padStart(2, '0')}`;
-    
-    const { data, error } = await supabase.from('students').select('*').eq('student_id', studentIdStr).eq('pin_code', pinCode.value.trim()).single();
+
+    let query = supabase.from('students').select('*').eq('pin_code', pinCode.value.trim());
+    let loginMethod = 'class_seat';
+    if (accessSettings.value.student_number_login_enabled && loginIdentifierMode.value === 'school_student_id') {
+      const normalizedStudentId = schoolStudentId.value.trim();
+      if (!/^\d{7,12}$/.test(normalizedStudentId)) {
+        errorMsg.value = '⚠️ 請輸入正確的正式學號！'; isLoading.value = false; return;
+      }
+      query = query.eq('school_student_id', normalizedStudentId).like('class_name', '7%');
+      loginMethod = 'school_student_id';
+    } else {
+      if (!selectedClass.value || !selectedSeat.value) {
+        errorMsg.value = '⚠️ 請填寫完整登入資料！'; isLoading.value = false; return;
+      }
+      const studentIdStr = `${selectedClass.value}${String(selectedSeat.value).padStart(2, '0')}`;
+      query = query.eq('student_id', studentIdStr);
+    }
+
+    const { data, error } = await query.maybeSingle();
     if (error || !data) { errorMsg.value = '❌ 找不到該學生或密碼錯誤！'; isLoading.value = false; return; }
     
     let browserId = localStorage.getItem('device_browser_id');
@@ -117,17 +140,19 @@ const handleLogin = async () => {
         }
       }
     }
-    newStudentData = { id: data.student_id, name: data.hidden_name || data.real_name, class: data.class_name, isAnon: false, real_name: data.real_name, browserId };
+    newStudentData = { id: data.student_id, name: data.hidden_name || data.real_name, class: data.class_name, isAnon: false, real_name: data.real_name, browserId, loginMethod };
   } else {
     let anonId = localStorage.getItem('anon_device_uuid');
     if (!anonId) { anonId = 'anon_' + Math.random().toString(36).substr(2, 9); localStorage.setItem('anon_device_uuid', anonId); }
-    newStudentData = { id: anonId, name: '匿名訪客', class: '無', isAnon: true, real_name: '匿名訪客', browserId: anonId };
+    newStudentData = { id: anonId, name: '匿名訪客', class: '無', isAnon: true, real_name: '匿名訪客', browserId: anonId, loginMethod: 'anonymous' };
   }
 
   let userIp = 'Unknown'; try { userIp = (await (await fetch('https://api.ipify.org?format=json')).json()).ip; } catch (e) {}
-  const { data: logData } = await supabase.from('login_logs').insert({
-    student_id: newStudentData.id, real_name: newStudentData.real_name, is_anon: newStudentData.isAnon, ip_address: userIp, device_info: navigator.userAgent, browser_id: newStudentData.browserId
-  }).select('id').single();
+  const logPayload = {
+    student_id: newStudentData.id, real_name: newStudentData.real_name, is_anon: newStudentData.isAnon, ip_address: userIp, device_info: navigator.userAgent, browser_id: newStudentData.browserId,
+  };
+  if (studentNumberSchemaAvailable.value) logPayload.login_method = newStudentData.loginMethod;
+  const { data: logData } = await supabase.from('login_logs').insert(logPayload).select('id').single();
 
   if (logData) localStorage.setItem('current_login_log_id', logData.id);
   studentCookie.value = { id: newStudentData.id, name: newStudentData.name, class: newStudentData.class, isAnon: newStudentData.isAnon };
@@ -144,7 +169,15 @@ const handleLogin = async () => {
     </div>
     
     <div v-if="loginMode === 'student'" class="login-section">
-      <div class="form-grid">
+      <div v-if="accessSettings.student_number_login_enabled" class="identifier-tabs" aria-label="選擇學生登入方式">
+        <button type="button" :class="{ active: loginIdentifierMode === 'school_student_id' }" @click="loginIdentifierMode = 'school_student_id'; errorMsg = ''">正式學號</button>
+        <button type="button" :class="{ active: loginIdentifierMode === 'legacy' }" @click="loginIdentifierMode = 'legacy'; errorMsg = ''">班級＋座號</button>
+      </div>
+      <div v-if="accessSettings.student_number_login_enabled && loginIdentifierMode === 'school_student_id'" class="input-group">
+        <label>正式學號（目前開放七年級）</label>
+        <input v-model="schoolStudentId" type="text" inputmode="numeric" autocomplete="username" maxlength="12" class="retro-input" placeholder="例如：1150001" @keyup.enter="handleLogin" />
+      </div>
+      <div v-else class="form-grid">
         <div class="input-group"><label>班級</label><select v-model="selectedClass" class="retro-input"><option v-for="c in classOptions" :key="c" :value="c">{{ c }}</option></select></div>
         <div class="input-group"><label>座號</label><select v-model="selectedSeat" class="retro-input"><option v-for="s in seatOptions" :key="s" :value="s">{{ s }}</option></select></div>
       </div>
@@ -174,6 +207,9 @@ const handleLogin = async () => {
 .tab-btn.active { background: var(--tab-active-bg); color: var(--tab-active-text); }
 .tab-btn:first-child { border-right: var(--border-width) solid var(--border-color); }
 .login-section { min-height: 160px; }
+.identifier-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px; }
+.identifier-tabs button { padding: 9px; border: 2px solid var(--border-color); border-radius: var(--radius-element); background: var(--tab-bg); color: var(--text-main); font: inherit; font-weight: 900; cursor: pointer; }
+.identifier-tabs button.active { background: var(--tab-active-bg); color: var(--tab-active-text); }
 .anon-notice { background: var(--info-bg); padding: 15px; border: 2px dashed var(--border-color); border-radius: var(--radius-element); line-height: 1.5; font-size: 0.95rem; display: flex; align-items: center; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
 .input-group { display: flex; flex-direction: column; gap: 5px; } .input-group label { font-weight: bold; color: var(--text-main); font-size: 0.9rem;}

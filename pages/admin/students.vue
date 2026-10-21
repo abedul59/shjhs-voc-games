@@ -42,7 +42,7 @@ const selectedClass = ref('');
 
 const showModal = ref(false);
 const isEditing = ref(false);
-const formData = ref({ id: null, student_id: '', real_name: '', hidden_name: '', class_name: '', seat_number: '', pin_code: '', unlocked_themes: [] });
+const formData = ref({ id: null, student_id: '', school_student_id: '', real_name: '', hidden_name: '', class_name: '', seat_number: '', pin_code: '', unlocked_themes: [] });
 
 const showStudentHistoryModal = ref(false);
 const selectedStudent = ref(null);
@@ -115,7 +115,7 @@ watch([() => formData.value.class_name, () => formData.value.seat_number], ([cls
   if (cls && seat && !isEditing.value) formData.value.student_id = `${cls}${String(seat).padStart(2, '0')}`;
 });
 
-const openAddModal = () => { isEditing.value = false; formData.value = { id: null, student_id: '', real_name: '', hidden_name: '', class_name: selectedClass.value, seat_number: '', pin_code: '', unlocked_themes: [] }; showModal.value = true; };
+const openAddModal = () => { isEditing.value = false; formData.value = { id: null, student_id: '', school_student_id: '', real_name: '', hidden_name: '', class_name: selectedClass.value, seat_number: '', pin_code: '', unlocked_themes: [] }; showModal.value = true; };
 const openEditModal = (stu) => { isEditing.value = true; formData.value = { ...stu, unlocked_themes: stu.unlocked_themes || [] }; showModal.value = true; };
 
 const formatDateTime = (dateString) => {
@@ -177,34 +177,99 @@ const handleImportCsv = (e) => {
   Papa.parse(file, {
     header: true, skipEmptyLines: true,
     complete: async (results) => {
-      const cleanData = [];
-      const phoneSuffix = schoolPhone.value.slice(-4);
-      
-      for (const row of results.data) {
-        const rName = row.real_name ? String(row.real_name).trim() : '';
-        const seat = row.seat_number ? String(row.seat_number).trim() : '';
-        const cls = selectedClass.value; 
-        
-        let pCode = ''; let hName = '';
-        if (rName && cls && seat) {
-          const strokesArray = await getStrokeArrayAsync(rName);
-          pCode = strokesArray.join('') + phoneSuffix;
-          hName = rName.length === 2 ? rName[0] + 'O' : (rName.length >= 3 ? rName[0] + 'O' + rName.substring(2) : rName);
-          
-          cleanData.push({
-            student_id: `${cls}${seat.padStart(2, '0')}`,
-            class_name: cls, seat_number: seat, real_name: rName, hidden_name: hName, pin_code: pCode
-          });
-        }
-      }
+      try {
+        const valueOf = (row, ...keys) => {
+          const key = keys.find(item => row[item] !== undefined && row[item] !== null);
+          return key ? String(row[key]).trim() : '';
+        };
+        const includesSchoolStudentIds = results.data.some(row => valueOf(row, 'school_student_id', 'official_student_id', '學號'));
 
-      if (cleanData.length > 0) {
-        await supabase.from('students').insert(cleanData);
+        if (includesSchoolStudentIds) {
+          const importRows = results.data.map((row, index) => ({
+            line: index + 2,
+            className: valueOf(row, 'class_name', '班級') || selectedClass.value,
+            seatNumber: Number(valueOf(row, 'seat_number', '座號')),
+            realName: valueOf(row, 'real_name', '姓名'),
+            schoolStudentId: valueOf(row, 'school_student_id', 'official_student_id', '學號')
+          })).filter(row => row.schoolStudentId);
+
+          const errors = [];
+          const seenIds = new Set();
+          for (const row of importRows) {
+            if (!/^7(?:0[1-9]|10)$/.test(row.className)) errors.push(`第 ${row.line} 列：第一階段僅允許 701～710 班`);
+            if (!Number.isInteger(row.seatNumber) || row.seatNumber < 1 || row.seatNumber > 99) errors.push(`第 ${row.line} 列：座號不正確`);
+            if (!/^\d{7,12}$/.test(row.schoolStudentId)) errors.push(`第 ${row.line} 列：正式學號格式不正確`);
+            if (seenIds.has(row.schoolStudentId)) errors.push(`第 ${row.line} 列：正式學號 ${row.schoolStudentId} 在檔案中重複`);
+            seenIds.add(row.schoolStudentId);
+            if (!isSuperAdmin && !allowedRegularClasses.includes(row.className)) errors.push(`第 ${row.line} 列：無權管理 ${row.className} 班`);
+          }
+          if (!importRows.length) errors.push('檔案中沒有可匯入的正式學號');
+          if (errors.length) throw new Error(errors.slice(0, 12).join('\n'));
+
+          const targetClasses = [...new Set(importRows.map(row => row.className))];
+          const { data: existingStudents, error: fetchError } = await supabase.from('students')
+            .select('id,class_name,seat_number,real_name,school_student_id')
+            .in('class_name', targetClasses);
+          if (fetchError) throw fetchError;
+
+          const updates = [];
+          for (const row of importRows) {
+            const student = (existingStudents || []).find(item => String(item.class_name) === row.className && Number(item.seat_number) === row.seatNumber);
+            if (!student) {
+              errors.push(`第 ${row.line} 列：找不到 ${row.className} 班 ${row.seatNumber} 號`);
+              continue;
+            }
+            if (row.realName && student.real_name !== row.realName) {
+              errors.push(`第 ${row.line} 列：姓名不一致（資料庫：${student.real_name}／CSV：${row.realName}）`);
+              continue;
+            }
+            updates.push({ ...row, databaseId: student.id });
+          }
+          if (errors.length) throw new Error(errors.slice(0, 12).join('\n'));
+
+          for (let i = 0; i < updates.length; i += 15) {
+            const batch = updates.slice(i, i + 15);
+            const responses = await Promise.all(batch.map(row => supabase.from('students')
+              .update({ school_student_id: row.schoolStudentId })
+              .eq('id', row.databaseId)));
+            const failed = responses.find(response => response.error);
+            if (failed) throw failed.error;
+          }
+          const skipped = results.data.length - importRows.length;
+          alert(`✅ 已為 ${updates.length} 位七年級學生更新正式學號。${skipped ? `\n另有 ${skipped} 列未填學號，已略過。` : ''}`);
+          await fetchStudents();
+          return;
+        }
+
+        const cleanData = [];
+        const phoneSuffix = schoolPhone.value.slice(-4);
+        for (const row of results.data) {
+          const rName = row.real_name ? String(row.real_name).trim() : '';
+          const seat = row.seat_number ? String(row.seat_number).trim() : '';
+          const cls = selectedClass.value;
+          if (rName && cls && seat) {
+            const strokesArray = await getStrokeArrayAsync(rName);
+            const pCode = strokesArray.join('') + phoneSuffix;
+            const hName = rName.length === 2 ? rName[0] + 'O' : (rName.length >= 3 ? rName[0] + 'O' + rName.substring(2) : rName);
+            cleanData.push({
+              student_id: `${cls}${seat.padStart(2, '0')}`,
+              class_name: cls, seat_number: seat, real_name: rName, hidden_name: hName, pin_code: pCode
+            });
+          }
+        }
+
+        if (!cleanData.length) throw new Error('請檢查 CSV 格式（需有 seat_number 與 real_name）');
+        const { error } = await supabase.from('students').insert(cleanData);
+        if (error) throw error;
         alert(`✅ 成功匯入 ${cleanData.length} 位學生到 ${selectedClass.value} 班！`);
-        await refreshClasses(); // 匯入後刷新可能產生的新班級
-        fetchStudents();
-      } else { alert('❌ 匯入失敗，請檢查 CSV 格式 (需有 seat_number 與 real_name)'); }
-      isUploading.value = false; e.target.value = '';
+        await refreshClasses();
+        await fetchStudents();
+      } catch (error) {
+        alert('❌ 匯入失敗：\n' + (error?.message || String(error)));
+      } finally {
+        isUploading.value = false;
+        e.target.value = '';
+      }
     }
   });
 };
@@ -212,8 +277,8 @@ const handleImportCsv = (e) => {
 const exportToCSV = () => {
   if (students.value.length === 0) { alert('沒有資料可匯出！'); return; }
   const csvContent = "data:text/csv;charset=utf-8,\uFEFF"
-    + "class_name,seat_number,real_name\n"
-    + students.value.map(s => `${s.class_name},${s.seat_number},${s.real_name}`).join("\n");
+    + "class_name,seat_number,real_name,school_student_id\n"
+    + students.value.map(s => `${s.class_name},${s.seat_number},${s.real_name},${s.school_student_id || ''}`).join("\n");
 
   const encodedUri = encodeURI(csvContent);
   const link = document.createElement("a");
@@ -226,6 +291,9 @@ const exportToCSV = () => {
 
 const saveStudent = async () => {
   if (!formData.value.student_id || !formData.value.real_name || !formData.value.pin_code) { alert('必填欄位不可為空！'); return; }
+  const officialId = formData.value.school_student_id?.trim() || '';
+  if (officialId && !/^\d{7,12}$/.test(officialId)) { alert('正式學號必須是 7～12 位數字！'); return; }
+  if (officialId && !/^7(?:0[1-9]|10)$/.test(String(formData.value.class_name))) { alert('第一階段僅開放 701～710 班設定正式學號！'); return; }
   
   if (!isSuperAdmin && !allowedRegularClasses.includes(formData.value.class_name)) {
     alert('您無權修改此班級的資料！');
@@ -234,10 +302,13 @@ const saveStudent = async () => {
 
   const payload = {
     student_id: formData.value.student_id, real_name: formData.value.real_name, hidden_name: formData.value.hidden_name,
+    school_student_id: officialId || null,
     class_name: formData.value.class_name, seat_number: formData.value.seat_number, pin_code: String(formData.value.pin_code).trim(), unlocked_themes: formData.value.unlocked_themes 
   };
-  if (isEditing.value) await supabase.from('students').update(payload).eq('id', formData.value.id);
-  else await supabase.from('students').insert([payload]);
+  const { error } = isEditing.value
+    ? await supabase.from('students').update(payload).eq('id', formData.value.id)
+    : await supabase.from('students').insert([payload]);
+  if (error) { alert('儲存失敗：' + error.message); return; }
   
   showModal.value = false;
   await refreshClasses(); // 若新增了新班級，刷新清單
@@ -308,7 +379,7 @@ const deleteClass = async (className) => {
         <a href="#special-classes" class="retro-btn">📚 學習扶助／特殊班級</a>
         <button class="retro-btn export-btn" @click="exportToCSV" :disabled="isLoading">📊 匯出名單</button>
         <input type="file" accept=".csv" id="student-csv" @change="handleImportCsv" style="display:none" :disabled="isUploading"/>
-        <label for="student-csv" class="retro-btn csv-btn">{{ isUploading ? '計算筆畫中...' : '📁 匯入(CSV)' }}</label>
+        <label for="student-csv" class="retro-btn csv-btn" title="可匯入新班級名單，或以班級、座號、姓名、學號欄位更新正式學號">{{ isUploading ? '處理資料中...' : '📁 匯入(CSV)' }}</label>
         <button class="retro-btn add-btn" @click="openAddModal">➕ 新增</button>
       </div>
     </div>
@@ -333,11 +404,12 @@ const deleteClass = async (className) => {
       <p v-if="isLoading" class="loading-msg">⏳ 讀取中...</p>
       <p v-else-if="displayClasses.length === 0" class="empty-msg">您目前沒有被授權管理任何班級，請聯繫管理員。</p>
       <table v-else class="retro-table">
-        <thead><tr><th>班級</th><th>座號</th><th>🎮 遊戲帳號</th><th>真實姓名 (點擊查看)</th><th>🔑 筆畫密碼</th><th>🎵 解鎖風格數</th><th>操作</th></tr></thead>
+        <thead><tr><th>班級</th><th>座號</th><th>🎮 舊制帳號</th><th>🪪 正式學號</th><th>真實姓名 (點擊查看)</th><th>🔑 筆畫密碼</th><th>🎵 解鎖風格數</th><th>操作</th></tr></thead>
         <tbody>
-          <tr v-if="students.length === 0"><td colspan="7" class="empty-msg">此班級目前沒有學生資料。</td></tr>
+          <tr v-if="students.length === 0"><td colspan="8" class="empty-msg">此班級目前沒有學生資料。</td></tr>
           <tr v-for="stu in students" :key="stu.id">
             <td>{{ stu.class_name }}</td><td>{{ stu.seat_number }}</td><td><strong>{{ stu.student_id }}</strong></td>
+            <td><strong>{{ stu.school_student_id || '—' }}</strong></td>
             <td>
               <button class="student-name-link" @click="openStudentHistory(stu)" title="點擊查看登入與遊戲紀錄">
                 🔍 <strong>{{ stu.real_name }}</strong>
@@ -413,9 +485,10 @@ const deleteClass = async (className) => {
         <div class="form-grid">
           <div class="input-group"><label>1. 班級 (受權限保護)</label><input type="text" v-model="formData.class_name" class="retro-input" :disabled="!isSuperAdmin" /></div>
           <div class="input-group"><label>2. 座號</label><input type="number" v-model="formData.seat_number" class="retro-input" /></div>
-          <div class="input-group"><label>3. 🎮 遊戲帳號 *</label><input type="text" v-model="formData.student_id" class="retro-input" placeholder="自動產生" /></div>
-          <div class="input-group"><label>4. 真實姓名 *</label><input type="text" v-model="formData.real_name" class="retro-input" /></div>
-          <div class="input-group"><label>5. 顯示名稱</label><input type="text" v-model="formData.hidden_name" class="retro-input" /></div>
+          <div class="input-group"><label>3. 🎮 舊制遊戲帳號 *</label><input type="text" v-model="formData.student_id" class="retro-input" placeholder="自動產生；請勿改成正式學號" /></div>
+          <div class="input-group"><label>4. 🪪 正式學號</label><input type="text" inputmode="numeric" v-model="formData.school_student_id" class="retro-input" placeholder="七年級例如：1150001" /></div>
+          <div class="input-group"><label>5. 真實姓名 *</label><input type="text" v-model="formData.real_name" class="retro-input" /></div>
+          <div class="input-group"><label>6. 顯示名稱</label><input type="text" v-model="formData.hidden_name" class="retro-input" /></div>
           <div class="input-group highlight-input"><label>🔑 筆畫密碼 *</label><input type="text" v-model="formData.pin_code" class="retro-input" placeholder="自動計算" /></div>
         </div>
         
