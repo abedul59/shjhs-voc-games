@@ -11,6 +11,7 @@ const supabase = useSupabaseClient();
 const students = ref([]);
 const isLoading = ref(true);
 const isUploading = ref(false);
+const studentNumberSchemaAvailable = ref(false);
 
 const schoolPhone = ref('');
 
@@ -68,8 +69,11 @@ onMounted(async () => {
     return;
   }
   
-  const { data: settings } = await supabase.from('system_settings').select('school_phone').eq('id', 1).single();
-  if (settings) schoolPhone.value = settings.school_phone || '';
+  const { data: settings } = await supabase.from('system_settings').select('*').eq('id', 1).single();
+  if (settings) {
+    schoolPhone.value = settings.school_phone || '';
+    studentNumberSchemaAvailable.value = Object.prototype.hasOwnProperty.call(settings, 'student_number_login_enabled');
+  }
 
   // 初始化撈取班級
   await refreshClasses();
@@ -185,6 +189,7 @@ const handleImportCsv = (e) => {
         const includesSchoolStudentIds = results.data.some(row => valueOf(row, 'school_student_id', 'official_student_id', '學號'));
 
         if (includesSchoolStudentIds) {
+          if (!studentNumberSchemaAvailable.value) throw new Error('正式學號資料庫欄位尚未建立，請先執行本次 Supabase SQL 設定。');
           const importRows = results.data.map((row, index) => ({
             line: index + 2,
             className: valueOf(row, 'class_name', '班級') || selectedClass.value,
@@ -302,9 +307,9 @@ const saveStudent = async () => {
 
   const payload = {
     student_id: formData.value.student_id, real_name: formData.value.real_name, hidden_name: formData.value.hidden_name,
-    school_student_id: officialId || null,
     class_name: formData.value.class_name, seat_number: formData.value.seat_number, pin_code: String(formData.value.pin_code).trim(), unlocked_themes: formData.value.unlocked_themes 
   };
+  if (studentNumberSchemaAvailable.value) payload.school_student_id = officialId || null;
   const { error } = isEditing.value
     ? await supabase.from('students').update(payload).eq('id', formData.value.id)
     : await supabase.from('students').insert([payload]);
@@ -486,7 +491,7 @@ const deleteClass = async (className) => {
           <div class="input-group"><label>1. 班級 (受權限保護)</label><input type="text" v-model="formData.class_name" class="retro-input" :disabled="!isSuperAdmin" /></div>
           <div class="input-group"><label>2. 座號</label><input type="number" v-model="formData.seat_number" class="retro-input" /></div>
           <div class="input-group"><label>3. 🎮 舊制遊戲帳號 *</label><input type="text" v-model="formData.student_id" class="retro-input" placeholder="自動產生；請勿改成正式學號" /></div>
-          <div class="input-group"><label>4. 🪪 正式學號</label><input type="text" inputmode="numeric" v-model="formData.school_student_id" class="retro-input" placeholder="七年級例如：1150001" /></div>
+          <div class="input-group"><label>4. 🪪 正式學號</label><input type="text" inputmode="numeric" v-model="formData.school_student_id" class="retro-input" :disabled="!studentNumberSchemaAvailable" :placeholder="studentNumberSchemaAvailable ? '七年級例如：1150001' : '請先執行本次 Supabase SQL 設定'" /></div>
           <div class="input-group"><label>5. 真實姓名 *</label><input type="text" v-model="formData.real_name" class="retro-input" /></div>
           <div class="input-group"><label>6. 顯示名稱</label><input type="text" v-model="formData.hidden_name" class="retro-input" /></div>
           <div class="input-group highlight-input"><label>🔑 筆畫密碼 *</label><input type="text" v-model="formData.pin_code" class="retro-input" placeholder="自動計算" /></div>

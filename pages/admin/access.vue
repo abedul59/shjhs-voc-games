@@ -6,6 +6,7 @@ import { regularClassPermissions, schoolClassNames } from '~/lib/admin-class-per
 const supabase = useSupabaseClient();
 const isLoading = ref(true);
 const isSaving = ref(false);
+const studentNumberSchemaAvailable = ref(false);
 
 // 權限判斷
 const authCookie = useCookie('teacher_auth');
@@ -124,6 +125,7 @@ onMounted(async () => {
   // ✨ 修改點：要求資料庫抓出 disable_anon_login
   const { data: s } = await supabase.from('system_settings').select('*').eq('id', 1).single();
   if (s) {
+    studentNumberSchemaAvailable.value = Object.prototype.hasOwnProperty.call(s, 'student_number_login_enabled');
     settings.value.disabled_games = s.disabled_games || []; settings.value.locked_units = s.locked_units || [];
     settings.value.restrict_play_time = s.restrict_play_time || false; settings.value.allow_play_days = s.allow_play_days || [1,2,3,4,5];
     settings.value.allow_play_start = s.allow_play_start ? s.allow_play_start.substring(0,5) : '08:00'; settings.value.allow_play_end = s.allow_play_end ? s.allow_play_end.substring(0,5) : '17:00';
@@ -151,13 +153,14 @@ const removeLockedUnit = (index) => { settings.value.locked_units.splice(index, 
 
 const saveSettings = async () => {
   isSaving.value = true;
-  const { error } = await supabase.from('system_settings').update({
+  const payload = {
     disabled_games: settings.value.disabled_games, locked_units: settings.value.locked_units, restrict_play_time: settings.value.restrict_play_time,
     allow_play_days: settings.value.allow_play_days, allow_play_start: settings.value.allow_play_start, allow_play_end: settings.value.allow_play_end,
     login_blocked_message: settings.value.login_blocked_message,
-    disable_anon_login: settings.value.disable_anon_login,
-    student_number_login_enabled: settings.value.student_number_login_enabled
-  }).eq('id', 1);
+    disable_anon_login: settings.value.disable_anon_login
+  };
+  if (studentNumberSchemaAvailable.value) payload.student_number_login_enabled = settings.value.student_number_login_enabled;
+  const { error } = await supabase.from('system_settings').update(payload).eq('id', 1);
   isSaving.value = false;
   if (error) alert('❌ 儲存失敗：' + error.message);
   else alert('✅ 全域權限與時間設定已成功儲存！');
@@ -226,7 +229,7 @@ const saveStudentAccess = async () => {
       
       <template v-if="isSuperAdmin">
 
-        <div class="admin-card" style="border-color: #1565c0;">
+        <div v-if="studentNumberSchemaAvailable" class="admin-card" style="border-color: #1565c0;">
           <h3 style="color: #0d47a1;">🪪 學生雙重登入與回復機制</h3>
           <label class="toggle-label">
             <input type="checkbox" v-model="settings.student_number_login_enabled" />
@@ -241,6 +244,10 @@ const saveStudentAccess = async () => {
               ↩ 一鍵回復原有單軌制
             </button>
           </div>
+        </div>
+        <div v-else class="admin-card" style="border-color: #ff9800;">
+          <h3 style="color: #e65100;">🪪 正式學號登入尚未啟用</h3>
+          <p style="line-height: 1.6; color: #555;">目前安全維持原有班級＋座號單軌制。請先在 Supabase 執行本次資料庫設定，重新整理後才會顯示雙重登入開關。</p>
         </div>
         
         <div class="admin-card" style="border-color: #f44336;">
