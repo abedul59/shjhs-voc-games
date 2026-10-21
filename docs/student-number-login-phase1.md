@@ -1,5 +1,7 @@
 # 七年級正式學號雙重登入：第一階段
 
+長期逐年過渡與全面學號制規劃見 `docs/student-number-login-roadmap.md`。
+
 ## 設計原則
 
 - `students.student_id` 保持原值（班級＋兩位座號），繼續作為遊戲進度、登入紀錄及其他功能的既有關聯鍵。
