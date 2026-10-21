@@ -26,7 +26,7 @@ const classOptions = computed(() => [
 
 const loadClassData = async () => {
   const [{ data: students, error: studentError }, { data: groups, error: groupError }] = await Promise.all([
-    supabase.from('students').select('id,student_id,class_name,seat_number,real_name').limit(10000),
+    supabase.from('students').select('*').limit(10000),
     supabase.from('special_classes').select('id,grade,name').order('grade').order('name')
   ]);
   if (studentError) errorMessage.value = `學生資料讀取失敗：${studentError.message}`;
@@ -88,11 +88,20 @@ const parseDevice = (ua) => {
   return '🖥️ 其他';
 };
 
+const loginMethodLabel = (log) => {
+  if (log.is_anon || log.login_method === 'anonymous') return '匿名訪客';
+  if (log.login_method === 'school_student_id') return '正式學號';
+  if (log.login_method === 'class_seat') return '班級＋座號';
+  return '舊紀錄（未標示）';
+};
+
 const exportToCSV = () => {
   if (filteredLogs.value.length === 0) return alert('目前沒有任何紀錄可以匯出！');
   const exportData = filteredLogs.value.map(log => ({
     '身分': log.is_anon ? '匿名訪客' : '實名學生',
-    '學號/ID': log.student_id,
+    '登入方式': loginMethodLabel(log),
+    '遊戲帳號': log.student_id,
+    '正式學號': studentsMap.value[String(log.student_id)]?.school_student_id || '',
     '姓名': log.real_name,
     '原班': studentsMap.value[String(log.student_id)]?.class_name || (log.is_anon ? '無' : '未知'),
     'IP位址': log.ip_address,
@@ -138,7 +147,9 @@ const exportToCSV = () => {
         <thead>
           <tr>
             <th>姓名</th>
-            <th>學號/ID</th>
+            <th>登入方式</th>
+            <th>正式學號</th>
+            <th>遊戲帳號</th>
             <th>原班</th>
             <th>登入時間</th>
             <th>登出時間</th>
@@ -147,9 +158,11 @@ const exportToCSV = () => {
           </tr>
         </thead>
         <tbody>
-          <tr v-if="filteredLogs.length === 0"><td colspan="7" class="empty-msg">沒有符合的紀錄。</td></tr>
+          <tr v-if="filteredLogs.length === 0"><td colspan="9" class="empty-msg">沒有符合的紀錄。</td></tr>
           <tr v-for="log in filteredLogs" :key="log.id">
             <td><strong>{{ log.real_name }}</strong></td>
+            <td>{{ loginMethodLabel(log) }}</td>
+            <td>{{ studentsMap[String(log.student_id)]?.school_student_id || '—' }}</td>
             <td>{{ log.student_id }}</td>
             <td>{{ studentsMap[String(log.student_id)]?.class_name || (log.is_anon ? '無' : '未知') }}</td>
             <td class="time-col" style="color:var(--success-color);">🟢 {{ formatDateTime(log.login_time) }}</td>
