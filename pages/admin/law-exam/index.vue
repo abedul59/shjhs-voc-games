@@ -125,6 +125,9 @@ const deleteCourse = async (id, subject) => {
       <NuxtLink to="/admin/law-exam/containers" class="dash-card programming-card containers-card">
         <div class="icon">📦</div><h2>Docker / Podman 私人課程</h2>
       </NuxtLink>
+      <NuxtLink to="/admin/law-exam/dart-flutter" class="dash-card programming-card dart-flutter-card">
+        <div class="icon">◢</div><h2>Dart / Flutter 私人課程</h2>
+      </NuxtLink>
       <NuxtLink to="/admin/law-exam/spanish" class="dash-card programming-card spanish-card">
         <div class="icon">🇪🇸</div><h2>西班牙語私人學習專區</h2>
       </NuxtLink>
@@ -281,6 +284,7 @@ const deleteCourse = async (id, subject) => {
 .php-card { background: linear-gradient(135deg, #1e1b4b, #4f46e5) !important; color: white !important; border-color: #a5b4fc !important; }
 .git-card { background: linear-gradient(135deg, #431407, #b91c1c) !important; color: white !important; border-color: #fb923c !important; }
 .containers-card { background: linear-gradient(135deg, #0c4a6e, #5b21b6) !important; color: white !important; border-color: #38bdf8 !important; }
+.dart-flutter-card { background: linear-gradient(135deg, #075985, #1d4ed8) !important; color: white !important; border-color: #67e8f9 !important; }
 .spanish-card { background: linear-gradient(135deg, #7c2d12, #dc2626) !important; color: white !important; border-color: #fbbf24 !important; }
 .french-card { background: linear-gradient(135deg, #1e3a8a, #be123c) !important; color: white !important; border-color: #f8fafc !important; }
 .german-card { background: linear-gradient(135deg, #111827, #dc2626) !important; color: white !important; border-color: #facc15 !important; }

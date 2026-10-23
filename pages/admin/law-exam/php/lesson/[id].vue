@@ -8,11 +8,11 @@ const course = {
   stages: phpStages,
   createDefault: createDefaultPhpProgress,
   base: '/admin/law-exam/php',
-  shortTitle: 'PHP',
+  shortTitle: 'PHP / Laravel',
   logo: 'PHP',
   accent: '#a5b4fc',
-  editorLabel: 'index.php / Application.php',
-  notePlaceholder: '記下今天理解的 PHP、Web、安全或框架工程觀念……'
+  editorLabel: 'PHP / Laravel / Artisan',
+  notePlaceholder: '記下今天理解的 PHP、Laravel、Web、安全或框架工程觀念……'
 };
 
 const progressApi = usePhpProgress();
