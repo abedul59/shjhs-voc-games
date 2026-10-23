@@ -15,7 +15,7 @@ const course = {
   logo: '⑂',
   tagline: '版本控制、協作、發布、救援',
   roadmap: '從 Git 基礎到專業團隊協作',
-  roadmapSummary: '六大階段、50 堂完整課程與四個實戰專案皆已開放。',
+  roadmapSummary: '六大階段、100 堂完整課程與四個實戰專案皆已開放。',
   accent: '#fb923c',
   secondary: '#b91c1c',
   environmentKey: 'git'
