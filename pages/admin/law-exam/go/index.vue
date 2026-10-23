@@ -28,7 +28,7 @@ const statusLabel = item => ({ completed: '已理解', review: '待複習', lear
         <NuxtLink to="/admin/law-exam" class="back">← 回司律與私人學習後台</NuxtLink>
         <p class="eyebrow">PRIVATE GO WORKBENCH</p>
         <h1><span>Go</span> 私人自學工作台</h1>
-        <p class="lead">從清楚簡潔的語法，走到並行服務與可維護的工程設計。50 堂課與完整專案，一路建立真正能交付的 Go 能力。</p>
+        <p class="lead">從清楚簡潔的語法，走到並行服務與可維護的工程設計。100 堂課與完整專案，一路建立真正能交付的 Go 能力。</p>
         <NuxtLink v-if="!isLoading" :to="`/admin/law-exam/go/lesson/${continueLesson.id}`" class="continue">繼續：{{ continueLesson.title }} <b>→</b></NuxtLink>
       </div>
       <div class="gopher" aria-hidden="true"><strong>ʕ◔ϖ◔ʔ</strong><small>簡潔、可靠、天生並行</small></div>
@@ -44,7 +44,7 @@ const statusLabel = item => ({ completed: '已理解', review: '待複習', lear
     <ProgrammingEnvironmentGuide environment-key="go" />
 
     <section class="roadmap">
-      <div class="heading"><div><p>LEARNING ROADMAP</p><h2>從語法到雲端服務</h2></div><span>六大階段、50 堂課與完整實作專案皆已開放。</span></div>
+      <div class="heading"><div><p>LEARNING ROADMAP</p><h2>從語法到雲端服務</h2></div><span>六大階段、100 堂課與完整實作專案皆已開放。</span></div>
       <div v-for="stage in goStages" :key="stage.id" class="stage" :style="{ '--stage': stage.color }">
         <div class="stage-title"><span>{{ stage.number }}</span><div><h3>{{ stage.icon }} {{ stage.title }}</h3><p>{{ stage.subtitle }}</p></div></div>
         <div class="lesson-grid">

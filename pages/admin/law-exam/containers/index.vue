@@ -15,7 +15,7 @@ const course = {
   logo: '📦',
   tagline: '建置、服務、安全、部署、維運',
   roadmap: '從第一個容器到可維運的正式服務',
-  roadmapSummary: '六大階段、50 堂完整課程與六個整合實戰皆已開放。',
+  roadmapSummary: '六大階段、100 堂完整課程與六個整合實戰皆已開放。',
   accent: '#38bdf8',
   secondary: '#7c3aed',
   environmentKey: 'containers'

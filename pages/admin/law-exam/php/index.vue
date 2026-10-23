@@ -15,7 +15,7 @@ const course = {
   logo: 'PHP',
   tagline: '現代語言、Web 後端、正式交付',
   roadmap: '從 PHP 基礎到正式 Web 平台',
-  roadmapSummary: '七大階段、60 堂完整課程與四個實戰專案皆已開放。',
+  roadmapSummary: '七大階段、100 堂完整課程與四個實戰專案皆已開放。',
   accent: '#a5b4fc',
   secondary: '#4f46e5',
   environmentKey: 'php'
