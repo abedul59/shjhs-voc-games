@@ -2,6 +2,7 @@
 import { ref, onMounted, computed, onUnmounted, watch } from 'vue';
 import { farmLessonAllowed, farmPolicyTableMissing } from '~/lib/happy-farm-access';
 import { ALL_VOCAB_SCOPE, isVocabScopeAllowed, normalizeVocabScope } from '~/lib/vocab-scope-access';
+import { SCHOOL_HOURS_LABEL, isTaipeiSchoolHours } from '~/lib/school-hours-access';
 
 const props = defineProps({ autoLogoutMinutes: { type: Number, default: 10 } });
 const supabase = useSupabaseClient();
@@ -15,6 +16,7 @@ const selectedUnit = ref('');
 const errorMsg = ref('');
 const isLoading = ref(false);
 let idleTimer = null;
+let schoolHoursTimer = null;
 
 // 🌟 監聽範圍選擇變更，並即時記憶到瀏覽器的 LocalStorage 中
 watch(selectedVersion, (val) => { if (typeof window !== 'undefined') localStorage.setItem('shjhs_selectedVersion', val || ''); });
@@ -113,6 +115,9 @@ const accessSettings = ref({
 });
 
 const studentAllowedGames = ref(['ALL']);
+const studentSchoolHoursAllowedGames = ref(['ALL']);
+const schoolHoursActive = ref(isTaipeiSchoolHours());
+const effectiveAllowedGames = computed(() => schoolHoursActive.value ? studentSchoolHoursAllowedGames.value : studentAllowedGames.value);
 const studentVocabScope = ref({ ...ALL_VOCAB_SCOPE, scopes: [] });
 
 const lessonAllowedForStudent = (lesson) => isVocabScopeAllowed(studentVocabScope.value, lesson);
@@ -217,26 +222,26 @@ onMounted(async () => {
   }
 
   if (studentCookie.value && !studentCookie.value.isAnon) {
-    let { data: stuData, error: studentAccessError } = await supabase.from('students')
-      .select('allowed_games, allowed_vocab_scope')
+    const { data: stuData, error: studentAccessError } = await supabase.from('students')
+      .select('allowed_games')
       .eq('student_id', studentCookie.value.id) 
       .single();
-
-    if (studentAccessError && /allowed_vocab_scope/i.test(studentAccessError.message || '')) {
-      const fallback = await supabase.from('students')
-        .select('allowed_games')
-        .eq('student_id', studentCookie.value.id)
-        .single();
-      stuData = fallback.data;
-      studentAccessError = fallback.error;
-    }
       
     if (!studentAccessError && stuData?.allowed_games) {
       studentAllowedGames.value = stuData.allowed_games;
     }
-    studentVocabScope.value = normalizeVocabScope(stuData?.allowed_vocab_scope);
+    const [scopeResult, schoolResult] = await Promise.all([
+      supabase.from('students').select('allowed_vocab_scope').eq('student_id', studentCookie.value.id).single(),
+      supabase.from('students').select('school_hours_allowed_games').eq('student_id', studentCookie.value.id).single()
+    ]);
+    studentVocabScope.value = normalizeVocabScope(scopeResult.data?.allowed_vocab_scope);
+    if (!schoolResult.error && Array.isArray(schoolResult.data?.school_hours_allowed_games)) {
+      studentSchoolHoursAllowedGames.value = schoolResult.data.school_hours_allowed_games;
+    }
     clearDisallowedSelection();
   }
+
+  schoolHoursTimer = setInterval(() => { schoolHoursActive.value = isTaipeiSchoolHours(); }, 30000);
 
   setTimeout(() => {
     if (checkGameDisabled(selectedGameType.value)) {
@@ -290,8 +295,8 @@ const checkGameDisabled = (gameId) => {
     if (accessSettings.value.disabled_games?.includes(gameId)) return true;
     const gData = gameDict[gameId];
     if (gData && gData.pvpKey && pvpStatus.value) { if (pvpStatus.value[gData.pvpKey] === false) return true; }
-    if (studentAllowedGames.value && !studentAllowedGames.value.includes('ALL')) {
-        if (!studentAllowedGames.value.includes(gameId)) return true; 
+    if (effectiveAllowedGames.value && !effectiveAllowedGames.value.includes('ALL')) {
+        if (!effectiveAllowedGames.value.includes(gameId)) return true;
     }
     return false;
 };
@@ -300,8 +305,10 @@ const handleStartGame = async () => {
   if (!isTimeAllowed.value) { errorMsg.value = '⚠️ 目前非開放遊玩時段！'; return; }
   
   if (checkGameDisabled(selectedGameType.value)) { 
-      if (!studentAllowedGames.value.includes('ALL') && !studentAllowedGames.value.includes(selectedGameType.value)) {
-          errorMsg.value = '⚠️ 老師目前沒有開放這個遊戲給您玩喔！'; 
+      if (!effectiveAllowedGames.value.includes('ALL') && !effectiveAllowedGames.value.includes(selectedGameType.value)) {
+          errorMsg.value = schoolHoursActive.value
+            ? '⚠️ 這個遊戲目前不在上學時段白名單中！'
+            : '⚠️ 老師目前沒有開放這個遊戲給您玩喔！';
       } else {
           errorMsg.value = '⚠️ 此遊戲目前全校維護中，已被禁用！'; 
       }
@@ -343,7 +350,7 @@ const resetIdleTimer = () => {
 };
 const setupIdleTracking = () => { ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach(evt => window.addEventListener(evt, resetIdleTimer)); };
 const removeIdleTracking = () => { ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach(evt => window.removeEventListener(evt, resetIdleTimer)); clearTimeout(idleTimer); };
-onUnmounted(() => removeIdleTracking());
+onUnmounted(() => { removeIdleTracking(); clearInterval(schoolHoursTimer); });
 </script>
 
 <template>
@@ -369,6 +376,10 @@ onUnmounted(() => removeIdleTracking());
     <hr class="divider" />
     <div class="game-selection">
       <h3>🎮 選擇遊戲模式</h3>
+
+      <div v-if="schoolHoursActive && !studentCookie.isAnon" class="school-hours-banner">
+        🏫 上學時段白名單生效中（{{ SCHOOL_HOURS_LABEL }}，台灣時間）；放學後會自動恢復一般設定。
+      </div>
       
       <div v-if="!isTimeAllowed" class="lock-banner">
          ⏳ 系統目前為非開放時段，無法進行遊戲喔！<br>
@@ -412,6 +423,7 @@ onUnmounted(() => removeIdleTracking());
 .cat-title { width: 100%; margin: 10px 0; color: #ff9800; text-align: left; font-size: 1.1rem; border-bottom: 1px dashed #555; padding-bottom: 5px;}
 .lock-banner { background: #ffebee; border: 2px dashed #f44336; color: #c62828; padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; margin-bottom: 15px; font-size: 1.1rem; }
 .lock-banner.mini { padding: 8px; font-size: 0.95rem; margin-top: -5px; }
+.school-hours-banner { margin-bottom: 15px; padding: 10px 12px; border: 2px solid #7e57c2; border-radius: 8px; background: #f3e5f5; color: #4a148c; font-weight: bold; line-height: 1.5; }
 
 .picture2meaning-btn { background: #e1f5fe; color: #0288d1; border-color: #03a9f4;}
 .picture2meaning-btn.active { background: #0288d1; color: #fff; box-shadow: 0 4px 0 #01579b; border-color: #01579b; }

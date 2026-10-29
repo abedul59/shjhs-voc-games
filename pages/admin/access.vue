@@ -4,6 +4,7 @@ import { farmLessonKey } from '~/lib/happy-farm-access';
 import { regularClassPermissions, schoolClassNames } from '~/lib/admin-class-permissions';
 import { GAME_ACCESS_CATALOG, gamesGroupedByCategory, normalizeGameCategories } from '~/lib/game-access-catalog';
 import { formatVocabScope, normalizeVocabScope, sameVocabScope, vocabScopeKey } from '~/lib/vocab-scope-access';
+import { SCHOOL_HOURS_LABEL } from '~/lib/school-hours-access';
 
 const supabase = useSupabaseClient();
 const isLoading = ref(true);
@@ -45,6 +46,9 @@ const classStudents = ref([]);
 const isFetchingStudents = ref(false);
 const classAllowedMode = ref('ALL');
 const classAllowedGames = ref([]);
+const schoolHoursSchemaAvailable = ref(true);
+const classSchoolAllowedMode = ref('ALL');
+const classSchoolAllowedGames = ref([]);
 const classAccessSaving = ref(false);
 const classAccessMessage = ref('');
 const vocabScopeSchemaAvailable = ref(true);
@@ -96,6 +100,8 @@ const showStudentModal = ref(false);
 const editingStudent = ref(null);
 const tempAllowedMode = ref('ALL'); 
 const tempAllowedGames = ref([]);
+const tempSchoolAllowedMode = ref('ALL');
+const tempSchoolAllowedGames = ref([]);
 const tempScopeMode = ref('ALL');
 const tempScopeKeys = ref([]);
 const tempScopeVer = ref(''); const tempScopeVol = ref(''); const tempScopeUnit = ref('');
@@ -147,11 +153,15 @@ const toggleCategory = (selected, category) => {
 };
 const toggleClassCategory = (category) => { classAllowedGames.value = toggleCategory(classAllowedGames.value, category); };
 const toggleStudentCategory = (category) => { tempAllowedGames.value = toggleCategory(tempAllowedGames.value, category); };
+const toggleClassSchoolCategory = (category) => { classSchoolAllowedGames.value = toggleCategory(classSchoolAllowedGames.value, category); };
+const toggleStudentSchoolCategory = (category) => { tempSchoolAllowedGames.value = toggleCategory(tempSchoolAllowedGames.value, category); };
 const syncClassAccessDraft = (students) => {
   classAccessMessage.value = '';
   if (!students.length) {
     classAllowedMode.value = 'ALL';
     classAllowedGames.value = [];
+    classSchoolAllowedMode.value = 'ALL';
+    classSchoolAllowedGames.value = [];
     classScopeMode.value = 'ALL';
     classScopeKeys.value = [];
     return;
@@ -167,13 +177,18 @@ const syncClassAccessDraft = (students) => {
     classAllowedGames.value = first.includes('ALL') ? [] : first;
   }
 
+  const firstSchool = normalizeWhitelist(students[0].school_hours_allowed_games);
+  const schoolConsistent = students.every(student => sameWhitelist(student.school_hours_allowed_games, firstSchool));
+  classSchoolAllowedMode.value = schoolConsistent ? (firstSchool.includes('ALL') ? 'ALL' : 'CUSTOM') : 'MIXED';
+  classSchoolAllowedGames.value = schoolConsistent && !firstSchool.includes('ALL') ? firstSchool : [];
+
   const firstScope = normalizeVocabScope(students[0].allowed_vocab_scope);
   const scopeConsistent = students.every((student) => sameVocabScope(student.allowed_vocab_scope, firstScope));
   classScopeMode.value = scopeConsistent ? firstScope.mode : 'MIXED';
   classScopeKeys.value = scopeConsistent ? [...firstScope.scopes] : [];
 
-  if (consistent && scopeConsistent) {
-    classAccessMessage.value = `目前全班設定一致：${first.includes('ALL') ? '全部遊戲' : `${first.length} 款遊戲`}，${scopeSummary(firstScope)}。`;
+  if (consistent && schoolConsistent && scopeConsistent) {
+    classAccessMessage.value = `目前全班設定一致：一般時段 ${first.includes('ALL') ? '全部遊戲' : `${first.length} 款遊戲`}；上學時段 ${firstSchool.includes('ALL') ? '全部遊戲' : `${firstSchool.length} 款遊戲`}；${scopeSummary(firstScope)}。`;
   } else {
     classAccessMessage.value = '目前班內存在不同的個別設定；選擇新模式並儲存後，將統一覆蓋全班。';
   }
@@ -254,15 +269,30 @@ const fetchStudents = async () => {
   classStudents.value = [];
   classAllowedMode.value = 'ALL';
   classAllowedGames.value = [];
+  classSchoolAllowedMode.value = 'ALL';
+  classSchoolAllowedGames.value = [];
   classAccessMessage.value = '';
-  let { data, error } = await supabase.from('students').select('id, real_name, seat_number, allowed_games, allowed_vocab_scope').eq('class_name', selStudentClass.value).order('seat_number', { ascending: true });
-  if (error && /allowed_vocab_scope/i.test(error.message || '')) {
-    vocabScopeSchemaAvailable.value = false;
-    const fallback = await supabase.from('students').select('id, real_name, seat_number, allowed_games').eq('class_name', selStudentClass.value).order('seat_number', { ascending: true });
-    data = (fallback.data || []).map(student => ({ ...student, allowed_vocab_scope: { mode: 'ALL', scopes: [] } }));
-    error = fallback.error;
-  } else if (!error) {
-    vocabScopeSchemaAvailable.value = true;
+  const baseResult = await supabase.from('students').select('id, real_name, seat_number, allowed_games').eq('class_name', selStudentClass.value).order('seat_number', { ascending: true });
+  let data = (baseResult.data || []).map(student => ({
+    ...student,
+    allowed_vocab_scope: { mode: 'ALL', scopes: [] },
+    school_hours_allowed_games: ['ALL']
+  }));
+  let error = baseResult.error;
+  if (!error && data.length) {
+    const [scopeResult, schoolResult] = await Promise.all([
+      supabase.from('students').select('id, allowed_vocab_scope').eq('class_name', selStudentClass.value),
+      supabase.from('students').select('id, school_hours_allowed_games').eq('class_name', selStudentClass.value)
+    ]);
+    vocabScopeSchemaAvailable.value = !scopeResult.error;
+    schoolHoursSchemaAvailable.value = !schoolResult.error;
+    const scopes = new Map((scopeResult.data || []).map(student => [student.id, student.allowed_vocab_scope]));
+    const schoolGames = new Map((schoolResult.data || []).map(student => [student.id, student.school_hours_allowed_games]));
+    data = data.map(student => ({
+      ...student,
+      allowed_vocab_scope: scopes.get(student.id) || student.allowed_vocab_scope,
+      school_hours_allowed_games: schoolGames.get(student.id) || student.school_hours_allowed_games
+    }));
   }
   if (error) {
     classStudents.value = [];
@@ -282,6 +312,9 @@ const openStudentModal = (student) => {
   const currentAllowed = student.allowed_games || ['ALL'];
   if (currentAllowed.includes('ALL')) { tempAllowedMode.value = 'ALL'; tempAllowedGames.value = []; } 
   else { tempAllowedMode.value = 'CUSTOM'; tempAllowedGames.value = [...currentAllowed]; }
+  const currentSchoolAllowed = student.school_hours_allowed_games || ['ALL'];
+  if (currentSchoolAllowed.includes('ALL')) { tempSchoolAllowedMode.value = 'ALL'; tempSchoolAllowedGames.value = []; }
+  else { tempSchoolAllowedMode.value = 'CUSTOM'; tempSchoolAllowedGames.value = [...currentSchoolAllowed]; }
   const currentScope = normalizeVocabScope(student.allowed_vocab_scope);
   tempScopeMode.value = currentScope.mode;
   tempScopeKeys.value = [...currentScope.scopes];
@@ -295,19 +328,22 @@ const saveClassAccess = async () => {
     classAccessMessage.value = '此班目前沒有學生，沒有可套用的帳號。';
     return;
   }
-  if (classAllowedMode.value === 'MIXED' || classScopeMode.value === 'MIXED') {
-    classAccessMessage.value = '請先為遊戲及教材範圍各選擇一種設定模式。';
+  if (classAllowedMode.value === 'MIXED' || classSchoolAllowedMode.value === 'MIXED' || classScopeMode.value === 'MIXED') {
+    classAccessMessage.value = '請先為一般遊戲、上學時段遊戲及教材範圍各選擇一種設定模式。';
     return;
   }
   const finalAllowed = classAllowedMode.value === 'ALL' ? ['ALL'] : normalizeWhitelist(classAllowedGames.value).filter((gameId) => gameId !== 'ALL');
+  const finalSchoolAllowed = classSchoolAllowedMode.value === 'ALL' ? ['ALL'] : normalizeWhitelist(classSchoolAllowedGames.value).filter(gameId => gameId !== 'ALL');
   const finalScope = normalizeVocabScope({ mode: classScopeMode.value, scopes: classScopeKeys.value });
   if (classAllowedMode.value === 'CUSTOM' && finalAllowed.length === 0 && !confirm('目前沒有勾選任何遊戲，套用後全班都無法進行遊戲。確定繼續嗎？')) return;
+  if (classSchoolAllowedMode.value === 'CUSTOM' && finalSchoolAllowed.length === 0 && !confirm('上學時段沒有勾選任何遊戲，該時段全班將無法進行遊戲。確定繼續嗎？')) return;
   if (classScopeMode.value === 'CUSTOM' && finalScope.scopes.length === 0 && !confirm('目前沒有加入任何教材範圍，套用後全班都無法選擇單元。確定繼續嗎？')) return;
   if (!confirm(`確定將遊戲與教材範圍套用到 ${selStudentClass.value} 班全部 ${classStudents.value.length} 位學生嗎？\n\n這會覆蓋目前的個別學生設定；之後仍可再為單一學生設定例外。`)) return;
 
   classAccessSaving.value = true;
   classAccessMessage.value = '';
   const payload = { allowed_games: finalAllowed };
+  if (schoolHoursSchemaAvailable.value) payload.school_hours_allowed_games = finalSchoolAllowed;
   if (vocabScopeSchemaAvailable.value) payload.allowed_vocab_scope = finalScope;
   const { error } = await supabase.from('students').update(payload).eq('class_name', selStudentClass.value);
   classAccessSaving.value = false;
@@ -315,30 +351,33 @@ const saveClassAccess = async () => {
     classAccessMessage.value = `全班套用失敗：${error.message}`;
     return;
   }
-  classStudents.value = classStudents.value.map((student) => ({ ...student, allowed_games: [...finalAllowed], allowed_vocab_scope: finalScope }));
+  classStudents.value = classStudents.value.map((student) => ({ ...student, allowed_games: [...finalAllowed], school_hours_allowed_games: [...finalSchoolAllowed], allowed_vocab_scope: finalScope }));
   syncClassAccessDraft(classStudents.value);
-  classAccessMessage.value = vocabScopeSchemaAvailable.value
-    ? `已將遊戲與教材範圍套用到 ${selStudentClass.value} 班 ${classStudents.value.length} 位學生；學生重新整理前台後生效。`
-    : '遊戲白名單已儲存；教材範圍尚未儲存，請先執行本次 Supabase SQL。';
+  classAccessMessage.value = vocabScopeSchemaAvailable.value && schoolHoursSchemaAvailable.value
+    ? `已將一般時段、上學時段與教材範圍套用到 ${selStudentClass.value} 班 ${classStudents.value.length} 位學生；學生重新整理前台後生效。`
+    : '可用欄位已儲存；尚未啟用的功能需先執行對應 Supabase SQL。';
 };
 
 const saveStudentAccess = async () => {
   const finalAllowed = tempAllowedMode.value === 'ALL' ? ['ALL'] : normalizeWhitelist(tempAllowedGames.value).filter((gameId) => gameId !== 'ALL');
+  const finalSchoolAllowed = tempSchoolAllowedMode.value === 'ALL' ? ['ALL'] : normalizeWhitelist(tempSchoolAllowedGames.value).filter(gameId => gameId !== 'ALL');
   const finalScope = normalizeVocabScope({ mode: tempScopeMode.value, scopes: tempScopeKeys.value });
   if (tempAllowedMode.value === 'CUSTOM' && finalAllowed.length === 0) {
     if (!confirm('您沒有勾選任何遊戲，這位學生將無法進行任何挑戰！確定要這樣設定嗎？')) return;
   }
+  if (tempSchoolAllowedMode.value === 'CUSTOM' && finalSchoolAllowed.length === 0 && !confirm('上學時段沒有勾選任何遊戲，這位學生在該時段將無法進行遊戲。確定繼續嗎？')) return;
   if (tempScopeMode.value === 'CUSTOM' && finalScope.scopes.length === 0 && !confirm('沒有加入教材範圍，這位學生將無法選擇任何單元。確定繼續嗎？')) return;
   const payload = { allowed_games: finalAllowed };
+  if (schoolHoursSchemaAvailable.value) payload.school_hours_allowed_games = finalSchoolAllowed;
   if (vocabScopeSchemaAvailable.value) payload.allowed_vocab_scope = finalScope;
   const { error } = await supabase.from('students').update(payload).eq('id', editingStudent.value.id);
   if (error) {
     alert(`❌ 儲存失敗：${error.message}`);
     return;
   }
-  alert(vocabScopeSchemaAvailable.value
-    ? `✅ 已更新 ${editingStudent.value.real_name} 的遊戲與教材範圍！`
-    : `⚠️ 已更新遊戲白名單；教材範圍需先執行 Supabase SQL 才能儲存。`);
+  alert(vocabScopeSchemaAvailable.value && schoolHoursSchemaAvailable.value
+    ? `✅ 已更新 ${editingStudent.value.real_name} 的一般時段、上學時段與教材範圍！`
+    : `⚠️ 已更新可用欄位；其餘功能需先執行對應 Supabase SQL。`);
   showStudentModal.value = false;
   fetchStudents();
 };
@@ -468,6 +507,7 @@ const saveStudentAccess = async () => {
           </div>
 
           <div class="radio-group compact-radio-group">
+            <strong class="period-label">一般時段（放學後、週末及其他時間）</strong>
             <label><input v-model="classAllowedMode" type="radio" value="ALL"> 🟢 全部開放</label>
             <label><input v-model="classAllowedMode" type="radio" value="CUSTOM"> 🟠 依分類自訂白名單</label>
             <span v-if="classAllowedMode === 'MIXED'" class="mixed-badge">目前班內設定不一致</span>
@@ -496,6 +536,37 @@ const saveStudentAccess = async () => {
               </fieldset>
             </div>
           </template>
+
+          <div class="school-hours-section">
+            <h4>🏫 上學時段遊戲白名單</h4>
+            <p><strong>{{ SCHOOL_HOURS_LABEL }}</strong>（台灣時間）自動套用；離開時段後自動恢復上方的一般設定。</p>
+            <div v-if="!schoolHoursSchemaAvailable" class="schema-warning">
+              尚未啟用上學時段欄位。請先在 Supabase 執行
+              <code>supabase/sql-editor/school_hours_game_access_existing_project_setup.sql</code>。
+            </div>
+            <div class="radio-group compact-radio-group">
+              <label><input v-model="classSchoolAllowedMode" type="radio" value="ALL" :disabled="!schoolHoursSchemaAvailable"> 🟢 上學時段全部開放</label>
+              <label><input v-model="classSchoolAllowedMode" type="radio" value="CUSTOM" :disabled="!schoolHoursSchemaAvailable"> 🟠 上學時段自訂白名單</label>
+              <span v-if="classSchoolAllowedMode === 'MIXED'" class="mixed-badge">目前班內上學時段設定不一致</span>
+            </div>
+            <template v-if="classSchoolAllowedMode === 'CUSTOM'">
+              <div class="selection-toolbar">
+                <button type="button" class="mini-action" @click="classSchoolAllowedGames = gamesList.map(game => game.id)">全選所有遊戲</button>
+                <button type="button" class="mini-action" @click="classSchoolAllowedGames = []">全部取消</button>
+                <strong>已選 {{ classSchoolAllowedGames.length }}／{{ gamesList.length }} 款</strong>
+              </div>
+              <div class="permission-categories">
+                <fieldset v-for="category in groupedGames" :key="`school-${category.id}`" class="permission-category">
+                  <legend><label><input type="checkbox" :checked="categoryFullySelected(classSchoolAllowedGames, category)" @change="toggleClassSchoolCategory(category)"> {{ category.name }}（{{ category.games.length }}）</label></legend>
+                  <div class="category-games-grid">
+                    <label v-for="game in category.games" :key="game.id" class="custom-game-cb" :class="{ selected: classSchoolAllowedGames.includes(game.id) }">
+                      <input v-model="classSchoolAllowedGames" type="checkbox" :value="game.id">{{ game.name }}
+                    </label>
+                  </div>
+                </fieldset>
+              </div>
+            </template>
+          </div>
 
           <div class="scope-section">
             <h4>📚 全班可用教材版本與範圍</h4>
@@ -542,7 +613,7 @@ const saveStudentAccess = async () => {
 
         <div v-if="isFetchingStudents">讀取學生名單中...</div>
         <table v-else class="students-table">
-          <thead><tr><th width="60">座號</th><th>姓名</th><th>遊戲權限</th><th>教材範圍</th><th width="120">操作</th></tr></thead>
+          <thead><tr><th width="60">座號</th><th>姓名</th><th>一般時段</th><th>上學時段</th><th>教材範圍</th><th width="120">操作</th></tr></thead>
           <tbody>
             <tr v-for="stu in classStudents" :key="stu.id">
               <td>{{ stu.seat_number }}</td>
@@ -551,10 +622,14 @@ const saveStudentAccess = async () => {
                 <span v-if="!stu.allowed_games || stu.allowed_games.includes('ALL')" class="badge bg-green">🟢 全部開放</span>
                 <span v-else class="badge bg-orange">🟠 自訂白名單 (開放 {{ stu.allowed_games.length }} 款)</span>
               </td>
+              <td>
+                <span v-if="!stu.school_hours_allowed_games || stu.school_hours_allowed_games.includes('ALL')" class="badge bg-green">🟢 全部開放</span>
+                <span v-else class="badge bg-purple">🏫 開放 {{ stu.school_hours_allowed_games.length }} 款</span>
+              </td>
               <td><span class="badge" :class="normalizeVocabScope(stu.allowed_vocab_scope).mode === 'ALL' ? 'bg-green' : 'bg-blue'">{{ scopeSummary(stu.allowed_vocab_scope) }}</span></td>
               <td><button class="retro-btn btn-small" @click="openStudentModal(stu)">⚙️ 設定</button></td>
             </tr>
-            <tr v-if="classStudents.length === 0"><td colspan="5" style="text-align: center; color: #777;">此班級目前無學生資料</td></tr>
+            <tr v-if="classStudents.length === 0"><td colspan="6" style="text-align: center; color: #777;">此班級目前無學生資料</td></tr>
           </tbody>
         </table>
       </div>
@@ -593,6 +668,32 @@ const saveStudentAccess = async () => {
                 </label>
               </div>
             </fieldset>
+          </div>
+        </div>
+
+        <div class="school-hours-section modal-school-hours-section">
+          <h3>🏫 個別上學時段遊戲白名單</h3>
+          <p><strong>{{ SCHOOL_HOURS_LABEL }}</strong>（台灣時間）套用；其他時間自動回到上方的一般設定。</p>
+          <div class="radio-group compact-radio-group">
+            <label><input v-model="tempSchoolAllowedMode" type="radio" value="ALL" :disabled="!schoolHoursSchemaAvailable"> 🟢 上學時段全部開放</label>
+            <label><input v-model="tempSchoolAllowedMode" type="radio" value="CUSTOM" :disabled="!schoolHoursSchemaAvailable"> 🟠 上學時段自訂白名單</label>
+          </div>
+          <div v-if="tempSchoolAllowedMode === 'CUSTOM'">
+            <div class="selection-toolbar">
+              <button type="button" class="mini-action" @click="tempSchoolAllowedGames = gamesList.map(game => game.id)">全選所有遊戲</button>
+              <button type="button" class="mini-action" @click="tempSchoolAllowedGames = []">全部取消</button>
+              <strong>已選 {{ tempSchoolAllowedGames.length }}／{{ gamesList.length }} 款</strong>
+            </div>
+            <div class="permission-categories">
+              <fieldset v-for="category in groupedGames" :key="`student-school-${category.id}`" class="permission-category">
+                <legend><label><input type="checkbox" :checked="categoryFullySelected(tempSchoolAllowedGames, category)" @change="toggleStudentSchoolCategory(category)"> {{ category.name }}（{{ category.games.length }}）</label></legend>
+                <div class="category-games-grid">
+                  <label v-for="game in category.games" :key="game.id" class="custom-game-cb" :class="{ selected: tempSchoolAllowedGames.includes(game.id) }">
+                    <input v-model="tempSchoolAllowedGames" type="checkbox" :value="game.id">{{ game.name }}
+                  </label>
+                </div>
+              </fieldset>
+            </div>
           </div>
         </div>
 
@@ -699,6 +800,12 @@ const saveStudentAccess = async () => {
 .bg-green { background: #4caf50; }
 .bg-orange { background: #ff9800; }
 .bg-blue { background: #1976d2; }
+.bg-purple { background: #7b1fa2; }
+.period-label { width: 100%; color: #37474f; }
+.school-hours-section { margin-top: 20px; padding: 18px; border: 2px solid #9575cd; border-radius: 9px; background: #f3e5f5; }
+.school-hours-section h4, .school-hours-section h3 { margin: 0 0 6px; color: #4a148c; }
+.school-hours-section > p { margin: 0 0 12px; color: #4a148c; line-height: 1.5; }
+.modal-school-hours-section { margin-bottom: 20px; }
 .scope-section { margin-top: 20px; padding-top: 18px; border-top: 2px dashed #a5d6a7; }
 .scope-section h4, .scope-section h3 { margin: 0 0 6px; color: #1565c0; }
 .scope-section > p { margin: 0 0 12px; color: #455a64; line-height: 1.5; }
