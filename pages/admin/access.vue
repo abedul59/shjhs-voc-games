@@ -2,6 +2,7 @@
 import { ref, onMounted, computed, watch } from 'vue';
 import { farmLessonKey } from '~/lib/happy-farm-access';
 import { regularClassPermissions, schoolClassNames } from '~/lib/admin-class-permissions';
+import { GAME_ACCESS_CATALOG, gamesGroupedByCategory, normalizeGameCategories } from '~/lib/game-access-catalog';
 
 const supabase = useSupabaseClient();
 const isLoading = ref(true);
@@ -25,37 +26,9 @@ const settings = ref({
 const vocabMenu = ref([]);
 const selVer = ref(''); const selVol = ref(''); const selUnit = ref('');
 
-const gamesList = [
-  { id: 'happyFarm', name: '🌻 單字開心農場' },
-  { id: 'isekaiFarm', name: '✧ 單字異世界悠閒農莊' },
-  { id: 'alchemyAtelier', name: '⚗️ 單字鍊金工房' },
-  { id: 'chess', name: '♔ 單字西洋棋' },
-  { id: 'vocabularyCity', name: '🏙️ 單字城市建造家' },
-  { id: 'vocabularyZoo', name: '🦁 單字模擬動物園' },
-  { id: 'vocabularyStairs', name: '🪜 單字小朋友下樓梯' },
-  { id: 'vocabularyCircus', name: '🎪 單字馬戲團' },
-  { id: 'vocabularyCandy', name: '🍬 單字 Candy Crush' },
-  { id: 'vocabularySubway', name: '🚇 單字地鐵跑酷' },
-  { id: 'convenienceStore', name: '🏪 單字便利商店' },
-  { id: 'go', name: '⚫ 單字圍棋' },
-  { id: 'xiangqi', name: '帥 單字象棋' },
-  { id: 'railwayTour', name: '🚂 單字鐵路旅遊高手' },
-  { id: 'monopolyDual', name: '🏘️ 單字大富翁（雙人）' },
-  { id: 'pikavolleyDual', name: '⚡ 皮卡丘排球（雙人）' },
-  { id: 'angrybirdsDual', name: '🐦 單字憤怒鳥（雙人）' },
-  { id: 'match', name: '🟦 方塊消消樂' }, { id: 'move', name: '🔠 單字神移動' }, { id: 'choice', name: '✅ 單字選選樂' }, { id: 'fill', name: '⌨️ 單字填一填' },
-  { id: 'sentence', name: '📝 單字例句神絕配' }, { id: 'listen', name: '🎧 單字例句順風耳' }, { id: 'puzzle', name: '🧩 單字拼起來' }, { id: 'speakno1', name: '🗣️ 英語口說學霸-多元評量' },
-  { id: 'speak', name: '🎙️ 單字口說測一測' }, { id: 'cross', name: '🔠 單字填字FUN' }, { id: 'review', name: '✍️ 單字複習趣' }, { id: 'tetris', name: '🧱 俄羅斯方塊' },
-  { id: 'pinball', name: '🎰 單字彈珠台' }, { id: 'angrybirds', name: '🐦 單字憤怒鳥' }, { id: 'solitaire', name: '🃏 撲克牌接龍' }, { id: 'pikavolley', name: '⚡ 皮卡丘排球' },
-  { id: 'pacman', name: '👻 單字小精靈' }, { id: 'minesweeper', name: '💣 單字踩地雷' }, { id: 'sudoku', name: '🔢 單字9x9數獨' }, { id: 'tarotUno1', name: '🃏 塔羅UNO(單)' },
-  { id: 'tarot21solo', name: '🃏 塔羅21點(單)' }, { id: 'tarotAlch1', name: '🔮 塔羅鍊金術(單)' }, { id: 'ninja', name: '🥷 單字音節忍者' }, { id: 'picture2meaning', name: '🖼️ 單字看圖辨義' }, 
-  { id: 'examListen1', name: '💯 仿會考-辨識句意' }, { id: 'examRead1', name: '📜 會考閱讀考古學(單題)' }, { id: 'shake2shuffle', name: '🧋 單字搖搖杯' }, { id: 'tilt2sort', name: '⚖️ 左右為難：單字天平' }, 
-  { id: 'gravitymaze', name: '🔮 單字迷宮滾滾球' }, { id: 'swing2cast', name: '🪄 霍格華茲單字魔法杖' }, { id: 'ARsniper', name: '🔫 AR實境單字狙擊手' }, { id: 'GPSmap', name: '🌍 單字地圖 GO' }, 
-  { id: 'speakno2', name: '📖 英語口說學霸-朗讀與說故事' }, { id: 'KKphonetics', name: '🔤 KK音標初學/複習' }, { id: 'Phonics', name: '🔤 自然發音初學/複習' }, { id: 'speakno3', name: '🎤 英語口說學霸-英語歌唱' }, 
-  { id: 'examRead2', name: '📜 會考閱讀考古學(題組)' }, { id: 'gramAmuPark', name: '🎡 文法遊樂園' }, { id: 'noropejump', name: '🏃‍♂️ 單字無繩式跳繩' }, { id: 'vocshooting', name: '🥊 單字飛鼠射擊' },
-   { id: 'verbAmuPark', name: '🎢 動詞變化遊樂園' },
-   { id: 'verbMonopoly', name: '🏘️ 動詞變化大富翁' },
-];
+const gamesList = GAME_ACCESS_CATALOG;
+const gameCategories = ref(normalizeGameCategories([]));
+const groupedGames = computed(() => gamesGroupedByCategory(gameCategories.value));
 
 const daysList = [{ val: 1, label: '一' }, { val: 2, label: '二' }, { val: 3, label: '三' }, { val: 4, label: '四' }, { val: 5, label: '五' }, { val: 6, label: '六' }, { val: 0, label: '日' }];
 
@@ -69,6 +42,10 @@ const displayClasses = computed(() => {
 const selStudentClass = ref('');
 const classStudents = ref([]);
 const isFetchingStudents = ref(false);
+const classAllowedMode = ref('ALL');
+const classAllowedGames = ref([]);
+const classAccessSaving = ref(false);
+const classAccessMessage = ref('');
 const farmPolicy = ref({ mode: 'all', units: [] });
 const farmPolicyGame = ref('happy');
 const farmPolicyTable = computed(() => farmPolicyGame.value === 'isekai' ? 'isekai_farm_lesson_access' : 'happy_farm_lesson_access');
@@ -115,6 +92,46 @@ const editingStudent = ref(null);
 const tempAllowedMode = ref('ALL'); 
 const tempAllowedGames = ref([]);
 
+const gameOrder = new Map(gamesList.map((game, index) => [game.id, index]));
+const normalizeWhitelist = (games) => {
+  if (!Array.isArray(games) || games.includes('ALL')) return ['ALL'];
+  return [...new Set(games)]
+    .filter((gameId) => gameOrder.has(gameId))
+    .sort((a, b) => gameOrder.get(a) - gameOrder.get(b));
+};
+const sameWhitelist = (left, right) => {
+  const a = normalizeWhitelist(left);
+  const b = normalizeWhitelist(right);
+  return a.length === b.length && a.every((gameId, index) => gameId === b[index]);
+};
+const categoryFullySelected = (selected, category) => category.games.every((game) => selected.includes(game.id));
+const toggleCategory = (selected, category) => {
+  const ids = category.games.map((game) => game.id);
+  if (ids.every((gameId) => selected.includes(gameId))) return selected.filter((gameId) => !ids.includes(gameId));
+  return normalizeWhitelist([...selected, ...ids]).filter((gameId) => gameId !== 'ALL');
+};
+const toggleClassCategory = (category) => { classAllowedGames.value = toggleCategory(classAllowedGames.value, category); };
+const toggleStudentCategory = (category) => { tempAllowedGames.value = toggleCategory(tempAllowedGames.value, category); };
+const syncClassAccessDraft = (students) => {
+  classAccessMessage.value = '';
+  if (!students.length) {
+    classAllowedMode.value = 'ALL';
+    classAllowedGames.value = [];
+    return;
+  }
+  const first = normalizeWhitelist(students[0].allowed_games);
+  const consistent = students.every((student) => sameWhitelist(student.allowed_games, first));
+  if (!consistent) {
+    classAllowedMode.value = 'MIXED';
+    classAllowedGames.value = [];
+    classAccessMessage.value = '目前班內存在不同的個別白名單；選擇新模式並儲存後，將統一覆蓋全班。';
+    return;
+  }
+  classAllowedMode.value = first.includes('ALL') ? 'ALL' : 'CUSTOM';
+  classAllowedGames.value = first.includes('ALL') ? [] : first;
+  classAccessMessage.value = `目前全班設定一致：${first.includes('ALL') ? '全部開放' : `開放 ${first.length} 款遊戲`}。`;
+};
+
 onMounted(async () => {
   const { data: vData } = await supabase.from('vocabularies').select('version, volume, unit').limit(10000);
   if (vData) {
@@ -125,6 +142,7 @@ onMounted(async () => {
   // ✨ 修改點：要求資料庫抓出 disable_anon_login
   const { data: s } = await supabase.from('system_settings').select('*').eq('id', 1).single();
   if (s) {
+    gameCategories.value = normalizeGameCategories(s.game_categories);
     studentNumberSchemaAvailable.value = Object.prototype.hasOwnProperty.call(s, 'student_number_login_enabled');
     settings.value.disabled_games = s.disabled_games || []; settings.value.locked_units = s.locked_units || [];
     settings.value.restrict_play_time = s.restrict_play_time || false; settings.value.allow_play_days = s.allow_play_days || [1,2,3,4,5];
@@ -186,8 +204,18 @@ const restoreLegacyLogin = async () => {
 const fetchStudents = async () => {
   if (!selStudentClass.value) return;
   isFetchingStudents.value = true;
-  const { data } = await supabase.from('students').select('id, real_name, seat_number, allowed_games').eq('class_name', selStudentClass.value).order('seat_number', { ascending: true });
-  if (data) classStudents.value = data;
+  classStudents.value = [];
+  classAllowedMode.value = 'ALL';
+  classAllowedGames.value = [];
+  classAccessMessage.value = '';
+  const { data, error } = await supabase.from('students').select('id, real_name, seat_number, allowed_games').eq('class_name', selStudentClass.value).order('seat_number', { ascending: true });
+  if (error) {
+    classStudents.value = [];
+    classAccessMessage.value = `讀取學生失敗：${error.message}`;
+  } else {
+    classStudents.value = data || [];
+    syncClassAccessDraft(classStudents.value);
+  }
   isFetchingStudents.value = false;
 };
 watch(selStudentClass, fetchStudents);
@@ -202,14 +230,46 @@ const openStudentModal = (student) => {
   showStudentModal.value = true;
 };
 
+const saveClassAccess = async () => {
+  if (!selStudentClass.value || !displayClasses.value.includes(selStudentClass.value)) return;
+  if (!classStudents.value.length) {
+    classAccessMessage.value = '此班目前沒有學生，沒有可套用的帳號。';
+    return;
+  }
+  if (classAllowedMode.value === 'MIXED') {
+    classAccessMessage.value = '請先選擇「全部開放」或「自訂白名單」。';
+    return;
+  }
+  const finalAllowed = classAllowedMode.value === 'ALL' ? ['ALL'] : normalizeWhitelist(classAllowedGames.value).filter((gameId) => gameId !== 'ALL');
+  if (classAllowedMode.value === 'CUSTOM' && finalAllowed.length === 0 && !confirm('目前沒有勾選任何遊戲，套用後全班都無法進行遊戲。確定繼續嗎？')) return;
+  if (!confirm(`確定將這份白名單套用到 ${selStudentClass.value} 班全部 ${classStudents.value.length} 位學生嗎？\n\n這會覆蓋目前的個別學生設定；之後仍可再為單一學生設定例外。`)) return;
+
+  classAccessSaving.value = true;
+  classAccessMessage.value = '';
+  const { error } = await supabase.from('students').update({ allowed_games: finalAllowed }).eq('class_name', selStudentClass.value);
+  classAccessSaving.value = false;
+  if (error) {
+    classAccessMessage.value = `全班套用失敗：${error.message}`;
+    return;
+  }
+  classStudents.value = classStudents.value.map((student) => ({ ...student, allowed_games: [...finalAllowed] }));
+  syncClassAccessDraft(classStudents.value);
+  classAccessMessage.value = `已將設定套用到 ${selStudentClass.value} 班 ${classStudents.value.length} 位學生；學生重新整理前台後生效。`;
+};
+
 const saveStudentAccess = async () => {
-  const finalAllowed = tempAllowedMode.value === 'ALL' ? ['ALL'] : [...tempAllowedGames.value];
+  const finalAllowed = tempAllowedMode.value === 'ALL' ? ['ALL'] : normalizeWhitelist(tempAllowedGames.value).filter((gameId) => gameId !== 'ALL');
   if (tempAllowedMode.value === 'CUSTOM' && finalAllowed.length === 0) {
     if (!confirm('您沒有勾選任何遊戲，這位學生將無法進行任何挑戰！確定要這樣設定嗎？')) return;
   }
-  await supabase.from('students').update({ allowed_games: finalAllowed }).eq('id', editingStudent.value.id);
+  const { error } = await supabase.from('students').update({ allowed_games: finalAllowed }).eq('id', editingStudent.value.id);
+  if (error) {
+    alert(`❌ 儲存失敗：${error.message}`);
+    return;
+  }
   alert(`✅ 已更新 ${editingStudent.value.real_name} 的專屬遊戲白名單！`);
-  showStudentModal.value = false; fetchStudents();
+  showStudentModal.value = false;
+  fetchStudents();
 };
 </script>
 
@@ -327,6 +387,51 @@ const saveStudentAccess = async () => {
           </select>
         </div>
 
+        <section class="class-access-panel" aria-labelledby="class-access-title">
+          <div class="class-access-heading">
+            <div>
+              <h4 id="class-access-title">👥 {{ selStudentClass || '目前' }} 班統一白名單</h4>
+              <p>分類及順序與「前台排版管理」完全相同。儲存後會一次套用全班，之後仍可在下方設定個別例外。</p>
+            </div>
+            <span class="student-count">{{ classStudents.length }} 位學生</span>
+          </div>
+
+          <div class="radio-group compact-radio-group">
+            <label><input v-model="classAllowedMode" type="radio" value="ALL"> 🟢 全部開放</label>
+            <label><input v-model="classAllowedMode" type="radio" value="CUSTOM"> 🟠 依分類自訂白名單</label>
+            <span v-if="classAllowedMode === 'MIXED'" class="mixed-badge">目前班內設定不一致</span>
+          </div>
+
+          <template v-if="classAllowedMode === 'CUSTOM'">
+            <div class="selection-toolbar">
+              <button type="button" class="mini-action" @click="classAllowedGames = gamesList.map(game => game.id)">全選所有遊戲</button>
+              <button type="button" class="mini-action" @click="classAllowedGames = []">全部取消</button>
+              <strong>已選 {{ classAllowedGames.length }}／{{ gamesList.length }} 款</strong>
+            </div>
+            <div class="permission-categories">
+              <fieldset v-for="category in groupedGames" :key="category.id" class="permission-category">
+                <legend>
+                  <label>
+                    <input type="checkbox" :checked="categoryFullySelected(classAllowedGames, category)" @change="toggleClassCategory(category)">
+                    {{ category.name }}（{{ category.games.length }}）
+                  </label>
+                </legend>
+                <div class="category-games-grid">
+                  <label v-for="game in category.games" :key="game.id" class="custom-game-cb" :class="{ selected: classAllowedGames.includes(game.id) }">
+                    <input v-model="classAllowedGames" type="checkbox" :value="game.id">
+                    {{ game.name }}
+                  </label>
+                </div>
+              </fieldset>
+            </div>
+          </template>
+
+          <p v-if="classAccessMessage" class="access-message" role="status">{{ classAccessMessage }}</p>
+          <button type="button" class="retro-btn btn-primary" :disabled="!selStudentClass || !classStudents.length || classAccessSaving" @click="saveClassAccess">
+            {{ classAccessSaving ? '套用中…' : `💾 套用到 ${selStudentClass || '目前'} 班全班` }}
+          </button>
+        </section>
+
         <div v-if="isFetchingStudents">讀取學生名單中...</div>
         <table v-else class="students-table">
           <thead><tr><th width="60">座號</th><th>姓名</th><th>目前權限狀態</th><th width="120">操作</th></tr></thead>
@@ -358,11 +463,28 @@ const saveStudentAccess = async () => {
           <label><input type="radio" v-model="tempAllowedMode" value="CUSTOM"> 🟠 自訂白名單 (只能玩勾選的遊戲)</label>
         </div>
 
-        <div v-if="tempAllowedMode === 'CUSTOM'" class="custom-games-list">
-          <label v-for="game in gamesList" :key="game.id" class="custom-game-cb">
-            <input type="checkbox" :value="game.id" v-model="tempAllowedGames" />
-            {{ game.name }}
-          </label>
+        <div v-if="tempAllowedMode === 'CUSTOM'">
+          <div class="selection-toolbar">
+            <button type="button" class="mini-action" @click="tempAllowedGames = gamesList.map(game => game.id)">全選所有遊戲</button>
+            <button type="button" class="mini-action" @click="tempAllowedGames = []">全部取消</button>
+            <strong>已選 {{ tempAllowedGames.length }}／{{ gamesList.length }} 款</strong>
+          </div>
+          <div class="permission-categories">
+            <fieldset v-for="category in groupedGames" :key="category.id" class="permission-category">
+              <legend>
+                <label>
+                  <input type="checkbox" :checked="categoryFullySelected(tempAllowedGames, category)" @change="toggleStudentCategory(category)">
+                  {{ category.name }}（{{ category.games.length }}）
+                </label>
+              </legend>
+              <div class="category-games-grid">
+                <label v-for="game in category.games" :key="game.id" class="custom-game-cb" :class="{ selected: tempAllowedGames.includes(game.id) }">
+                  <input v-model="tempAllowedGames" type="checkbox" :value="game.id">
+                  {{ game.name }}
+                </label>
+              </div>
+            </fieldset>
+          </div>
         </div>
 
         <div class="modal-actions" style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
@@ -412,6 +534,23 @@ const saveStudentAccess = async () => {
 .game-cb.is-disabled { background: #ffebee; border-color: #ef5350; color: #c62828; text-decoration: line-through; }
 
 /* 學生管理表格樣式 */
+.class-access-panel { margin: 18px 0 22px; padding: 18px; border: 2px solid #81c784; border-radius: 10px; background: #f1f8e9; }
+.class-access-heading { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+.class-access-heading h4 { margin: 0 0 6px; color: #1b5e20; font-size: 1.15rem; }
+.class-access-heading p { margin: 0 0 14px; color: #455a64; line-height: 1.55; }
+.student-count { flex: 0 0 auto; padding: 5px 10px; border-radius: 999px; background: #2e7d32; color: white; font-weight: bold; }
+.compact-radio-group { flex-direction: row; flex-wrap: wrap; margin-bottom: 14px; background: white; }
+.compact-radio-group label { font-size: 1rem; }
+.mixed-badge { padding: 5px 10px; border-radius: 999px; background: #fff3e0; color: #e65100; font-weight: bold; }
+.selection-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.selection-toolbar strong { margin-left: auto; color: #455a64; }
+.mini-action { padding: 6px 10px; border: 1px solid #78909c; border-radius: 5px; background: white; color: #37474f; font-weight: bold; cursor: pointer; }
+.permission-categories { display: grid; gap: 14px; margin-bottom: 14px; }
+.permission-category { min-width: 0; margin: 0; padding: 12px; border: 1px solid #b0bec5; border-radius: 8px; background: white; }
+.permission-category legend { padding: 0 7px; color: #263238; font-weight: bold; }
+.permission-category legend label { display: flex; align-items: center; gap: 7px; cursor: pointer; }
+.category-games-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+.access-message { padding: 10px 12px; border-left: 4px solid #2e7d32; background: white; color: #263238; line-height: 1.5; }
 .students-table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; border: 1px solid #ddd;}
 .students-table th, .students-table td { padding: 10px; border-bottom: 1px solid #eee; text-align: left; }
 .students-table th { background: #e8f5e9; color: #1b5e20; }
@@ -421,13 +560,18 @@ const saveStudentAccess = async () => {
 
 /* Modal 樣式 */
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; padding: 20px; box-sizing: border-box;}
-.modal-box { background: white; padding: 25px; border-radius: 12px; border: 3px solid #1565c0; width: 100%; max-width: 600px; max-height: 90vh; overflow-y: auto;}
+.modal-box { background: white; padding: 25px; border-radius: 12px; border: 3px solid #1565c0; width: 100%; max-width: 900px; max-height: 90vh; overflow-y: auto;}
 .radio-group { display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px; background: #f5f5f5; padding: 15px; border-radius: 8px; border: 1px dashed #ccc;}
 .radio-group label { font-size: 1.1rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px;}
 .radio-group input[type="radio"] { width: 18px; height: 18px; cursor: pointer; }
-.custom-games-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: #fff3e0; padding: 15px; border-radius: 8px; border: 2px solid #ffb74d;}
 .custom-game-cb { display: flex; align-items: center; gap: 8px; background: white; padding: 8px; border-radius: 6px; border: 1px solid #ccc; cursor: pointer; font-size: 0.95rem; font-weight: bold;}
 .custom-game-cb:hover { border-color: #ff9800; }
+.custom-game-cb.selected { background: #e8f5e9; border-color: #4caf50; color: #1b5e20; }
 
-@media (max-width: 768px) { .content-grid, .custom-games-list { grid-template-columns: 1fr; } }
+@media (max-width: 768px) {
+  .content-grid, .category-games-grid { grid-template-columns: 1fr; }
+  .header, .class-access-heading { align-items: stretch; flex-direction: column; }
+  .student-count { align-self: flex-start; }
+  .selection-toolbar strong { width: 100%; margin-left: 0; }
+}
 </style>
