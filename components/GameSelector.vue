@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed, onUnmounted, watch } from 'vue';
 import { farmLessonAllowed, farmPolicyTableMissing } from '~/lib/happy-farm-access';
+import { ALL_VOCAB_SCOPE, isVocabScopeAllowed, normalizeVocabScope } from '~/lib/vocab-scope-access';
 
 const props = defineProps({ autoLogoutMinutes: { type: Number, default: 10 } });
 const supabase = useSupabaseClient();
@@ -112,6 +113,22 @@ const accessSettings = ref({
 });
 
 const studentAllowedGames = ref(['ALL']);
+const studentVocabScope = ref({ ...ALL_VOCAB_SCOPE, scopes: [] });
+
+const lessonAllowedForStudent = (lesson) => isVocabScopeAllowed(studentVocabScope.value, lesson);
+const clearDisallowedSelection = () => {
+  if (selectedVersion.value && !vocabMenu.value.some(item => item.version === selectedVersion.value && lessonAllowedForStudent(item))) {
+    selectedVersion.value = ''; selectedVolume.value = ''; selectedUnit.value = '';
+    return;
+  }
+  if (selectedVolume.value && !vocabMenu.value.some(item => item.version === selectedVersion.value && item.volume === selectedVolume.value && lessonAllowedForStudent(item))) {
+    selectedVolume.value = ''; selectedUnit.value = '';
+    return;
+  }
+  if (selectedUnit.value && !lessonAllowedForStudent({ version: selectedVersion.value, volume: selectedVolume.value, unit: selectedUnit.value })) {
+    selectedUnit.value = '';
+  }
+};
 
 onMounted(async () => {
   const { data: vData } = await supabase.from('vocabularies').select('version, volume, unit').limit(10000);
@@ -200,14 +217,25 @@ onMounted(async () => {
   }
 
   if (studentCookie.value && !studentCookie.value.isAnon) {
-    const { data: stuData } = await supabase.from('students')
-      .select('allowed_games')
+    let { data: stuData, error: studentAccessError } = await supabase.from('students')
+      .select('allowed_games, allowed_vocab_scope')
       .eq('student_id', studentCookie.value.id) 
       .single();
+
+    if (studentAccessError && /allowed_vocab_scope/i.test(studentAccessError.message || '')) {
+      const fallback = await supabase.from('students')
+        .select('allowed_games')
+        .eq('student_id', studentCookie.value.id)
+        .single();
+      stuData = fallback.data;
+      studentAccessError = fallback.error;
+    }
       
-    if (stuData && stuData.allowed_games) {
+    if (!studentAccessError && stuData?.allowed_games) {
       studentAllowedGames.value = stuData.allowed_games;
     }
+    studentVocabScope.value = normalizeVocabScope(stuData?.allowed_vocab_scope);
+    clearDisallowedSelection();
   }
 
   setTimeout(() => {
@@ -226,9 +254,10 @@ onMounted(async () => {
   setupIdleTracking(); resetIdleTimer();
 });
 
-const availableVersions = computed(() => [...new Set(vocabMenu.value.map(item => item.version))].filter(Boolean));
-const availableVolumes = computed(() => [...new Set(vocabMenu.value.filter(item => item.version === selectedVersion.value).map(item => item.volume))].filter(Boolean));
-const availableUnits = computed(() => [...new Set(vocabMenu.value.filter(item => item.version === selectedVersion.value && item.volume === selectedVolume.value).map(item => item.unit))].filter(Boolean));
+const allowedVocabMenu = computed(() => vocabMenu.value.filter(lessonAllowedForStudent));
+const availableVersions = computed(() => [...new Set(allowedVocabMenu.value.map(item => item.version))].filter(Boolean));
+const availableVolumes = computed(() => [...new Set(allowedVocabMenu.value.filter(item => item.version === selectedVersion.value).map(item => item.volume))].filter(Boolean));
+const availableUnits = computed(() => [...new Set(allowedVocabMenu.value.filter(item => item.version === selectedVersion.value && item.volume === selectedVolume.value).map(item => item.unit))].filter(Boolean));
 
 const onVersionChange = () => { selectedVolume.value = ''; selectedUnit.value = ''; };
 const onVolumeChange = () => { selectedUnit.value = ''; };
@@ -286,6 +315,11 @@ const handleStartGame = async () => {
   }
 
   if (!selectedVersion.value || !selectedVolume.value || !selectedUnit.value) { errorMsg.value = '⚠️ 請完整選擇要挑戰的範圍！'; return; }
+  if (!lessonAllowedForStudent({ version: selectedVersion.value, volume: selectedVolume.value, unit: selectedUnit.value })) {
+    errorMsg.value = '⚠️ 老師目前沒有開放這個教材版本或單元給您使用！';
+    clearDisallowedSelection();
+    return;
+  }
   if (isUnitLocked.value) { errorMsg.value = '⚠️ 此單元已被老師鎖定，目前無法遊玩！'; return; }
 
   if (['happyFarm','isekaiFarm'].includes(selectedGameType.value) && studentCookie.value?.class) {
@@ -358,6 +392,7 @@ onUnmounted(() => removeIdleTracking());
 
       <div v-if="!isNoUnitGame">
         <h3 style="margin-top: 30px;">📚 選擇挑戰單元</h3>
+        <div v-if="availableVersions.length === 0" class="lock-banner mini">🔒 老師目前尚未開放可使用的教材版本或單元。</div>
         <div class="form-group"><select v-model="selectedVersion" @change="onVersionChange" class="retro-input"><option value="" disabled>1. 版本...</option><option v-for="v in availableVersions" :key="v" :value="v">{{ v }}</option></select></div>
         <div class="form-group"><select v-model="selectedVolume" @change="onVolumeChange" class="retro-input" :disabled="!selectedVersion"><option value="" disabled>2. 冊數...</option><option v-for="vol in availableVolumes" :key="vol" :value="vol">{{ vol }}</option></select></div>
         <div class="form-group"><select v-model="selectedUnit" class="retro-input" :disabled="!selectedVolume"><option value="" disabled>3. 單元...</option><option v-for="u in availableUnits" :key="u" :value="u">{{ u }}</option></select></div>

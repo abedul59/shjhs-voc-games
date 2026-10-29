@@ -3,6 +3,7 @@ import { ref, onMounted, computed, watch } from 'vue';
 import { farmLessonKey } from '~/lib/happy-farm-access';
 import { regularClassPermissions, schoolClassNames } from '~/lib/admin-class-permissions';
 import { GAME_ACCESS_CATALOG, gamesGroupedByCategory, normalizeGameCategories } from '~/lib/game-access-catalog';
+import { formatVocabScope, normalizeVocabScope, sameVocabScope, vocabScopeKey } from '~/lib/vocab-scope-access';
 
 const supabase = useSupabaseClient();
 const isLoading = ref(true);
@@ -46,6 +47,10 @@ const classAllowedMode = ref('ALL');
 const classAllowedGames = ref([]);
 const classAccessSaving = ref(false);
 const classAccessMessage = ref('');
+const vocabScopeSchemaAvailable = ref(true);
+const classScopeMode = ref('ALL');
+const classScopeKeys = ref([]);
+const classScopeVer = ref(''); const classScopeVol = ref(''); const classScopeUnit = ref('');
 const farmPolicy = ref({ mode: 'all', units: [] });
 const farmPolicyGame = ref('happy');
 const farmPolicyTable = computed(() => farmPolicyGame.value === 'isekai' ? 'isekai_farm_lesson_access' : 'happy_farm_lesson_access');
@@ -91,6 +96,36 @@ const showStudentModal = ref(false);
 const editingStudent = ref(null);
 const tempAllowedMode = ref('ALL'); 
 const tempAllowedGames = ref([]);
+const tempScopeMode = ref('ALL');
+const tempScopeKeys = ref([]);
+const tempScopeVer = ref(''); const tempScopeVol = ref(''); const tempScopeUnit = ref('');
+
+const scopeVolumes = (version) => [...new Set(vocabMenu.value.filter(item => item.version === version).map(item => item.volume))].filter(Boolean);
+const scopeUnits = (version, volume) => [...new Set(vocabMenu.value.filter(item => item.version === version && item.volume === volume).map(item => item.unit))].filter(Boolean);
+const addScope = (target, version, volume = '*', unit = '*') => {
+  if (!version || (unit !== '*' && !volume)) return;
+  const key = vocabScopeKey(version, volume, unit);
+  if (!target.value.includes(key)) target.value = [...target.value, key].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+};
+const removeScope = (target, key) => { target.value = target.value.filter(item => item !== key); };
+const addClassScope = (level) => addScope(
+  classScopeKeys,
+  classScopeVer.value,
+  level === 'version' ? '*' : classScopeVol.value,
+  level === 'unit' ? classScopeUnit.value : '*'
+);
+const addStudentScope = (level) => addScope(
+  tempScopeKeys,
+  tempScopeVer.value,
+  level === 'version' ? '*' : tempScopeVol.value,
+  level === 'unit' ? tempScopeUnit.value : '*'
+);
+const removeClassScope = (key) => removeScope(classScopeKeys, key);
+const removeStudentScope = (key) => removeScope(tempScopeKeys, key);
+const scopeSummary = (policy) => {
+  const normalized = normalizeVocabScope(policy);
+  return normalized.mode === 'ALL' ? '全部教材' : `指定 ${normalized.scopes.length} 個範圍`;
+};
 
 const gameOrder = new Map(gamesList.map((game, index) => [game.id, index]));
 const normalizeWhitelist = (games) => {
@@ -117,6 +152,8 @@ const syncClassAccessDraft = (students) => {
   if (!students.length) {
     classAllowedMode.value = 'ALL';
     classAllowedGames.value = [];
+    classScopeMode.value = 'ALL';
+    classScopeKeys.value = [];
     return;
   }
   const first = normalizeWhitelist(students[0].allowed_games);
@@ -125,11 +162,21 @@ const syncClassAccessDraft = (students) => {
     classAllowedMode.value = 'MIXED';
     classAllowedGames.value = [];
     classAccessMessage.value = '目前班內存在不同的個別白名單；選擇新模式並儲存後，將統一覆蓋全班。';
-    return;
+  } else {
+    classAllowedMode.value = first.includes('ALL') ? 'ALL' : 'CUSTOM';
+    classAllowedGames.value = first.includes('ALL') ? [] : first;
   }
-  classAllowedMode.value = first.includes('ALL') ? 'ALL' : 'CUSTOM';
-  classAllowedGames.value = first.includes('ALL') ? [] : first;
-  classAccessMessage.value = `目前全班設定一致：${first.includes('ALL') ? '全部開放' : `開放 ${first.length} 款遊戲`}。`;
+
+  const firstScope = normalizeVocabScope(students[0].allowed_vocab_scope);
+  const scopeConsistent = students.every((student) => sameVocabScope(student.allowed_vocab_scope, firstScope));
+  classScopeMode.value = scopeConsistent ? firstScope.mode : 'MIXED';
+  classScopeKeys.value = scopeConsistent ? [...firstScope.scopes] : [];
+
+  if (consistent && scopeConsistent) {
+    classAccessMessage.value = `目前全班設定一致：${first.includes('ALL') ? '全部遊戲' : `${first.length} 款遊戲`}，${scopeSummary(firstScope)}。`;
+  } else {
+    classAccessMessage.value = '目前班內存在不同的個別設定；選擇新模式並儲存後，將統一覆蓋全班。';
+  }
 };
 
 onMounted(async () => {
@@ -208,7 +255,15 @@ const fetchStudents = async () => {
   classAllowedMode.value = 'ALL';
   classAllowedGames.value = [];
   classAccessMessage.value = '';
-  const { data, error } = await supabase.from('students').select('id, real_name, seat_number, allowed_games').eq('class_name', selStudentClass.value).order('seat_number', { ascending: true });
+  let { data, error } = await supabase.from('students').select('id, real_name, seat_number, allowed_games, allowed_vocab_scope').eq('class_name', selStudentClass.value).order('seat_number', { ascending: true });
+  if (error && /allowed_vocab_scope/i.test(error.message || '')) {
+    vocabScopeSchemaAvailable.value = false;
+    const fallback = await supabase.from('students').select('id, real_name, seat_number, allowed_games').eq('class_name', selStudentClass.value).order('seat_number', { ascending: true });
+    data = (fallback.data || []).map(student => ({ ...student, allowed_vocab_scope: { mode: 'ALL', scopes: [] } }));
+    error = fallback.error;
+  } else if (!error) {
+    vocabScopeSchemaAvailable.value = true;
+  }
   if (error) {
     classStudents.value = [];
     classAccessMessage.value = `讀取學生失敗：${error.message}`;
@@ -227,6 +282,10 @@ const openStudentModal = (student) => {
   const currentAllowed = student.allowed_games || ['ALL'];
   if (currentAllowed.includes('ALL')) { tempAllowedMode.value = 'ALL'; tempAllowedGames.value = []; } 
   else { tempAllowedMode.value = 'CUSTOM'; tempAllowedGames.value = [...currentAllowed]; }
+  const currentScope = normalizeVocabScope(student.allowed_vocab_scope);
+  tempScopeMode.value = currentScope.mode;
+  tempScopeKeys.value = [...currentScope.scopes];
+  tempScopeVer.value = ''; tempScopeVol.value = ''; tempScopeUnit.value = '';
   showStudentModal.value = true;
 };
 
@@ -236,38 +295,50 @@ const saveClassAccess = async () => {
     classAccessMessage.value = '此班目前沒有學生，沒有可套用的帳號。';
     return;
   }
-  if (classAllowedMode.value === 'MIXED') {
-    classAccessMessage.value = '請先選擇「全部開放」或「自訂白名單」。';
+  if (classAllowedMode.value === 'MIXED' || classScopeMode.value === 'MIXED') {
+    classAccessMessage.value = '請先為遊戲及教材範圍各選擇一種設定模式。';
     return;
   }
   const finalAllowed = classAllowedMode.value === 'ALL' ? ['ALL'] : normalizeWhitelist(classAllowedGames.value).filter((gameId) => gameId !== 'ALL');
+  const finalScope = normalizeVocabScope({ mode: classScopeMode.value, scopes: classScopeKeys.value });
   if (classAllowedMode.value === 'CUSTOM' && finalAllowed.length === 0 && !confirm('目前沒有勾選任何遊戲，套用後全班都無法進行遊戲。確定繼續嗎？')) return;
-  if (!confirm(`確定將這份白名單套用到 ${selStudentClass.value} 班全部 ${classStudents.value.length} 位學生嗎？\n\n這會覆蓋目前的個別學生設定；之後仍可再為單一學生設定例外。`)) return;
+  if (classScopeMode.value === 'CUSTOM' && finalScope.scopes.length === 0 && !confirm('目前沒有加入任何教材範圍，套用後全班都無法選擇單元。確定繼續嗎？')) return;
+  if (!confirm(`確定將遊戲與教材範圍套用到 ${selStudentClass.value} 班全部 ${classStudents.value.length} 位學生嗎？\n\n這會覆蓋目前的個別學生設定；之後仍可再為單一學生設定例外。`)) return;
 
   classAccessSaving.value = true;
   classAccessMessage.value = '';
-  const { error } = await supabase.from('students').update({ allowed_games: finalAllowed }).eq('class_name', selStudentClass.value);
+  const payload = { allowed_games: finalAllowed };
+  if (vocabScopeSchemaAvailable.value) payload.allowed_vocab_scope = finalScope;
+  const { error } = await supabase.from('students').update(payload).eq('class_name', selStudentClass.value);
   classAccessSaving.value = false;
   if (error) {
     classAccessMessage.value = `全班套用失敗：${error.message}`;
     return;
   }
-  classStudents.value = classStudents.value.map((student) => ({ ...student, allowed_games: [...finalAllowed] }));
+  classStudents.value = classStudents.value.map((student) => ({ ...student, allowed_games: [...finalAllowed], allowed_vocab_scope: finalScope }));
   syncClassAccessDraft(classStudents.value);
-  classAccessMessage.value = `已將設定套用到 ${selStudentClass.value} 班 ${classStudents.value.length} 位學生；學生重新整理前台後生效。`;
+  classAccessMessage.value = vocabScopeSchemaAvailable.value
+    ? `已將遊戲與教材範圍套用到 ${selStudentClass.value} 班 ${classStudents.value.length} 位學生；學生重新整理前台後生效。`
+    : '遊戲白名單已儲存；教材範圍尚未儲存，請先執行本次 Supabase SQL。';
 };
 
 const saveStudentAccess = async () => {
   const finalAllowed = tempAllowedMode.value === 'ALL' ? ['ALL'] : normalizeWhitelist(tempAllowedGames.value).filter((gameId) => gameId !== 'ALL');
+  const finalScope = normalizeVocabScope({ mode: tempScopeMode.value, scopes: tempScopeKeys.value });
   if (tempAllowedMode.value === 'CUSTOM' && finalAllowed.length === 0) {
     if (!confirm('您沒有勾選任何遊戲，這位學生將無法進行任何挑戰！確定要這樣設定嗎？')) return;
   }
-  const { error } = await supabase.from('students').update({ allowed_games: finalAllowed }).eq('id', editingStudent.value.id);
+  if (tempScopeMode.value === 'CUSTOM' && finalScope.scopes.length === 0 && !confirm('沒有加入教材範圍，這位學生將無法選擇任何單元。確定繼續嗎？')) return;
+  const payload = { allowed_games: finalAllowed };
+  if (vocabScopeSchemaAvailable.value) payload.allowed_vocab_scope = finalScope;
+  const { error } = await supabase.from('students').update(payload).eq('id', editingStudent.value.id);
   if (error) {
     alert(`❌ 儲存失敗：${error.message}`);
     return;
   }
-  alert(`✅ 已更新 ${editingStudent.value.real_name} 的專屬遊戲白名單！`);
+  alert(vocabScopeSchemaAvailable.value
+    ? `✅ 已更新 ${editingStudent.value.real_name} 的遊戲與教材範圍！`
+    : `⚠️ 已更新遊戲白名單；教材範圍需先執行 Supabase SQL 才能儲存。`);
   showStudentModal.value = false;
   fetchStudents();
 };
@@ -376,8 +447,8 @@ const saveStudentAccess = async () => {
       </div>
 
       <div class="admin-card full-width" style="border-color: #4caf50;">
-        <h3 style="color: #2e7d32; border-bottom-color: #a5d6a7;">🧑‍🎓 學生個別遊戲開放設定 (白名單)</h3>
-        <p style="font-size: 0.95rem; color: #555; margin-bottom: 15px;">您可以針對程度不同的學生，設定他們今天只能玩哪些特定的遊戲（例如補救教學限定）。</p>
+        <h3 style="color: #2e7d32; border-bottom-color: #a5d6a7;">🧑‍🎓 班級與學生遊戲開放設定（白名單）</h3>
+        <p style="font-size: 0.95rem; color: #555; margin-bottom: 15px;">先以班級統一設定可用遊戲與教材版本／範圍，再針對需要不同安排的學生個別覆寫。</p>
         
         <div style="margin-bottom: 15px;">
           <label style="font-weight: bold; margin-right: 10px;">選擇班級：</label>
@@ -426,6 +497,43 @@ const saveStudentAccess = async () => {
             </div>
           </template>
 
+          <div class="scope-section">
+            <h4>📚 全班可用教材版本與範圍</h4>
+            <p>可開放整個版本、指定冊別或單一單元。設定會套用到所有需要選擇教材單元的遊戲。</p>
+            <div v-if="!vocabScopeSchemaAvailable" class="schema-warning">
+              尚未啟用教材範圍資料欄位。請先在 Supabase 執行
+              <code>supabase/sql-editor/student_vocab_scope_existing_project_setup.sql</code>；目前仍維持全部教材可用。
+            </div>
+            <div class="radio-group compact-radio-group">
+              <label><input v-model="classScopeMode" type="radio" value="ALL" :disabled="!vocabScopeSchemaAvailable"> 🟢 全部版本與單元</label>
+              <label><input v-model="classScopeMode" type="radio" value="CUSTOM" :disabled="!vocabScopeSchemaAvailable"> 🟠 指定教材範圍</label>
+              <span v-if="classScopeMode === 'MIXED'" class="mixed-badge">目前班內範圍不一致</span>
+            </div>
+            <template v-if="classScopeMode === 'CUSTOM'">
+              <div class="scope-builder">
+                <select v-model="classScopeVer" class="retro-input" @change="classScopeVol = ''; classScopeUnit = ''">
+                  <option value="">選擇版本</option><option v-for="version in availableVersions" :key="version" :value="version">{{ version }}</option>
+                </select>
+                <select v-model="classScopeVol" class="retro-input" :disabled="!classScopeVer" @change="classScopeUnit = ''">
+                  <option value="">選擇冊別</option><option v-for="volume in scopeVolumes(classScopeVer)" :key="volume" :value="volume">{{ volume }}</option>
+                </select>
+                <select v-model="classScopeUnit" class="retro-input" :disabled="!classScopeVol">
+                  <option value="">選擇單元</option><option v-for="unit in scopeUnits(classScopeVer, classScopeVol)" :key="unit" :value="unit">{{ unit }}</option>
+                </select>
+              </div>
+              <div class="scope-actions">
+                <button type="button" class="mini-action" :disabled="!classScopeVer" @click="addClassScope('version')">＋ 整個版本</button>
+                <button type="button" class="mini-action" :disabled="!classScopeVol" @click="addClassScope('volume')">＋ 整冊</button>
+                <button type="button" class="mini-action" :disabled="!classScopeUnit" @click="addClassScope('unit')">＋ 單元</button>
+                <button type="button" class="mini-action" @click="classScopeKeys = []">清空範圍</button>
+              </div>
+              <div class="scope-tags">
+                <span v-for="key in classScopeKeys" :key="key" class="scope-tag">{{ formatVocabScope(key) }} <button type="button" @click="removeClassScope(key)">✖</button></span>
+                <span v-if="!classScopeKeys.length" class="empty-scope">尚未加入範圍；儲存後全班將無法選擇教材單元。</span>
+              </div>
+            </template>
+          </div>
+
           <p v-if="classAccessMessage" class="access-message" role="status">{{ classAccessMessage }}</p>
           <button type="button" class="retro-btn btn-primary" :disabled="!selStudentClass || !classStudents.length || classAccessSaving" @click="saveClassAccess">
             {{ classAccessSaving ? '套用中…' : `💾 套用到 ${selStudentClass || '目前'} 班全班` }}
@@ -434,7 +542,7 @@ const saveStudentAccess = async () => {
 
         <div v-if="isFetchingStudents">讀取學生名單中...</div>
         <table v-else class="students-table">
-          <thead><tr><th width="60">座號</th><th>姓名</th><th>目前權限狀態</th><th width="120">操作</th></tr></thead>
+          <thead><tr><th width="60">座號</th><th>姓名</th><th>遊戲權限</th><th>教材範圍</th><th width="120">操作</th></tr></thead>
           <tbody>
             <tr v-for="stu in classStudents" :key="stu.id">
               <td>{{ stu.seat_number }}</td>
@@ -443,9 +551,10 @@ const saveStudentAccess = async () => {
                 <span v-if="!stu.allowed_games || stu.allowed_games.includes('ALL')" class="badge bg-green">🟢 全部開放</span>
                 <span v-else class="badge bg-orange">🟠 自訂白名單 (開放 {{ stu.allowed_games.length }} 款)</span>
               </td>
+              <td><span class="badge" :class="normalizeVocabScope(stu.allowed_vocab_scope).mode === 'ALL' ? 'bg-green' : 'bg-blue'">{{ scopeSummary(stu.allowed_vocab_scope) }}</span></td>
               <td><button class="retro-btn btn-small" @click="openStudentModal(stu)">⚙️ 設定</button></td>
             </tr>
-            <tr v-if="classStudents.length === 0"><td colspan="4" style="text-align: center; color: #777;">此班級目前無學生資料</td></tr>
+            <tr v-if="classStudents.length === 0"><td colspan="5" style="text-align: center; color: #777;">此班級目前無學生資料</td></tr>
           </tbody>
         </table>
       </div>
@@ -485,6 +594,38 @@ const saveStudentAccess = async () => {
               </div>
             </fieldset>
           </div>
+        </div>
+
+        <div class="scope-section modal-scope-section">
+          <h3>📚 個別教材版本與範圍</h3>
+          <p>這裡可覆寫剛才套用的全班設定，只影響這位學生。</p>
+          <div class="radio-group compact-radio-group">
+            <label><input v-model="tempScopeMode" type="radio" value="ALL" :disabled="!vocabScopeSchemaAvailable"> 🟢 全部版本與單元</label>
+            <label><input v-model="tempScopeMode" type="radio" value="CUSTOM" :disabled="!vocabScopeSchemaAvailable"> 🟠 指定教材範圍</label>
+          </div>
+          <template v-if="tempScopeMode === 'CUSTOM'">
+            <div class="scope-builder">
+              <select v-model="tempScopeVer" class="retro-input" @change="tempScopeVol = ''; tempScopeUnit = ''">
+                <option value="">選擇版本</option><option v-for="version in availableVersions" :key="version" :value="version">{{ version }}</option>
+              </select>
+              <select v-model="tempScopeVol" class="retro-input" :disabled="!tempScopeVer" @change="tempScopeUnit = ''">
+                <option value="">選擇冊別</option><option v-for="volume in scopeVolumes(tempScopeVer)" :key="volume" :value="volume">{{ volume }}</option>
+              </select>
+              <select v-model="tempScopeUnit" class="retro-input" :disabled="!tempScopeVol">
+                <option value="">選擇單元</option><option v-for="unit in scopeUnits(tempScopeVer, tempScopeVol)" :key="unit" :value="unit">{{ unit }}</option>
+              </select>
+            </div>
+            <div class="scope-actions">
+              <button type="button" class="mini-action" :disabled="!tempScopeVer" @click="addStudentScope('version')">＋ 整個版本</button>
+              <button type="button" class="mini-action" :disabled="!tempScopeVol" @click="addStudentScope('volume')">＋ 整冊</button>
+              <button type="button" class="mini-action" :disabled="!tempScopeUnit" @click="addStudentScope('unit')">＋ 單元</button>
+              <button type="button" class="mini-action" @click="tempScopeKeys = []">清空範圍</button>
+            </div>
+            <div class="scope-tags">
+              <span v-for="key in tempScopeKeys" :key="key" class="scope-tag">{{ formatVocabScope(key) }} <button type="button" @click="removeStudentScope(key)">✖</button></span>
+              <span v-if="!tempScopeKeys.length" class="empty-scope">尚未加入範圍；儲存後這位學生將無法選擇教材單元。</span>
+            </div>
+          </template>
         </div>
 
         <div class="modal-actions" style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
@@ -557,6 +698,18 @@ const saveStudentAccess = async () => {
 .badge { padding: 4px 8px; border-radius: 12px; font-size: 0.85rem; font-weight: bold; color: white; display: inline-block;}
 .bg-green { background: #4caf50; }
 .bg-orange { background: #ff9800; }
+.bg-blue { background: #1976d2; }
+.scope-section { margin-top: 20px; padding-top: 18px; border-top: 2px dashed #a5d6a7; }
+.scope-section h4, .scope-section h3 { margin: 0 0 6px; color: #1565c0; }
+.scope-section > p { margin: 0 0 12px; color: #455a64; line-height: 1.5; }
+.scope-builder { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.scope-actions, .scope-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.scope-tag { display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px; border: 1px solid #64b5f6; border-radius: 999px; background: #e3f2fd; color: #0d47a1; font-weight: bold; }
+.scope-tag button { border: 0; background: transparent; color: #c62828; cursor: pointer; font-weight: bold; }
+.empty-scope { color: #c62828; font-weight: bold; }
+.schema-warning { margin: 10px 0; padding: 10px; border: 1px solid #ffb74d; border-radius: 6px; background: #fff3e0; color: #bf360c; line-height: 1.5; }
+.schema-warning code { overflow-wrap: anywhere; }
+.modal-scope-section { border-top-color: #90caf9; }
 
 /* Modal 樣式 */
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; padding: 20px; box-sizing: border-box;}
@@ -569,7 +722,7 @@ const saveStudentAccess = async () => {
 .custom-game-cb.selected { background: #e8f5e9; border-color: #4caf50; color: #1b5e20; }
 
 @media (max-width: 768px) {
-  .content-grid, .category-games-grid { grid-template-columns: 1fr; }
+  .content-grid, .category-games-grid, .scope-builder { grid-template-columns: 1fr; }
   .header, .class-access-heading { align-items: stretch; flex-direction: column; }
   .student-count { align-self: flex-start; }
   .selection-toolbar strong { width: 100%; margin-left: 0; }
