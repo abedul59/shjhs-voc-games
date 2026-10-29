@@ -8,6 +8,7 @@ const categories = ref([]);
 const loadError = ref('');
 
 const allGames = [
+  { id: 'monopoly', name: '🏘️ 單字大富翁' },
   { id: 'happyFarm', name: '🌻 單字開心農場' },
   { id: 'isekaiFarm', name: '✧ 單字異世界悠閒農莊' },
   { id: 'alchemyAtelier', name: '⚗️ 單字鍊金工房' },
@@ -63,6 +64,7 @@ const allGames = [
   { id: 'Phonics', name: '🔤 自然發音初學/複習' },
   { id: 'gramAmuPark', name: '🎡 文法遊樂園' },
   { id: 'noropejump', name: '🏃‍♂️ 單字無繩式跳繩' },
+  { id: 'vocshooting', name: '🔫 單字飛鼠射擊' },
   { id: 'verbing', name: '🌀 動詞變化大師' },
   { id: 'verbAmuPark', name: '🎢 動詞變化遊樂園' }, 
   { id: 'verbMonopoly', name: '🏘️ 動詞變化大富翁' },
