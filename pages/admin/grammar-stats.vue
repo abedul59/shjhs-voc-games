@@ -10,8 +10,11 @@ const selectedClass = ref('all');
 
 const allQuestions = ref([]);
 const allAnswers = ref([]);
+const studentDirectory = ref({});
 const isLoading = ref(false);
 const activeTab = ref('student'); // student 或 question
+const studentSort = ref({ key: 'gradeRank', direction: 'asc' });
+const questionSort = ref({ key: 'wrong', direction: 'desc' });
 
 onMounted(async () => {
   // 取得目前題庫中有哪些「版本-冊數-單元」
@@ -44,31 +47,57 @@ const fetchStats = async () => {
     .select('*')
     .eq('version', version).eq('volume', volume).eq('unit', unit);
   allAnswers.value = aData || [];
+
+  const studentIds = [...new Set(allAnswers.value.map(answer => answer.student_id).filter(Boolean))];
+  studentDirectory.value = {};
+  if (studentIds.length) {
+    let studentResult = await supabase.from('students')
+      .select('student_id, school_student_id, class_name, seat_number, real_name')
+      .in('student_id', studentIds);
+    if (studentResult.error && /school_student_id/i.test(studentResult.error.message || '')) {
+      studentResult = await supabase.from('students')
+        .select('student_id, class_name, seat_number, real_name')
+        .in('student_id', studentIds);
+    }
+    studentDirectory.value = Object.fromEntries((studentResult.data || []).map(student => [student.student_id, student]));
+  }
   
   isLoading.value = false;
 };
 
 // 動態計算：目前作答紀錄中有哪些班級
+const answerClass = (answer) => studentDirectory.value[answer.student_id]?.class_name || answer.class_name || '未分班';
 const availableClasses = computed(() => {
   if (!allAnswers.value.length) return [];
-  const classes = [...new Set(allAnswers.value.map(ans => ans.class_name || '未分班'))];
+  const classes = [...new Set(allAnswers.value.map(answerClass))];
   return classes.filter(Boolean).sort();
 });
 
 // 核心過濾器：只留下被選中班級的作答紀錄
 const filteredAnswers = computed(() => {
   if (selectedClass.value === 'all') return allAnswers.value;
-  return allAnswers.value.filter(ans => (ans.class_name || '未分班') === selectedClass.value);
+  return allAnswers.value.filter(ans => answerClass(ans) === selectedClass.value);
 });
 
-// 🌟 分析表一：學生的完成度與精熟度 (升級：加入總題數、正確率、平均作答時間)
-const studentProgress = computed(() => {
+const gradeOf = (className) => {
+  const match = String(className || '').match(/^([789])/);
+  return match ? match[1] : null;
+};
+
+const buildStudentProgress = (answers) => {
   const map = {};
-  filteredAnswers.value.forEach(ans => {
-    if (!map[ans.student_id]) {
-      map[ans.student_id] = {
-        name: ans.real_name || '無名氏',
-        className: ans.class_name || '未分班',
+  answers.forEach(ans => {
+    const key = ans.student_id || `${ans.class_name || ''}|${ans.real_name || ''}`;
+    if (!map[key]) {
+      const student = studentDirectory.value[ans.student_id] || {};
+      const className = student.class_name || ans.class_name || '未分班';
+      map[key] = {
+        studentId: ans.student_id || key,
+        schoolStudentId: student.school_student_id || '',
+        seatNumber: student.seat_number ?? '',
+        name: student.real_name || ans.real_name || '無名氏',
+        className,
+        grade: gradeOf(className),
         attemptedSet: new Set(),
         correctSet: new Set(),
         totalAttempts: 0,        // 總作答題數 (含重複)
@@ -77,7 +106,7 @@ const studentProgress = computed(() => {
       };
     }
     
-    const s = map[ans.student_id];
+    const s = map[key];
     
     // 計算不重複的題目涵蓋率
     s.attemptedSet.add(ans.question_id);
@@ -96,22 +125,79 @@ const studentProgress = computed(() => {
     const avgTime = s.totalAttempts > 0 ? Math.round(s.totalTimeSpent / s.totalAttempts) : 0;
 
     return {
+      studentId: s.studentId,
+      schoolStudentId: s.schoolStudentId,
+      seatNumber: s.seatNumber,
       name: s.name,
       className: s.className,
+      grade: s.grade,
       attemptedUnique: s.attemptedSet.size,
       correctUnique: s.correctSet.size,
       totalAttempts: s.totalAttempts,
       accuracy: accuracy,
-      avgTime: avgTime
+      avgTime,
+      masteryRate: allQuestions.value.length ? Math.round((s.correctSet.size / allQuestions.value.length) * 100) : 0
     };
-  }).sort((a, b) => b.correctUnique - a.correctUnique); // 依已精熟題數排序
+  });
+};
+
+const allStudentProgress = computed(() => {
+  const students = buildStudentProgress(allAnswers.value);
+  const gradeGroups = new Map();
+  students.forEach(student => {
+    if (!student.grade) return;
+    if (!gradeGroups.has(student.grade)) gradeGroups.set(student.grade, []);
+    gradeGroups.get(student.grade).push(student);
+  });
+  gradeGroups.forEach(group => {
+    group.sort((a, b) => b.correctUnique - a.correctUnique);
+    let previousScore = null;
+    let rank = 0;
+    group.forEach((student, index) => {
+      if (student.correctUnique !== previousScore) rank = index + 1;
+      student.gradeRank = rank;
+      previousScore = student.correctUnique;
+    });
+  });
+  return students;
 });
 
+const compareValues = (left, right, direction) => {
+  const multiplier = direction === 'asc' ? 1 : -1;
+  const leftEmpty = left === null || left === undefined || left === '';
+  const rightEmpty = right === null || right === undefined || right === '';
+  if (leftEmpty || rightEmpty) {
+    if (leftEmpty && rightEmpty) return 0;
+    return leftEmpty ? 1 : -1;
+  }
+  if (typeof left === 'number' && typeof right === 'number') return (left - right) * multiplier;
+  return String(left).localeCompare(String(right), 'zh-Hant', { numeric: true, sensitivity: 'base' }) * multiplier;
+};
+
+const sortedRows = (rows, sort) => [...rows].sort((a, b) => {
+  const primary = compareValues(a[sort.key], b[sort.key], sort.direction);
+  if (primary !== 0) return primary;
+  return compareValues(`${a.className || ''}${String(a.seatNumber || '').padStart(3, '0')}${a.name || a.text || ''}`, `${b.className || ''}${String(b.seatNumber || '').padStart(3, '0')}${b.name || b.text || ''}`, 'asc');
+});
+
+const studentProgress = computed(() => {
+  const rows = selectedClass.value === 'all'
+    ? allStudentProgress.value
+    : allStudentProgress.value.filter(student => student.className === selectedClass.value);
+  return sortedRows(rows, studentSort.value);
+});
+
+const setSort = (target, key) => {
+  if (target.key === key) target.direction = target.direction === 'asc' ? 'desc' : 'asc';
+  else { target.key = key; target.direction = 'asc'; }
+};
+const sortMark = (target, key) => target.key === key ? (target.direction === 'asc' ? '▲' : '▼') : '↕';
+
 // 🌟 分析表二：每一題的答對/答錯次數 (升級：加入平均作答秒數)
-const questionStats = computed(() => {
+const questionStatsBase = computed(() => {
   const map = {};
   allQuestions.value.forEach(q => {
-    map[q.id] = { text: q.question_text, correct: 0, wrong: 0, totalTime: 0 };
+    map[q.id] = { id: q.id, text: q.question_text, correct: 0, wrong: 0, totalTime: 0 };
   });
 
   filteredAnswers.value.forEach(ans => {
@@ -130,10 +216,12 @@ const questionStats = computed(() => {
     const avgTime = totalAnswers > 0 ? Math.round(q.totalTime / totalAnswers) : 0;
 
     return { ...q, totalAnswers, correctRate, avgTime };
-  }).sort((a, b) => b.wrong - a.wrong); // 錯最多的排前面
+  });
 });
 
-const formatQ = (text) => text.replace(/　+/g, ' _____ ').replace(/\s{3,}/g, ' _____ ');
+const questionStats = computed(() => sortedRows(questionStatsBase.value, questionSort.value));
+
+const formatQ = (text) => String(text || '').replace(/　+/g, ' _____ ').replace(/\s{3,}/g, ' _____ ');
 </script>
 
 <template>
@@ -174,6 +262,7 @@ const formatQ = (text) => text.replace(/　+/g, ' _____ ').replace(/\s{3,}/g, ' 
       <div v-if="activeTab === 'student'" class="table-container retro-element">
         <p class="summary">
           此單元總題數：<strong>{{ allQuestions.length }} 題</strong> 
+          <span class="sort-hint">點擊欄位名稱可切換排序；全年級排名以同年級已作答學生的「已精熟題數」計算，同分同名次。</span>
           <span v-if="selectedClass !== 'all'" style="color: #3f51b5; margin-left: 15px;">
             (目前顯示：{{ selectedClass }} 班)
           </span>
@@ -182,20 +271,26 @@ const formatQ = (text) => text.replace(/　+/g, ' _____ ').replace(/\s{3,}/g, ' 
           <table class="retro-table">
             <thead>
               <tr>
-                <th>班級</th>
-                <th>姓名</th>
-                <th title="不重複計算，代表看過幾種題型">已練習題數<br><small>(不重複)</small></th>
-                <th title="不重複計算，代表答對過幾種題型">已精熟題數<br><small>(不重複)</small></th>
-                <th title="所有回合累積的總答題數">總作答題數<br><small>(含重複)</small></th>
-                <th title="總答對題數 ÷ 總作答題數">整體正確率</th>
-                <th>平均作答時間</th>
-                <th width="200">題庫精熟率</th>
+                <th><button class="sort-btn" @click="setSort(studentSort, 'className')">班級 {{ sortMark(studentSort, 'className') }}</button></th>
+                <th><button class="sort-btn" @click="setSort(studentSort, 'seatNumber')">座號 {{ sortMark(studentSort, 'seatNumber') }}</button></th>
+                <th><button class="sort-btn" @click="setSort(studentSort, 'schoolStudentId')">學號 {{ sortMark(studentSort, 'schoolStudentId') }}</button></th>
+                <th><button class="sort-btn" @click="setSort(studentSort, 'name')">姓名 {{ sortMark(studentSort, 'name') }}</button></th>
+                <th><button class="sort-btn" @click="setSort(studentSort, 'gradeRank')">全年級排名 {{ sortMark(studentSort, 'gradeRank') }}</button></th>
+                <th title="不重複計算，代表看過幾種題型"><button class="sort-btn" @click="setSort(studentSort, 'attemptedUnique')">已練習題數 {{ sortMark(studentSort, 'attemptedUnique') }}<br><small>(不重複)</small></button></th>
+                <th title="不重複計算，代表答對過幾種題型"><button class="sort-btn" @click="setSort(studentSort, 'correctUnique')">已精熟題數 {{ sortMark(studentSort, 'correctUnique') }}<br><small>(不重複)</small></button></th>
+                <th title="所有回合累積的總答題數"><button class="sort-btn" @click="setSort(studentSort, 'totalAttempts')">總作答題數 {{ sortMark(studentSort, 'totalAttempts') }}<br><small>(含重複)</small></button></th>
+                <th title="總答對題數 ÷ 總作答題數"><button class="sort-btn" @click="setSort(studentSort, 'accuracy')">整體正確率 {{ sortMark(studentSort, 'accuracy') }}</button></th>
+                <th><button class="sort-btn" @click="setSort(studentSort, 'avgTime')">平均作答時間 {{ sortMark(studentSort, 'avgTime') }}</button></th>
+                <th width="200"><button class="sort-btn" @click="setSort(studentSort, 'masteryRate')">題庫精熟率 {{ sortMark(studentSort, 'masteryRate') }}</button></th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="s in studentProgress" :key="s.name">
+              <tr v-for="s in studentProgress" :key="s.studentId">
                 <td>{{ s.className }}</td>
+                <td>{{ s.seatNumber || '—' }}</td>
+                <td><strong>{{ s.schoolStudentId || '—' }}</strong></td>
                 <td><strong>{{ s.name }}</strong></td>
+                <td><strong v-if="s.gradeRank" class="rank-badge">{{ s.grade }} 年級第 {{ s.gradeRank }} 名</strong><span v-else>—</span></td>
                 <td>{{ s.attemptedUnique }} 題</td>
                 <td style="color: #2e7d32; font-weight: bold;">{{ s.correctUnique }} 題</td>
                 <td style="color: #1976d2; font-weight: bold;">{{ s.totalAttempts }} 題</td>
@@ -207,12 +302,13 @@ const formatQ = (text) => text.replace(/　+/g, ' _____ ').replace(/\s{3,}/g, ' 
                 <td>{{ s.avgTime }} 秒</td>
                 <td>
                   <div class="progress-bar">
-                    <div class="fill" :style="{ width: (s.correctUnique / allQuestions.length * 100) + '%' }"></div>
+                    <div class="fill" :style="{ width: s.masteryRate + '%' }"></div>
                   </div>
+                  <small>{{ s.masteryRate }}%</small>
                 </td>
               </tr>
               <tr v-if="studentProgress.length === 0">
-                <td colspan="8" style="color: #777; text-align: center;">此班級目前尚無作答紀錄</td>
+                <td colspan="11" style="color: #777; text-align: center;">此班級目前尚無作答紀錄</td>
               </tr>
             </tbody>
           </table>
@@ -221,7 +317,7 @@ const formatQ = (text) => text.replace(/　+/g, ' _____ ').replace(/\s{3,}/g, ' 
 
       <div v-if="activeTab === 'question'" class="table-container retro-element">
         <p class="summary">
-          排序方式：錯誤次數最多的題目排在最上方
+          點擊欄位名稱可切換遞增或遞減排序
           <span v-if="selectedClass !== 'all'" style="color: #3f51b5; margin-left: 15px;">
             (目前分析對象：{{ selectedClass }} 班)
           </span>
@@ -230,16 +326,16 @@ const formatQ = (text) => text.replace(/　+/g, ' _____ ').replace(/\s{3,}/g, ' 
           <table class="retro-table">
             <thead>
               <tr>
-                <th>題目內容</th>
-                <th width="80">作答總數</th>
-                <th width="80">答對次數</th>
-                <th width="80">答錯次數</th>
-                <th width="100">答對率</th>
-                <th width="120">平均作答秒數</th>
+                <th><button class="sort-btn" @click="setSort(questionSort, 'text')">題目內容 {{ sortMark(questionSort, 'text') }}</button></th>
+                <th width="80"><button class="sort-btn" @click="setSort(questionSort, 'totalAnswers')">作答總數 {{ sortMark(questionSort, 'totalAnswers') }}</button></th>
+                <th width="80"><button class="sort-btn" @click="setSort(questionSort, 'correct')">答對次數 {{ sortMark(questionSort, 'correct') }}</button></th>
+                <th width="80"><button class="sort-btn" @click="setSort(questionSort, 'wrong')">答錯次數 {{ sortMark(questionSort, 'wrong') }}</button></th>
+                <th width="100"><button class="sort-btn" @click="setSort(questionSort, 'correctRate')">答對率 {{ sortMark(questionSort, 'correctRate') }}</button></th>
+                <th width="120"><button class="sort-btn" @click="setSort(questionSort, 'avgTime')">平均作答秒數 {{ sortMark(questionSort, 'avgTime') }}</button></th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(q, idx) in questionStats" :key="idx">
+              <tr v-for="q in questionStats" :key="q.id">
                 <td style="max-width: 400px; text-align: left;">{{ formatQ(q.text) }}</td>
                 <td>{{ q.totalAnswers }}</td>
                 <td style="color: #2e7d32; font-weight: bold;">✅ {{ q.correct }}</td>
@@ -276,11 +372,15 @@ const formatQ = (text) => text.replace(/　+/g, ' _____ ').replace(/\s{3,}/g, ' 
 
 .table-container { background: white; padding: 20px; border-radius: 0 12px 12px 12px; border: 2px solid #3f51b5;}
 .summary { font-size: 1.1rem; color: #e65100; font-weight: bold; margin-top: 0; margin-bottom: 15px;}
+.sort-hint { display: block; margin-top: 7px; color: #455a64; font-size: 0.9rem; font-weight: normal; }
 
 .table-wrapper { overflow-x: auto; }
-.retro-table { width: 100%; border-collapse: collapse; min-width: 800px; }
+.retro-table { width: 100%; border-collapse: collapse; min-width: 1250px; }
 .retro-table th, .retro-table td { border: 1px solid #ddd; padding: 12px; text-align: center; vertical-align: middle;}
 .retro-table th { background: #e8eaf6; color: #1a237e; line-height: 1.3;}
+.sort-btn { width: 100%; padding: 3px; border: 0; background: transparent; color: inherit; font: inherit; font-weight: bold; cursor: pointer; }
+.sort-btn:hover, .sort-btn:focus-visible { color: #e65100; text-decoration: underline; outline: none; }
+.rank-badge { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #fff3e0; color: #e65100; white-space: nowrap; }
 
 .progress-bar { width: 100%; background: #eee; height: 15px; border-radius: 10px; overflow: hidden;}
 .progress-bar .fill { background: #4caf50; height: 100%; transition: width 0.5s ease;}
