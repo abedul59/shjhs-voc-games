@@ -1,6 +1,6 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue';
-import { getStudentActivity } from '~/lib/student-activity-labels';
+import { ref, onMounted, computed, watch } from 'vue';
+import { getStudentActivity, studentActivityPaths } from '~/lib/student-activity-labels';
 import { regularClassPermissions, specialClassPermissionIds } from '~/lib/admin-class-permissions';
 
 const supabase = useSupabaseClient();
@@ -16,12 +16,22 @@ const selectedClass = ref('ALL'); // 預設顯示全部班級
 const selectedStudentId = ref(null); // 當前選中要查看詳細資料的學生 ID
 const isLoading = ref(true);
 const errorMessage = ref('');
+const perspective = ref('all');
+const selectedGamePath = ref('/game');
+const selectedDate = ref(new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit'
+}).format(new Date()));
 const allowedClasses = computed(() => Array.isArray(authCookie.value?.classes) ? authCookie.value.classes : []);
 const isSuperAdmin = computed(() => isAdminCookie.value === true || isAdminCookie.value === 'superadmin' || allowedClasses.value.includes('ALL'));
 const classOptions = computed(() => [
   ...classesList.value.map(name => ({ value: name, label: `${name} 班` })),
   ...specialClasses.value.map(group => ({ value: `special:${group.id}`, label: `📚 ${group.name}（特殊班級）` }))
 ]);
+const gameOptions = Object.entries(studentActivityPaths)
+  .filter(([path]) => path.startsWith('/game'))
+  .map(([path, label]) => ({ path, label }))
+  .sort((a, b) => a.label.localeCompare(b.label, 'zh-Hant'));
+let fetchSequence = 0;
 
 onMounted(async () => {
   // 安全權限檢查
@@ -70,20 +80,44 @@ const fetchStudentData = async () => {
 
 // 🌟 2. 抓取足跡資料
 const fetchLogs = async () => {
+  const sequence = ++fetchSequence;
   isLoading.value = true;
-  selectedStudentId.value = null; // 重整時清空選定的學生
-  
-  const { data, error } = await supabase
-    .from('student_logs')
-    .select('*')
-    .order('start_time', { ascending: false })
-    .limit(1000); // 撈最近的 1000 筆
-
-  if (!error && data) {
-    allLogs.value = data;
+  errorMessage.value = '';
+  const collected = [];
+  const maxRows = perspective.value === 'all' ? 3000 : 10000;
+  const batchSize = 1000;
+  let queryError = null;
+  let dateStart = null;
+  let dateEnd = null;
+  if (perspective.value === 'date' && selectedDate.value) {
+    dateStart = new Date(`${selectedDate.value}T00:00:00+08:00`);
+    dateEnd = new Date(dateStart.getTime() + 86400000);
   }
+
+  for (let offset = 0; offset < maxRows; offset += batchSize) {
+    let query = supabase.from('student_logs').select('*').order('start_time', { ascending: false });
+    if (perspective.value === 'date' && dateStart) {
+      query = query.gte('start_time', dateStart.toISOString()).lt('start_time', dateEnd.toISOString());
+    } else if (perspective.value === 'game' && selectedGamePath.value) {
+      query = query.or(`page_path.eq.${selectedGamePath.value},page_path.like.${selectedGamePath.value}?%`);
+    }
+    const { data, error } = await query.range(offset, offset + batchSize - 1);
+    if (error) { queryError = error; break; }
+    collected.push(...(data || []));
+    if (!data || data.length < batchSize) break;
+  }
+
+  if (sequence !== fetchSequence) return;
+  allLogs.value = collected;
+  if (queryError) errorMessage.value = `足跡資料讀取失敗：${queryError.message}`;
   isLoading.value = false;
 };
+
+watch([perspective, selectedGamePath, selectedDate], ([mode]) => {
+  if (mode === 'game' && !selectedGamePath.value) return;
+  if (mode === 'date' && !selectedDate.value) return;
+  fetchLogs();
+});
 
 // 🌟 3. 計算屬性：根據「所選班級」或「所選學生」來過濾要顯示的紀錄
 const displayLogs = computed(() => {
@@ -92,28 +126,33 @@ const displayLogs = computed(() => {
     const studentInfo = studentsMap.value[log.student_id];
     
     // 若在「全校/特定班級」總表模式
+    let identityAllowed = false;
     if (!selectedStudentId.value) {
-       if (selectedClass.value === 'ALL') return isSuperAdmin.value || !!studentInfo;
+       if (selectedClass.value === 'ALL') identityAllowed = isSuperAdmin.value || !!studentInfo;
        if (selectedClass.value.startsWith('special:')) {
          const specialId = selectedClass.value.slice('special:'.length);
-         return !!studentInfo && specialMemberIds.value[specialId]?.has(studentInfo.id);
+         identityAllowed = !!studentInfo && specialMemberIds.value[specialId]?.has(studentInfo.id);
+       } else if (selectedClass.value !== 'ALL') {
+         identityAllowed = !!studentInfo && studentInfo.class_name === selectedClass.value;
        }
-       // 如果選了特定班級，只顯示該班的紀錄
-       return studentInfo && studentInfo.class_name === selectedClass.value;
+    } else {
+      identityAllowed = log.student_id === selectedStudentId.value;
     }
-    
-    // 若在「查看單一學生」模式，只顯示該學生的紀錄
-    return log.student_id === selectedStudentId.value;
+    if (!identityAllowed) return false;
+
+    if (perspective.value === 'game') return getStudentActivity(log.page_path).pathname === selectedGamePath.value;
+    if (perspective.value === 'date') return taipeiDateKey(log.start_time) === selectedDate.value;
+    return true;
   });
 });
 
 // 輔助函式：取得學生的完整稱呼
 const getStudentInfo = (id) => {
-  if (!id) return { displayName: '未知', class: '-', seat: '-', fullName: '未知' };
-  if (id.startsWith('anon_')) return { displayName: '匿名訪客', class: '無', seat: '-', fullName: `匿名訪客 (${id.slice(-4)})` };
+  if (!id) return { displayName: '未知', class: '-', seat: '-', schoolStudentId: '-', account: '-', fullName: '未知' };
+  if (id.startsWith('anon_')) return { displayName: '匿名訪客', class: '無', seat: '-', schoolStudentId: '-', account: id, fullName: `匿名訪客 (${id.slice(-4)})` };
   
   const s = studentsMap.value[id];
-  if (!s) return { displayName: id, class: '-', seat: '-', fullName: `未知生 (${id})` };
+  if (!s) return { displayName: id, class: '-', seat: '-', schoolStudentId: '-', account: id, fullName: `未知生 (${id})` };
   
   const seatNum = s.seat_number || String(s.student_id).slice(-2);
   const name = s.real_name || s.hidden_name;
@@ -121,15 +160,61 @@ const getStudentInfo = (id) => {
       displayName: name, 
       class: s.class_name, 
       seat: seatNum, 
+      schoolStudentId: s.school_student_id || '-',
+      account: s.student_id || id,
       fullName: `${s.class_name} 班 ${seatNum} 號 - ${name}` 
   };
 };
 
-const formatTime = (timeStr) => {
-  if (!timeStr) return '--';
-  const d = new Date(timeStr);
-  return `${d.getMonth()+1}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+const taipeiDateKey = (timeStr) => {
+  if (!timeStr) return '';
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(new Date(timeStr));
 };
+
+const formatDateTime = (timeStr) => {
+  if (!timeStr) return '--';
+  return new Intl.DateTimeFormat('zh-TW', {
+    timeZone: 'Asia/Taipei', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+  }).format(new Date(timeStr));
+};
+
+const studentSummary = computed(() => {
+  const map = new Map();
+  for (const log of displayLogs.value) {
+    if (!map.has(log.student_id)) {
+      map.set(log.student_id, { studentId: log.student_id, visits: 0, duration: 0, durationCount: 0, first: log.start_time, last: log.start_time, activities: new Map() });
+    }
+    const row = map.get(log.student_id);
+    row.visits += 1;
+    if (log.duration_seconds !== null && log.duration_seconds !== undefined && Number.isFinite(Number(log.duration_seconds))) {
+      row.duration += Number(log.duration_seconds); row.durationCount += 1;
+    }
+    if (new Date(log.start_time) < new Date(row.first)) row.first = log.start_time;
+    if (new Date(log.start_time) > new Date(row.last)) row.last = log.start_time;
+    const activity = getStudentActivity(log.page_path);
+    row.activities.set(activity.pathname || log.page_path, activity.name);
+  }
+  return [...map.values()].map(row => ({
+    ...row,
+    averageDuration: row.durationCount ? Math.round(row.duration / row.durationCount) : null,
+    activityNames: [...row.activities.values()]
+  })).sort((a, b) => {
+    const left = getStudentInfo(a.studentId);
+    const right = getStudentInfo(b.studentId);
+    return `${left.class}${String(left.seat).padStart(3, '0')}`.localeCompare(`${right.class}${String(right.seat).padStart(3, '0')}`, 'zh-Hant', { numeric: true });
+  });
+});
+
+const totalDuration = computed(() => displayLogs.value.reduce((sum, log) => sum + (Number(log.duration_seconds) || 0), 0));
+const resultLimit = computed(() => perspective.value === 'all' ? 3000 : 10000);
+const resultCapped = computed(() => allLogs.value.length >= resultLimit.value);
+const perspectiveLabel = computed(() => {
+  if (perspective.value === 'game') return gameOptions.find(game => game.path === selectedGamePath.value)?.label || '指定遊戲';
+  if (perspective.value === 'date') return `${selectedDate.value}（台灣時間）`;
+  return '最近活動總覽';
+});
 
 const formatDuration = (seconds) => {
   if (seconds === null || seconds === undefined) return '仍在該頁面 / 未知';
@@ -150,12 +235,24 @@ const formatDuration = (seconds) => {
     </div>
 
     <div class="control-panel retro-element">
+       <div class="perspective-controls">
+         <strong>追蹤視角：</strong>
+         <label><input v-model="perspective" type="radio" value="all"> 最近總覽</label>
+         <label><input v-model="perspective" type="radio" value="game"> 指定遊戲</label>
+         <label><input v-model="perspective" type="radio" value="date"> 指定日期</label>
+         <select v-if="perspective === 'game'" v-model="selectedGamePath" class="retro-input perspective-input">
+           <option v-for="game in gameOptions" :key="game.path" :value="game.path">{{ game.label }}</option>
+         </select>
+         <input v-if="perspective === 'date'" v-model="selectedDate" type="date" class="retro-input perspective-input">
+       </div>
        <template v-if="!selectedStudentId">
-           <label style="font-weight: bold; font-size: 1.1rem;">過濾班級：</label>
-           <select v-model="selectedClass" class="retro-input class-select">
+           <div class="class-controls">
+             <label style="font-weight: bold; font-size: 1.1rem;">過濾班級：</label>
+             <select v-model="selectedClass" class="retro-input class-select">
                <option value="ALL">🌟 顯示全部班級紀錄</option>
                <option v-for="option in classOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-           </select>
+             </select>
+           </div>
        </template>
        
        <template v-else>
@@ -167,17 +264,53 @@ const formatDuration = (seconds) => {
     </div>
 
     <p v-if="errorMessage" class="error-msg" role="alert">⚠️ {{ errorMessage }}</p>
+    <p v-if="resultCapped" class="limit-msg">⚠️ 此視角資料超過 {{ resultLimit.toLocaleString() }} 筆，目前顯示最新 {{ resultLimit.toLocaleString() }} 筆。</p>
 
     <p v-if="isLoading" class="loading-msg">⏳ 資料讀取中...</p>
     <div v-else-if="displayLogs.length === 0" class="empty-msg retro-element">沒有符合條件的足跡紀錄！</div>
-    
-    <div class="table-wrapper retro-element" v-else>
+
+    <template v-else>
+      <section class="overview-section" aria-label="足跡統計摘要">
+        <h2>📌 {{ perspectiveLabel }}</h2>
+        <div class="summary-cards">
+          <div class="summary-card"><span>使用學生</span><strong>{{ studentSummary.length }}</strong><small>人</small></div>
+          <div class="summary-card"><span>活動紀錄</span><strong>{{ displayLogs.length }}</strong><small>筆</small></div>
+          <div class="summary-card"><span>累計停留</span><strong>{{ formatDuration(totalDuration) }}</strong></div>
+          <div class="summary-card"><span>平均每筆</span><strong>{{ formatDuration(displayLogs.length ? Math.round(totalDuration / displayLogs.length) : 0) }}</strong></div>
+        </div>
+      </section>
+
+      <div class="table-wrapper retro-element summary-table-wrapper">
+        <h2>👥 學生使用彙總</h2>
+        <table class="records-table summary-table">
+          <thead><tr><th>班級</th><th>座號</th><th>正式學號</th><th>遊戲帳號</th><th>姓名</th><th>造訪次數</th><th>累計停留</th><th>平均停留</th><th>首次使用</th><th>最後使用</th><th>使用活動</th></tr></thead>
+          <tbody>
+            <tr v-for="row in studentSummary" :key="row.studentId">
+              <td class="info-col">{{ getStudentInfo(row.studentId).class }}</td>
+              <td class="info-col">{{ getStudentInfo(row.studentId).seat }}</td>
+              <td class="info-col account-col">{{ getStudentInfo(row.studentId).schoolStudentId }}</td>
+              <td class="info-col account-col">{{ getStudentInfo(row.studentId).account }}</td>
+              <td><button class="name-link-btn" @click="selectedStudentId = row.studentId">👤 {{ getStudentInfo(row.studentId).displayName }}</button></td>
+              <td><strong>{{ row.visits }}</strong> 次</td>
+              <td>{{ formatDuration(row.duration) }}</td>
+              <td>{{ formatDuration(row.averageDuration) }}</td>
+              <td class="time-col">{{ formatDateTime(row.first) }}</td>
+              <td class="time-col">{{ formatDateTime(row.last) }}</td>
+              <td class="path-col"><span v-for="name in row.activityNames" :key="name" class="mini-activity">{{ name }}</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 class="details-heading">🧾 原始足跡明細</h2>
+      <div class="table-wrapper retro-element">
       <table class="records-table">
         <thead>
           <tr>
             <th>班級</th>
             <th>座號</th>
-            <th>學號</th>
+            <th>正式學號</th>
+            <th>遊戲帳號</th>
             <th>姓名 (點擊看詳細)</th>
             <th>進入時間</th>
             <th>停留時間</th>
@@ -188,14 +321,15 @@ const formatDuration = (seconds) => {
           <tr v-for="log in displayLogs" :key="log.id" :class="{'highlight-row': selectedStudentId === log.student_id}">
             <td class="info-col">{{ getStudentInfo(log.student_id).class }}</td>
             <td class="info-col">{{ getStudentInfo(log.student_id).seat }}</td>
-            <td class="info-col" style="font-family: monospace;">{{ log.student_id }}</td>
+            <td class="info-col account-col">{{ getStudentInfo(log.student_id).schoolStudentId }}</td>
+            <td class="info-col account-col">{{ getStudentInfo(log.student_id).account }}</td>
             <td class="name-col">
                <button class="name-link-btn" @click="selectedStudentId = log.student_id" :title="'查看 ' + getStudentInfo(log.student_id).displayName + ' 的所有紀錄'">
                   👤 {{ getStudentInfo(log.student_id).displayName }}
                </button>
             </td>
             
-            <td class="time-col">{{ formatTime(log.start_time) }}</td>
+            <td class="time-col">{{ formatDateTime(log.start_time) }}</td>
             <td class="duration-col" :class="{'danger-time': log.duration_seconds > 300}">
                {{ formatDuration(log.duration_seconds) }}
             </td>
@@ -210,7 +344,8 @@ const formatDuration = (seconds) => {
           </tr>
         </tbody>
       </table>
-    </div>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -226,7 +361,10 @@ const formatDuration = (seconds) => {
 .refresh-btn { background-color: #fff9c4; color: #f57f17; border-color: #fbc02d;}
 
 /* 控制面板 */
-.control-panel { background: #e3f2fd; border: 3px solid #2196f3; border-radius: 12px; padding: 15px; margin-bottom: 20px; box-shadow: 0 4px 0 #2196f3; display: flex; align-items: center; gap: 15px;}
+.control-panel { background: #e3f2fd; border: 3px solid #2196f3; border-radius: 12px; padding: 15px; margin-bottom: 20px; box-shadow: 0 4px 0 #2196f3; display: flex; flex-direction: column; align-items: stretch; gap: 15px;}
+.perspective-controls, .class-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.perspective-controls label { display: inline-flex; align-items: center; gap: 5px; padding: 7px 10px; border-radius: 8px; background: white; color: #0d47a1; font-weight: bold; cursor: pointer; }
+.perspective-input { min-width: 250px; padding: 9px; border: 2px solid #7e57c2; border-radius: 8px; background: white; font: inherit; font-weight: bold; color: #4a148c; }
 .class-select { padding: 10px; border: 2px solid #1565c0; border-radius: 8px; background: #fff; font-size: 1.1rem; font-weight: bold; font-family: inherit; color: #0d47a1;}
 .student-focus-mode { display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 10px;}
 .focus-title { font-size: 1.2rem; color: #0d47a1; }
@@ -235,6 +373,19 @@ const formatDuration = (seconds) => {
 .loading-msg, .empty-msg { text-align: center; font-weight: bold; font-size: 1.2rem; padding: 30px; }
 .empty-msg { background: var(--box-bg); border: 2px dashed var(--border-color); border-radius: var(--radius-element);}
 .error-msg { padding:12px;border:2px solid #ef5350;border-radius:8px;background:#ffebee;color:#b71c1c;font-weight:800; }
+.limit-msg { padding: 10px 12px; border-left: 5px solid #ff9800; background: #fff3e0; color: #bf360c; font-weight: bold; }
+
+.overview-section { margin: 20px 0; }
+.overview-section h2, .summary-table-wrapper h2, .details-heading { color: #0d47a1; }
+.summary-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.summary-card { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; padding: 14px; border: 2px solid #90caf9; border-radius: 10px; background: #e3f2fd; }
+.summary-card span { width: 100%; color: #455a64; font-weight: bold; }
+.summary-card strong { color: #0d47a1; font-size: 1.5rem; }
+.summary-card small { color: #455a64; font-weight: bold; }
+.summary-table-wrapper { margin-bottom: 24px; }
+.summary-table-wrapper h2 { margin: 4px 4px 12px; }
+.summary-table { min-width: 1450px !important; }
+.details-heading { margin: 24px 0 10px; }
 
 /* 表格樣式 */
 .table-wrapper { overflow-x: auto; background: var(--box-bg); padding: 10px; border-radius: var(--radius-element); border: var(--border-width) solid var(--border-color); }
@@ -244,6 +395,7 @@ const formatDuration = (seconds) => {
 
 /* 表格欄位細節 */
 .info-col { color: #555; font-weight: bold; }
+.account-col { font-family: monospace; white-space: nowrap; }
 .name-col { text-align: left !important; }
 .name-link-btn { 
     background: none; border: none; padding: 5px 10px; font-size: 1.1rem; font-weight: 900; 
@@ -259,8 +411,14 @@ const formatDuration = (seconds) => {
 .path-col { text-align: left !important; max-width: 350px; }
 .path-badge { background: #e8f5e9; color: #2e7d32; padding: 4px 8px; border-radius: 5px; font-weight: bold; display: inline-block; margin-bottom: 5px; border: 1px solid #a5d6a7;}
 .activity-detail { display: block; margin: 2px 0 5px; color: #0d47a1; font-size: .86rem; font-weight: 800; }
+.mini-activity { display: inline-block; margin: 2px; padding: 3px 6px; border-radius: 5px; background: #e8f5e9; color: #2e7d32; font-size: .78rem; font-weight: bold; }
 .raw-url { color: #9e9e9e; font-family: monospace; font-size: 0.8rem; word-break: break-all;}
 
 /* 選中某學生時的強調色 */
 .highlight-row { background-color: #fffde7; }
+
+@media (max-width: 760px) {
+  .summary-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .perspective-input, .class-select { width: 100%; min-width: 0; }
+}
 </style>
