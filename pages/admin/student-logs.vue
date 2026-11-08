@@ -18,6 +18,7 @@ const isLoading = ref(true);
 const errorMessage = ref('');
 const perspective = ref('all');
 const selectedGamePath = ref('/game');
+const selectedPeriodDays = ref(7);
 const selectedDate = ref(new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit'
 }).format(new Date()));
@@ -27,10 +28,29 @@ const classOptions = computed(() => [
   ...classesList.value.map(name => ({ value: name, label: `${name} 班` })),
   ...specialClasses.value.map(group => ({ value: `special:${group.id}`, label: `📚 ${group.name}（特殊班級）` }))
 ]);
+const periodOptions = [
+  { days: 7, label: '過去一週' },
+  { days: 14, label: '過去兩週' },
+  { days: 30, label: '過去一個月' }
+];
 const gameOptions = Object.entries(studentActivityPaths)
   .filter(([path]) => path.startsWith('/game'))
   .map(([path, label]) => ({ path, label }))
   .sort((a, b) => a.label.localeCompare(b.label, 'zh-Hant'));
+const studentOptions = computed(() => Object.values(studentsMap.value)
+  .filter(student => {
+    if (selectedClass.value === 'ALL') return true;
+    if (selectedClass.value.startsWith('special:')) {
+      const specialId = selectedClass.value.slice('special:'.length);
+      return specialMemberIds.value[specialId]?.has(student.id);
+    }
+    return student.class_name === selectedClass.value;
+  })
+  .sort((a, b) => `${a.class_name}${String(a.seat_number).padStart(3, '0')}`.localeCompare(`${b.class_name}${String(b.seat_number).padStart(3, '0')}`, 'zh-Hant', { numeric: true }))
+  .map(student => ({
+    id: String(student.student_id),
+    label: `${student.class_name} 班 ${student.seat_number} 號－${student.real_name || student.hidden_name}${student.school_student_id ? `（${student.school_student_id}）` : ''}`
+  })));
 let fetchSequence = 0;
 
 onMounted(async () => {
@@ -89,17 +109,29 @@ const fetchLogs = async () => {
   let queryError = null;
   let dateStart = null;
   let dateEnd = null;
+  let periodStart = null;
   if (perspective.value === 'date' && selectedDate.value) {
     dateStart = new Date(`${selectedDate.value}T00:00:00+08:00`);
     dateEnd = new Date(dateStart.getTime() + 86400000);
+  }
+  if (['student', 'game'].includes(perspective.value)) {
+    const todayKey = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit'
+    }).format(new Date());
+    periodStart = new Date(`${todayKey}T00:00:00+08:00`);
+    periodStart = new Date(periodStart.getTime() - (Number(selectedPeriodDays.value) - 1) * 86400000);
   }
 
   for (let offset = 0; offset < maxRows; offset += batchSize) {
     let query = supabase.from('student_logs').select('*').order('start_time', { ascending: false });
     if (perspective.value === 'date' && dateStart) {
       query = query.gte('start_time', dateStart.toISOString()).lt('start_time', dateEnd.toISOString());
-    } else if (perspective.value === 'game' && selectedGamePath.value) {
-      query = query.or(`page_path.eq.${selectedGamePath.value},page_path.like.${selectedGamePath.value}?%`);
+    } else {
+      if (periodStart) query = query.gte('start_time', periodStart.toISOString());
+      if (perspective.value === 'student' && selectedStudentId.value) query = query.eq('student_id', selectedStudentId.value);
+      if (perspective.value === 'game' && selectedGamePath.value) {
+        query = query.or(`page_path.eq.${selectedGamePath.value},page_path.like.${selectedGamePath.value}?%`);
+      }
     }
     const { data, error } = await query.range(offset, offset + batchSize - 1);
     if (error) { queryError = error; break; }
@@ -113,11 +145,27 @@ const fetchLogs = async () => {
   isLoading.value = false;
 };
 
-watch([perspective, selectedGamePath, selectedDate], ([mode]) => {
+watch([perspective, selectedGamePath, selectedDate, selectedPeriodDays, selectedStudentId], ([mode]) => {
   if (mode === 'game' && !selectedGamePath.value) return;
   if (mode === 'date' && !selectedDate.value) return;
+  if (mode === 'student' && !selectedStudentId.value) return;
   fetchLogs();
 });
+
+watch([perspective, selectedClass, studentOptions], ([mode, , students]) => {
+  if (mode !== 'student') return;
+  if (!students.some(student => student.id === selectedStudentId.value)) selectedStudentId.value = students[0]?.id || null;
+});
+
+const openStudentPerspective = (studentId) => {
+  selectedStudentId.value = String(studentId);
+  perspective.value = 'student';
+};
+
+const closeStudentPerspective = () => {
+  selectedStudentId.value = null;
+  perspective.value = 'all';
+};
 
 // 🌟 3. 計算屬性：根據「所選班級」或「所選學生」來過濾要顯示的紀錄
 const displayLogs = computed(() => {
@@ -127,7 +175,7 @@ const displayLogs = computed(() => {
     
     // 若在「全校/特定班級」總表模式
     let identityAllowed = false;
-    if (!selectedStudentId.value) {
+    if (perspective.value !== 'student') {
        if (selectedClass.value === 'ALL') identityAllowed = isSuperAdmin.value || !!studentInfo;
        if (selectedClass.value.startsWith('special:')) {
          const specialId = selectedClass.value.slice('special:'.length);
@@ -136,12 +184,13 @@ const displayLogs = computed(() => {
          identityAllowed = !!studentInfo && studentInfo.class_name === selectedClass.value;
        }
     } else {
-      identityAllowed = log.student_id === selectedStudentId.value;
+      identityAllowed = String(log.student_id) === selectedStudentId.value;
     }
     if (!identityAllowed) return false;
 
     if (perspective.value === 'game') return getStudentActivity(log.page_path).pathname === selectedGamePath.value;
     if (perspective.value === 'date') return taipeiDateKey(log.start_time) === selectedDate.value;
+    if (perspective.value === 'student') return String(log.student_id) === selectedStudentId.value;
     return true;
   });
 });
@@ -149,10 +198,11 @@ const displayLogs = computed(() => {
 // 輔助函式：取得學生的完整稱呼
 const getStudentInfo = (id) => {
   if (!id) return { displayName: '未知', class: '-', seat: '-', schoolStudentId: '-', account: '-', fullName: '未知' };
-  if (id.startsWith('anon_')) return { displayName: '匿名訪客', class: '無', seat: '-', schoolStudentId: '-', account: id, fullName: `匿名訪客 (${id.slice(-4)})` };
+  const studentId = String(id);
+  if (studentId.startsWith('anon_')) return { displayName: '匿名訪客', class: '無', seat: '-', schoolStudentId: '-', account: studentId, fullName: `匿名訪客 (${studentId.slice(-4)})` };
   
-  const s = studentsMap.value[id];
-  if (!s) return { displayName: id, class: '-', seat: '-', schoolStudentId: '-', account: id, fullName: `未知生 (${id})` };
+  const s = studentsMap.value[studentId];
+  if (!s) return { displayName: studentId, class: '-', seat: '-', schoolStudentId: '-', account: studentId, fullName: `未知生 (${studentId})` };
   
   const seatNum = s.seat_number || String(s.student_id).slice(-2);
   const name = s.real_name || s.hidden_name;
@@ -161,7 +211,7 @@ const getStudentInfo = (id) => {
       class: s.class_name, 
       seat: seatNum, 
       schoolStudentId: s.school_student_id || '-',
-      account: s.student_id || id,
+      account: s.student_id || studentId,
       fullName: `${s.class_name} 班 ${seatNum} 號 - ${name}` 
   };
 };
@@ -211,7 +261,9 @@ const totalDuration = computed(() => displayLogs.value.reduce((sum, log) => sum 
 const resultLimit = computed(() => perspective.value === 'all' ? 3000 : 10000);
 const resultCapped = computed(() => allLogs.value.length >= resultLimit.value);
 const perspectiveLabel = computed(() => {
-  if (perspective.value === 'game') return gameOptions.find(game => game.path === selectedGamePath.value)?.label || '指定遊戲';
+  const periodLabel = periodOptions.find(period => period.days === Number(selectedPeriodDays.value))?.label || `${selectedPeriodDays.value} 天`;
+  if (perspective.value === 'student') return `${getStudentInfo(selectedStudentId.value).fullName}－${periodLabel}`;
+  if (perspective.value === 'game') return `${gameOptions.find(game => game.path === selectedGamePath.value)?.label || '指定遊戲'}－${periodLabel}`;
   if (perspective.value === 'date') return `${selectedDate.value}（台灣時間）`;
   return '最近活動總覽';
 });
@@ -238,29 +290,33 @@ const formatDuration = (seconds) => {
        <div class="perspective-controls">
          <strong>追蹤視角：</strong>
          <label><input v-model="perspective" type="radio" value="all"> 最近總覽</label>
+         <label><input v-model="perspective" type="radio" value="student"> 個別學生</label>
          <label><input v-model="perspective" type="radio" value="game"> 指定遊戲</label>
          <label><input v-model="perspective" type="radio" value="date"> 指定日期</label>
+         <select v-if="perspective === 'student'" v-model="selectedStudentId" class="retro-input perspective-input student-select" aria-label="選擇學生">
+           <option v-if="studentOptions.length === 0" :value="null" disabled>此班級沒有可選學生</option>
+           <option v-for="student in studentOptions" :key="student.id" :value="student.id">{{ student.label }}</option>
+         </select>
          <select v-if="perspective === 'game'" v-model="selectedGamePath" class="retro-input perspective-input">
            <option v-for="game in gameOptions" :key="game.path" :value="game.path">{{ game.label }}</option>
          </select>
+         <select v-if="perspective === 'student' || perspective === 'game'" v-model.number="selectedPeriodDays" class="retro-input perspective-input period-select" aria-label="選擇觀察期間">
+           <option v-for="period in periodOptions" :key="period.days" :value="period.days">{{ period.label }}</option>
+         </select>
          <input v-if="perspective === 'date'" v-model="selectedDate" type="date" class="retro-input perspective-input">
        </div>
-       <template v-if="!selectedStudentId">
-           <div class="class-controls">
-             <label style="font-weight: bold; font-size: 1.1rem;">過濾班級：</label>
-             <select v-model="selectedClass" class="retro-input class-select">
-               <option value="ALL">🌟 顯示全部班級紀錄</option>
-               <option v-for="option in classOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-             </select>
-           </div>
-       </template>
-       
-       <template v-else>
-           <div class="student-focus-mode">
-               <span class="focus-title">🔍 正在查看：<strong>{{ getStudentInfo(selectedStudentId).fullName }}</strong> 的個人足跡</span>
-               <button class="retro-btn exit-focus-btn" @click="selectedStudentId = null">❌ 關閉個人紀錄，返回總表</button>
-           </div>
-       </template>
+       <div class="class-controls">
+         <label for="footprint-class" class="class-label">過濾班級：</label>
+         <select id="footprint-class" v-model="selectedClass" class="retro-input class-select">
+           <option value="ALL">🌟 顯示全部班級紀錄</option>
+           <option v-for="option in classOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+         </select>
+       </div>
+
+       <div v-if="perspective === 'student' && selectedStudentId" class="student-focus-mode">
+         <span class="focus-title">🔍 正在查看：<strong>{{ getStudentInfo(selectedStudentId).fullName }}</strong> 的{{ periodOptions.find(period => period.days === selectedPeriodDays)?.label }}足跡</span>
+         <button class="retro-btn exit-focus-btn" @click="closeStudentPerspective">❌ 關閉個人紀錄，返回總表</button>
+       </div>
     </div>
 
     <p v-if="errorMessage" class="error-msg" role="alert">⚠️ {{ errorMessage }}</p>
@@ -290,7 +346,7 @@ const formatDuration = (seconds) => {
               <td class="info-col">{{ getStudentInfo(row.studentId).seat }}</td>
               <td class="info-col account-col">{{ getStudentInfo(row.studentId).schoolStudentId }}</td>
               <td class="info-col account-col">{{ getStudentInfo(row.studentId).account }}</td>
-              <td><button class="name-link-btn" @click="selectedStudentId = row.studentId">👤 {{ getStudentInfo(row.studentId).displayName }}</button></td>
+              <td><button class="name-link-btn" @click="openStudentPerspective(row.studentId)">👤 {{ getStudentInfo(row.studentId).displayName }}</button></td>
               <td><strong>{{ row.visits }}</strong> 次</td>
               <td>{{ formatDuration(row.duration) }}</td>
               <td>{{ formatDuration(row.averageDuration) }}</td>
@@ -318,13 +374,13 @@ const formatDuration = (seconds) => {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="log in displayLogs" :key="log.id" :class="{'highlight-row': selectedStudentId === log.student_id}">
+          <tr v-for="log in displayLogs" :key="log.id" :class="{'highlight-row': perspective === 'student' && selectedStudentId === String(log.student_id)}">
             <td class="info-col">{{ getStudentInfo(log.student_id).class }}</td>
             <td class="info-col">{{ getStudentInfo(log.student_id).seat }}</td>
             <td class="info-col account-col">{{ getStudentInfo(log.student_id).schoolStudentId }}</td>
             <td class="info-col account-col">{{ getStudentInfo(log.student_id).account }}</td>
             <td class="name-col">
-               <button class="name-link-btn" @click="selectedStudentId = log.student_id" :title="'查看 ' + getStudentInfo(log.student_id).displayName + ' 的所有紀錄'">
+               <button class="name-link-btn" @click="openStudentPerspective(log.student_id)" :title="'查看 ' + getStudentInfo(log.student_id).displayName + ' 的期間紀錄'">
                   👤 {{ getStudentInfo(log.student_id).displayName }}
                </button>
             </td>
@@ -365,6 +421,9 @@ const formatDuration = (seconds) => {
 .perspective-controls, .class-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .perspective-controls label { display: inline-flex; align-items: center; gap: 5px; padding: 7px 10px; border-radius: 8px; background: white; color: #0d47a1; font-weight: bold; cursor: pointer; }
 .perspective-input { min-width: 250px; padding: 9px; border: 2px solid #7e57c2; border-radius: 8px; background: white; font: inherit; font-weight: bold; color: #4a148c; }
+.student-select { min-width: min(430px, 100%); }
+.period-select { min-width: 150px; }
+.class-label { font-weight: bold; font-size: 1.1rem; }
 .class-select { padding: 10px; border: 2px solid #1565c0; border-radius: 8px; background: #fff; font-size: 1.1rem; font-weight: bold; font-family: inherit; color: #0d47a1;}
 .student-focus-mode { display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 10px;}
 .focus-title { font-size: 1.2rem; color: #0d47a1; }
