@@ -147,20 +147,11 @@ const deleteCourse = async (id, subject) => {
 
     <hr class="section-divider" />
 
-    <h3 class="section-title">🏢 地政士考試專區 <span style="font-size:14px; color:#64748b; font-weight:normal;">(不限講數，自由新增)</span></h3>
-    <div class="cards-grid course-grid">
-      <NuxtLink to="/admin/law-exam/land-registration-rule-course" class="dash-card course-card emerald-theme">
-        <div class="icon">📜</div><div class="course-info"><span class="course-tag tag-emerald">地政士</span><h2>土地登記規則</h2></div>
-      </NuxtLink>
-      <NuxtLink to="/admin/law-exam/land-law-course" class="dash-card course-card amber-theme">
-        <div class="icon">🏞️</div><div class="course-info"><span class="course-tag tag-amber">地政士</span><h2>土地法規</h2></div>
-      </NuxtLink>
-      <NuxtLink to="/admin/law-exam/land-tax-law-course" class="dash-card course-card rose-theme">
-        <div class="icon">💰</div><div class="course-info"><span class="course-tag tag-rose">地政士</span><h2>土地稅法</h2></div>
-      </NuxtLink>
-      <NuxtLink to="/admin/law-exam/civil-and-trust-law-course" class="dash-card course-card indigo-theme">
-        <div class="icon">🤝</div><div class="course-info"><span class="course-tag tag-indigo">地政士</span><h2>民法與信託法</h2></div>
-      </NuxtLink>
+    <h3 class="section-title">🏢 地政士考試專區</h3>
+    <div class="cards-grid">
+      <NuxtLink to="/admin/law-exam/land-registration-rule-course" class="dash-card law-emerald"><div class="icon">📜</div><h2>土地登記規則</h2></NuxtLink>
+      <NuxtLink to="/admin/law-exam/land-law-course" class="dash-card law-amber"><div class="icon">🏞️</div><h2>土地法</h2></NuxtLink>
+      <NuxtLink to="/admin/law-exam/land-tax-law-course" class="dash-card law-rose"><div class="icon">💰</div><h2>土地稅法</h2></NuxtLink>
     </div>
 
     <hr class="section-divider" />
