@@ -18,5 +18,8 @@ export const LAW_TABLE_MAP = {
   '教師法施行細則': 'teachers_act_enforcement_rules_clauses',
   '校園霸凌防制準則': 'campus_bullying_prevention_guidelines_clauses',
   '解聘不續聘停聘或資遣辦法': 'teachers_dismissal_regulations_clauses',
-  '高級中等以下學校教師解聘不續聘停聘或資遣辦法': 'teachers_dismissal_regulations_clauses'
+  '高級中等以下學校教師解聘不續聘停聘或資遣辦法': 'teachers_dismissal_regulations_clauses',
+  '土地登記規則': 'land_registration_rules_clauses',
+  '土地法': 'land_act_clauses',
+  '土地稅法': 'land_tax_act_clauses'
 };

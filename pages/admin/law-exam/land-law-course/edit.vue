@@ -6,9 +6,9 @@ const isLoading = ref(true); const isSaving = ref(false); const activeTab = ref(
 const summaryRef = ref(null); const transcriptRef = ref(null); const urlsRef = ref(null);
 const personalNotesList = ref(['']); 
 
-// 🌟 配置：土地法（載入舊筆記時仍保留原本 subject）
+// 🌟 配置：土地法規
 const form = ref({
-  id: null, subject: '土地法', topic: '', introduction: '', class_video_link: '', notebook_audio_link: '', document_link: '', notebook_infographic_link: '', notebook_quiz_link: '', notebook_flashcard_link: '', notebook_overall_link: '', summary: '', transcript: '', personal_notes: '', associated_urls: ''
+  id: null, subject: '土地法規', topic: '', introduction: '', class_video_link: '', notebook_audio_link: '', document_link: '', notebook_infographic_link: '', notebook_quiz_link: '', notebook_flashcard_link: '', notebook_overall_link: '', summary: '', transcript: '', personal_notes: '', associated_urls: ''
 });
 
 onMounted(async () => {

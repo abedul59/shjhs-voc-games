@@ -8,8 +8,8 @@ const isLoading = ref(true);
 
 const fetchNotes = async () => {
   isLoading.value = true;
-  // 同時讀取舊名稱，確保既有「土地法規」筆記不會因更名而消失。
-  const { data, error } = await supabase.from('course_notes').select('id, topic, introduction, created_at').in('subject', ['土地法', '土地法規']).order('created_at', { ascending: true });
+  // 🌟 只抓取「土地法規」的筆記
+  const { data, error } = await supabase.from('course_notes').select('id, topic, introduction, created_at').eq('subject', '土地法規').order('created_at', { ascending: true });
   if (data) notes.value = data;
   isLoading.value = false;
 };
@@ -27,7 +27,7 @@ const deleteNote = async (id) => {
   <div class="list-container">
     <div class="header">
       <NuxtLink to="/admin/law-exam" class="back-btn">← 回總專區</NuxtLink>
-      <h1>🏞️ 土地法</h1>
+      <h1>🏞️ 土地法規</h1>
       <p>自由新增講次與專屬筆記</p>
     </div>
 
