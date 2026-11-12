@@ -1,17 +1,13 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import Papa from 'papaparse';
+import { LAND_REGULATION_MAP } from '~/utils/landRegulations';
 
 definePageMeta({ middleware: ['auth', 'law-auth'] });
 
 const route = useRoute();
 const supabase = useSupabaseClient();
-const laws = {
-  'land-registration-rules': { title: '土地登記規則', table: 'land_registration_rules_clauses', color: '#059669', hover: '#047857', light: '#ecfdf5', active: '#d1fae5' },
-  'land-act': { title: '土地法', table: 'land_act_clauses', color: '#d97706', hover: '#b45309', light: '#fffbeb', active: '#fef3c7' },
-  'land-tax-act': { title: '土地稅法', table: 'land_tax_act_clauses', color: '#e11d48', hover: '#be123c', light: '#fff1f2', active: '#ffe4e6' }
-};
-const config = computed(() => laws[String(route.params.law)] || laws['land-registration-rules']);
+const config = computed(() => LAND_REGULATION_MAP[String(route.params.law)] || LAND_REGULATION_MAP['land-registration-rules']);
 const cssVars = computed(() => ({ '--primary': config.value.color, '--hover': config.value.hover, '--light': config.value.light, '--active': config.value.active }));
 
 const clauses = ref([]);
@@ -183,6 +179,7 @@ const clearAll = async () => {
       <header>
         <div class="header-row"><NuxtLink to="/admin/law-exam">← 回專區</NuxtLink><button class="close" @click="showSidebar = false">✕</button></div>
         <h1>{{ config.title }}</h1>
+        <p v-if="config.scopeNote" class="scope-note">{{ config.scopeNote }}</p>
         <div class="desktop mode-buttons"><button :class="{ active: viewMode === 'single' }" @click="viewMode = 'single'">逐條觀看</button><button :class="{ active: viewMode === 'all' }" @click="viewMode = 'all'">全部觀看</button></div>
         <details class="admin-tools">
           <summary>⚙️ 管理工具</summary>
@@ -214,6 +211,7 @@ const clearAll = async () => {
         <section v-if="selectedClause" class="article-card">
           <p class="eyebrow">{{ config.title }}</p>
           <h2>{{ selectedClause.title || `第 ${selectedClause.article_num} 條` }}</h2>
+          <p v-if="config.scopeNote" class="scope-banner">{{ config.scopeNote }}</p>
           <div class="law-content" @click="handleContentClick" v-html="contentWithLinks(selectedClause.content)"></div>
           <div class="study-box">
             <h3>✍️ 個人筆記</h3>
@@ -228,7 +226,7 @@ const clearAll = async () => {
       </template>
 
       <section v-else class="all-articles">
-        <header><p class="eyebrow">地政士法規專區</p><h2>{{ config.title }}・全部條文</h2></header>
+        <header><p class="eyebrow">地政士法規專區</p><h2>{{ config.title }}・全部條文</h2><p v-if="config.scopeNote" class="scope-banner">{{ config.scopeNote }}</p></header>
         <article v-for="clause in filteredClauses" :key="clause.id">
           <h3>{{ clause.title || `第 ${clause.article_num} 條` }}</h3>
           <div class="law-content" @click="handleContentClick" v-html="contentWithLinks(clause.content)"></div>
@@ -244,5 +242,6 @@ const clearAll = async () => {
 
 <style scoped>
 .law-layout{--primary:#059669;--hover:#047857;--light:#ecfdf5;--active:#d1fae5;min-height:100vh;background:#f8fafc;color:#1e293b;font-family:system-ui,-apple-system,'Noto Sans TC',sans-serif}.sidebar{position:fixed;inset:0 auto 0 0;width:340px;background:white;border-right:1px solid #dbe3ed;display:flex;flex-direction:column;z-index:20}.sidebar header{padding:20px;border-bottom:1px solid #e2e8f0}.header-row{display:flex;justify-content:space-between;align-items:center}.header-row a{color:#64748b;text-decoration:none;font-weight:800}.sidebar h1{margin:16px 0;color:var(--primary);font-size:25px}.close{display:none}.mode-buttons{display:flex;gap:5px}.mode-buttons button,.mobile-bar>button{border:1px solid #cbd5e1;background:white;padding:8px 10px;border-radius:8px;cursor:pointer}.mode-buttons button.active{background:var(--primary);border-color:var(--primary);color:white}.admin-tools{margin:14px 0 10px;background:#f8fafc;border-radius:10px;padding:10px}.admin-tools summary{cursor:pointer;font-weight:800}.admin-tools>div{display:flex;gap:6px;margin-top:8px}.tool{flex:1;border:1px solid #cbd5e1;background:white;padding:8px;border-radius:7px;cursor:pointer;text-align:center;font:inherit}.tool.primary{background:var(--primary);color:white;border-color:var(--primary)}.tool.danger{color:#b91c1c}.tool:disabled{opacity:.4}.search{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:9px;padding:11px;font:inherit}.tree{padding:12px 14px 30px;overflow:auto}.tree>p{text-align:center;color:#94a3b8}.chapter,.section{cursor:pointer;font-weight:900;padding:9px 5px}.chapter{color:var(--primary);font-size:17px}.section{color:#475569;margin-left:8px}.clause-link{display:grid;grid-template-columns:22px 1fr;align-items:start;padding:3px 4px 3px 14px;border-radius:8px}.clause-link.active{background:var(--active)}.clause-link input{margin-top:10px}.clause-link button{border:0;background:none;text-align:left;padding:8px;color:#334155;cursor:pointer;font:inherit;width:100%}.mobile-bar{display:none}main{margin-left:340px;padding:34px;min-height:100vh;box-sizing:border-box}.message{max-width:950px;margin:0 auto 15px;padding:12px 15px;border-radius:8px}.message.error{background:#fff1f2;border:1px solid #fda4af;color:#9f1239}.article-card,.all-articles{max-width:950px;margin:auto;background:white;border-radius:18px;padding:clamp(24px,5vw,60px);box-shadow:0 8px 30px #0f172a12}.eyebrow{color:var(--primary);font-weight:900;letter-spacing:.12em}.article-card h2,.all-articles h2{font-size:clamp(26px,4vw,40px);margin:8px 0 28px}.law-content{white-space:pre-wrap;font-family:'Noto Serif TC',serif;font-size:19px;line-height:2;color:#27364a}.study-box{margin-top:40px;padding:22px;background:var(--light);border-radius:14px;border:1px solid var(--active)}.study-box h3{margin:10px 0}.study-box textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:9px;padding:12px;font:inherit;resize:vertical}.saved-url{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #cbd5e1}.saved-url a{color:var(--primary);font-weight:800}.saved-url button{border:0;background:none;color:#be123c;cursor:pointer}.url-form{display:grid;grid-template-columns:1fr 2fr auto;gap:7px;margin-top:10px}.url-form input{min-width:0;padding:9px;border:1px solid #cbd5e1;border-radius:7px}.url-form button,.save-row button,.empty button,.jump{border:0;border-radius:8px;background:var(--primary);color:white;padding:10px 16px;font-weight:900;cursor:pointer}.save-row{display:flex;justify-content:space-between;align-items:center;margin-top:16px;color:var(--primary);font-weight:800}.empty{max-width:700px;margin:80px auto;text-align:center;background:white;border-radius:18px;padding:70px 20px}.empty>div{font-size:60px}.all-articles article{padding:24px 0;border-top:1px solid #e2e8f0}.all-articles article h3{color:var(--primary);font-size:22px}.note-preview{background:var(--light);padding:12px;border-radius:8px;white-space:pre-wrap}.reference{position:fixed;inset:0;background:#0f172ab3;display:grid;place-items:center;padding:20px;z-index:50}.reference section{position:relative;width:min(620px,100%);max-height:80vh;overflow:auto;background:white;border-radius:16px;padding:30px}.reference section>small{color:var(--primary);font-weight:900}.reference section>p{white-space:pre-wrap;line-height:1.8}.close-ref{position:absolute;right:15px;top:12px;border:0;background:none;font-size:20px;cursor:pointer}:deep(.ref-btn){display:inline;border:0;border-bottom:2px dashed var(--primary);background:var(--light);color:var(--hover);padding:0 3px;font:inherit;cursor:pointer}.scrim{display:none}
+.scope-note{margin:-8px 0 14px;color:#64748b;font-size:13px;line-height:1.5}.scope-banner{margin:-14px 0 24px;padding:12px 14px;border-left:4px solid var(--primary);background:var(--light);border-radius:7px;color:#475569;line-height:1.6}
 @media(max-width:800px){.mobile-bar{position:sticky;top:0;z-index:15;display:flex;justify-content:space-between;align-items:center;gap:6px;padding:9px;background:white;border-bottom:1px solid #e2e8f0}.mobile-bar strong{font-size:14px}.mobile-bar .mode-buttons button{padding:6px}.sidebar{transform:translateX(-105%);transition:.2s;width:min(88vw,340px)}.sidebar.open{transform:translateX(0)}.close{display:block;border:0;background:none;font-size:20px}.scrim{display:block;position:fixed;inset:0;background:#0f172a80;z-index:10}main{margin-left:0;padding:14px}.desktop{display:none}.article-card,.all-articles{padding:22px 17px}.law-content{font-size:17px}.url-form{grid-template-columns:1fr}.save-row{align-items:flex-end;gap:10px}.all-mode .mobile-bar{position:sticky}}
 </style>

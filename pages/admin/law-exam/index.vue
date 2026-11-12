@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue';
+import { LAND_REGULATION_GROUPS } from '~/utils/landRegulations';
 definePageMeta({ middleware: ['auth', 'law-auth'] });
 const supabase = useSupabaseClient();
 
@@ -201,11 +202,14 @@ const deleteCourse = async (id, subject) => {
     <hr class="section-divider" />
 
     <h3 class="section-title">🗺️ 地政士法規專區</h3>
-    <div class="cards-grid">
-      <NuxtLink to="/admin/law-exam/land-regulations/land-registration-rules" class="dash-card law-emerald"><div class="icon">📜</div><h2>土地登記規則</h2></NuxtLink>
-      <NuxtLink to="/admin/law-exam/land-regulations/land-act" class="dash-card law-amber"><div class="icon">🏞️</div><h2>土地法</h2></NuxtLink>
-      <NuxtLink to="/admin/law-exam/land-regulations/land-tax-act" class="dash-card law-rose"><div class="icon">💰</div><h2>土地稅法</h2></NuxtLink>
-    </div>
+    <section v-for="group in LAND_REGULATION_GROUPS" :key="group.name" class="regulation-group">
+      <h4>{{ group.name }}</h4>
+      <div class="cards-grid">
+        <NuxtLink v-for="law in group.laws" :key="law.slug" :to="`/admin/law-exam/land-regulations/${law.slug}`" class="dash-card" :class="law.cardClass">
+          <div class="icon">{{ law.icon }}</div><h2>{{ law.title }}</h2><small v-if="law.scopeNote">限不動產相關條文</small>
+        </NuxtLink>
+      </div>
+    </section>
 
     <hr class="section-divider" />
 
@@ -332,6 +336,7 @@ const deleteCourse = async (id, subject) => {
 .manage-card:hover { border-color: #10b981; }
 
 .law-indigo:hover { border-color: #4f46e5; background: #eef2ff; } .law-rose:hover { border-color: #e11d48; background: #fff1f2; } .law-amber:hover { border-color: #d97706; background: #fffbeb; } .law-emerald:hover { border-color: #059669; background: #ecfdf5; } .law-violet:hover { border-color: #7c3aed; background: #f5f3ff; } .law-gray:hover { border-color: #374151; background: #f3f4f6; } .law-deep-purple:hover { border-color: #6d28d9; background: #ede9fe; } .law-rust:hover { border-color: #92400e; background: #fef3c7; } .law-marine:hover { border-color: #1e40af; background: #dbeafe; } .law-forest:hover { border-color: #065f46; background: #d1fae5; } .law-cyan:hover { border-color: #0891b2; background: #ecfeff; } .law-sky:hover { border-color: #0284c7; background: #f0f9ff; } .law-pink:hover { border-color: #ec4899; background: #fdf2f8; } .law-teal:hover { border-color: #14b8a6; background: #f0fdfa; } .law-orange:hover { border-color: #ea580c; background: #fff7ed; }
+.regulation-group{margin:18px 0 30px}.regulation-group h4{margin:0 0 12px;color:#475569;font-size:17px}.regulation-group .dash-card{position:relative}.regulation-group .dash-card small{display:block;margin-top:7px;color:#64748b;font-weight:700}
 .tag-emerald { background: #10b981; } .emerald-theme:hover { border-color: #10b981; background: white;}
 .tag-amber { background: #f59e0b; } .amber-theme:hover { border-color: #f59e0b; background: white;}
 .tag-rose { background: #e11d48; } .rose-theme:hover { border-color: #e11d48; background: white;}
