@@ -223,6 +223,7 @@ const exportToCSV = () => {
     <p v-if="selectedGameType === '單字異世界悠閒農莊'">✧ 每次學習逐題儲存，答對一題得 10 分；點學生姓名可查看對錯單字，亦可匯出 CSV。</p>
     <p v-if="selectedGameType === '單字鍊金工房'">⚗️ 採集、調合和戰鬥逐題記錄；點學生姓名可查看對錯單字，亦可匯出 CSV。</p>
     <p v-if="selectedGameType === '單字鐵路旅遊高手'">🚂 每局結束儲存經營分與逐題對錯單字；點學生姓名可查看明細並匯出 CSV。</p>
+    <p v-if="selectedGameType === '英語口說學霸'">🗣️ 分年級多元評量會顯示評量年級、題數、總成績、單字分、句子分及錯漏題；點選學生姓名可查看完整錯漏字，也可匯出 CSV。</p>
     <p v-if="verbMonopolyTypes.includes(selectedGameType)">🏘️ 分數為本局結算現金；點學生姓名可查看每局對錯動詞，也可匯出 CSV。</p>
     <div class="table-container retro-element">
       <p v-if="isLoading" class="loading-msg">⏳ 讀取中...</p>
@@ -239,7 +240,17 @@ const exportToCSV = () => {
               <span class="tag volume-tag" v-if="record.volume">{{ record.volume }}</span>
               <br><strong>{{ record.unit_played }}</strong>
             </td>
-            <td><span class="score-text">{{ record.score }}分</span> ({{ record.time_taken_seconds }}s)<br><small class="mistake-text" v-if="record.mistakes > 0">❌錯{{ record.mistakes }}次</small></td>
+            <td>
+              <span class="score-text">{{ record.score }}分</span> ({{ record.time_taken_seconds }}s)
+              <template v-if="selectedGameType === '英語口說學霸'">
+                <br>
+                <small class="score-breakdown">{{ record.correct_words || '尚無分項成績' }}</small>
+              </template>
+              <br v-if="record.mistakes > 0">
+              <small class="mistake-text" v-if="record.mistakes > 0">
+                {{ selectedGameType === '英語口說學霸' ? `❌錯漏 ${record.mistakes} 題` : `❌錯${record.mistakes}次` }}
+              </small>
+            </td>
             <td>{{ record.short_device }}</td>
             <td><button class="action-btn" @click="openEditModal(record)">✏️</button><button class="action-btn" @click="deleteRecord(record.id)">🗑️</button></td>
           </tr>
@@ -310,6 +321,7 @@ const exportToCSV = () => {
 .retro-table th, .retro-table td { padding: 12px; border-bottom: 2px solid var(--border-color); white-space: nowrap; }
 .retro-table th { background: var(--tab-bg); font-weight: 900; }
 .score-text { font-weight: 900; color: var(--danger-color); font-size: 1.2rem; }
+.score-breakdown { color: var(--text-muted); font-weight: bold; white-space: normal; }
 .mistake-text { color: var(--danger-color); font-weight: bold; }
 .tag { background: var(--info-bg); padding: 2px 6px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.8rem; font-weight: bold; margin-right: 4px; }
 .volume-tag { background: var(--success-bg); color: var(--success-color); border-color: var(--success-color); }

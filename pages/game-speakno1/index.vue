@@ -9,13 +9,14 @@ useHead({
 });
 
 const supabase = useSupabaseClient();
-const route = useRoute();
 const studentCookie = useCookie('currentStudent');
 
 const gameStatus = ref('setup'); // setup, playing, result, end
 const errorMsg = ref('');
 const gameStartTime = ref(0);
 const timeSpent = ref(0);
+const selectedGrade = ref(null);
+const isLoadingSentences = ref(false);
 let timer = null;
 
 // 計分系統
@@ -32,6 +33,20 @@ const config = ref({
 const sentences = ref([]);
 const currentIndex = ref(0);
 const currentSentence = computed(() => sentences.value[currentIndex.value]);
+const defaultSentences = {
+    7: [
+        { english: 'How are you today?', chinese: '你今天好嗎？' },
+        { english: 'I am a junior high school student.', chinese: '我是一名國中生。' }
+    ],
+    8: [
+        { english: 'Practice makes perfect.', chinese: '熟能生巧。' },
+        { english: 'Could you tell me how to get there?', chinese: '你可以告訴我怎麼去那裡嗎？' }
+    ],
+    9: [
+        { english: 'Learning from mistakes helps us grow.', chinese: '從錯誤中學習能幫助我們成長。' },
+        { english: 'We should take action to protect the environment.', chinese: '我們應該採取行動保護環境。' }
+    ]
+};
 
 // 語音辨識狀態
 let recognition = null;
@@ -78,18 +93,14 @@ onMounted(async () => {
         if (settings.speak_sentences) config.value.sentences_raw = settings.speak_sentences;
     }
 
-    // 解析後台傳來的句子
-    const rawLines = config.value.sentences_raw.split('\n').filter(l => l.trim() !== '');
-    if (rawLines.length === 0) {
-        rawLines.push('How are you today?|你好嗎？'); // 預設防呆
-        rawLines.push('Practice makes perfect.|熟能生巧。');
-    }
+    initSpeechRecognition();
 
-    sentences.value = rawLines.map((line, id) => {
-        const parts = line.split('|');
-        const en = parts[0].trim();
-        const zh = parts[1] ? parts[1].trim() : '';
-        
+  } catch (e) { console.error(e); }
+});
+
+const buildSentences = items => items.map((item, id) => {
+        const en = String(item.english || '').trim();
+        const zh = String(item.chinese || '').trim();
         // 將英文句子拆成單字陣列 (保留標點符號供顯示，另存乾淨單字供比對)
         const words = en.split(' ').map(w => {
             const clean = w.replace(/[^a-zA-Z]/g, '').toLowerCase();
@@ -97,12 +108,34 @@ onMounted(async () => {
         });
 
         return { id, en, zh, words, sentenceScoreEarned: 0, wordScoreEarned: 0 };
+    }).filter(item => item.en);
+
+const legacySentenceItems = () => config.value.sentences_raw
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(line => {
+        const [english, ...translation] = line.split('|');
+        return { english, chinese: translation.join('|') };
     });
 
-    initSpeechRecognition();
+const selectGrade = async grade => {
+    selectedGrade.value = grade;
+    isLoadingSentences.value = true;
+    errorMsg.value = '';
+    const { data, error } = await supabase
+        .from('speakno1_sentences')
+        .select('id, english, chinese, sort_order')
+        .eq('grade', grade)
+        .order('sort_order', { ascending: true })
+        .order('id', { ascending: true });
 
-  } catch (e) { console.error(e); }
-});
+    let items = !error && data?.length ? data : legacySentenceItems();
+    if (!items.length) items = defaultSentences[grade];
+    if (error) console.warn('年級句子題庫尚未建立，暫時使用原有句子：', error.message);
+    sentences.value = buildSentences(items);
+    isLoadingSentences.value = false;
+};
 
 const initSpeechRecognition = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -199,6 +232,10 @@ const evaluateSpeech = () => {
     const ratio = validWordsLength > 0 ? (correctCount / validWordsLength) : 0;
     const earnedSentenceScore = Math.round(ratio * config.value.sentence_score);
 
+    // 重測同一句時以最新一次結果取代，避免重複累加成績。
+    wordScoreTotal.value -= currentSentence.value.wordScoreEarned;
+    sentenceScoreTotal.value -= currentSentence.value.sentenceScoreEarned;
+
     // 寫入當前題目分數
     currentSentence.value.wordScoreEarned = earnedWordScore;
     currentSentence.value.sentenceScoreEarned = earnedSentenceScore;
@@ -215,6 +252,7 @@ const evaluateSpeech = () => {
 };
 
 const startGame = () => {
+    if (!selectedGrade.value || !sentences.value.length || isLoadingSentences.value) return;
     if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
     wordScoreTotal.value = 0;
     sentenceScoreTotal.value = 0;
@@ -245,13 +283,24 @@ const endGame = async () => {
     if (recognition && isRecording.value) recognition.stop();
 
     if (studentCookie.value && !studentCookie.value.isAnon) {
-        await supabase.from('game_records').insert([{
+        const missedWords = sentences.value.flatMap(sentence => {
+            const missed = sentence.words.filter(word => word.status === 'wrong').map(word => word.original);
+            return missed.length ? [`${sentence.en}：${missed.join('、')}`] : [];
+        });
+        const { error } = await supabase.from('game_records').insert([{
             student_id: studentCookie.value.id, 
             game_type: '英語口說學霸', 
+            version: '口說多元評量',
+            volume: `${selectedGrade.value}年級`,
+            unit_played: `${selectedGrade.value}年級（${sentences.value.length}題）`,
             score: totalCombinedScore.value, 
             time_taken_seconds: timeSpent.value,
-            correct_words: `單字得分:${wordScoreTotal.value}, 句子得分:${sentenceScoreTotal.value}`
+            mistakes: missedWords.length,
+            wrong_words: missedWords.join('；'),
+            correct_words: `單字得分：${wordScoreTotal.value}；句子得分：${sentenceScoreTotal.value}`,
+            device_info: navigator.userAgent
         }]);
+        if (error) errorMsg.value = `⚠️ 成績儲存失敗：${error.message}`;
     }
 };
 
@@ -267,6 +316,7 @@ onUnmounted(() => {
     
     <header class="t-header retro-element">
       <h2 class="t-title">🗣️ 英語口說學霸</h2>
+      <span v-if="selectedGrade" class="grade-chip">{{ selectedGrade }} 年級</span>
       <div v-if="gameStatus === 'playing' || gameStatus === 'end'" class="t-timer">
          <span style="color:#4caf50; margin-right: 10px;">單字: {{ wordScoreTotal }}</span>
          <span style="color:#ff9800; margin-right: 15px;">句子: {{ sentenceScoreTotal }}</span>
@@ -281,6 +331,17 @@ onUnmounted(() => {
       <div class="rpg-dialog retro-element" style="max-width: 600px;">
         <div class="icon-big">🎤</div>
         <h2 style="color:#ffeb3b; margin-bottom: 15px;">英語口說多元評量</h2>
+
+        <div class="grade-picker">
+          <h3>請先選擇年級</h3>
+          <div class="grade-options">
+            <button v-for="grade in [7, 8, 9]" :key="grade" class="grade-btn" :class="{ selected: selectedGrade === grade }" @click="selectGrade(grade)">
+              {{ grade }} 年級
+            </button>
+          </div>
+          <p v-if="isLoadingSentences">題庫載入中…</p>
+          <p v-else-if="selectedGrade">已載入 {{ selectedGrade }} 年級，共 {{ sentences.length }} 題。</p>
+        </div>
         
         <div class="rules-box" style="margin-bottom: 20px; border-color: #ff9800;">
             <p>1️⃣ <b>發音練習</b>：點擊喇叭可聽整句發音，點擊「個別單字」可單獨聽單字發音。</p>
@@ -296,7 +357,7 @@ onUnmounted(() => {
             <p style="margin:0; font-size: 0.85rem;">首次錄音時，瀏覽器會要求<b>麥克風權限</b>，請務必點選「允許」。若點擊錄音無反應，請至手機的「設定 > 隱私權 > 麥克風」中確認是否已開啟瀏覽器的權限。</p>
         </div>
 
-        <button class="retro-btn btn-primary" style="margin-top:20px; width:100%; font-size: 1.3rem; padding: 15px;" @click="startGame">開始測驗</button>
+        <button class="retro-btn btn-primary" :disabled="!selectedGrade || !sentences.length || isLoadingSentences" style="margin-top:20px; width:100%; font-size: 1.3rem; padding: 15px;" @click="startGame">{{ selectedGrade ? `開始 ${selectedGrade} 年級測驗` : '請先選擇年級' }}</button>
       </div>
     </div>
 
@@ -377,6 +438,14 @@ onUnmounted(() => {
 .btn-primary { background: #0f3460; border-color: #4a4e69; box-shadow: 0 4px 0 #0a2240; }
 .btn-danger { background: #d32f2f; border-color: #e57373; box-shadow: 0 4px 0 #b71c1c; }
 .btn-small { padding: 5px 10px; font-size: 1rem; box-shadow: 0 2px 0 #b71c1c; }
+.retro-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.grade-chip { background:#ff9800; color:#1a1a2e; padding:5px 10px; border-radius:999px; font-weight:900; }
+.grade-picker { margin: 0 0 20px; padding: 15px; border: 2px solid #4a4e69; border-radius: 10px; background: #111827; }
+.grade-picker h3 { margin: 0 0 12px; color: #fff; }
+.grade-picker p { margin: 10px 0 0; color: #cbd5e1; }
+.grade-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.grade-btn { padding: 14px 8px; border: 2px solid #ff9800; border-radius: 8px; background: #1f2937; color: #ffcc80; font: inherit; font-weight: 900; cursor: pointer; }
+.grade-btn.selected { background: #ff9800; color: #111827; box-shadow: 0 0 0 3px #ffcc8055; }
 
 .t-header { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; border-radius: 0; border-top: none; border-left: none; border-right: none; margin-bottom: 10px;}
 .t-title { margin: 0; font-size: 1.2rem; color: #e94560;}
