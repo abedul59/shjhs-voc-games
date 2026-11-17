@@ -36,15 +36,18 @@ const currentSentence = computed(() => sentences.value[currentIndex.value]);
 const defaultSentences = {
     7: [
         { english: 'How are you today?', chinese: '你今天好嗎？' },
-        { english: 'I am a junior high school student.', chinese: '我是一名國中生。' }
+        { english: 'I am a junior high school student.', chinese: '我是一名國中生。' },
+        { english: 'How old is he?', chinese: '他幾歲了？' }
     ],
     8: [
         { english: 'Practice makes perfect.', chinese: '熟能生巧。' },
-        { english: 'Could you tell me how to get there?', chinese: '你可以告訴我怎麼去那裡嗎？' }
+        { english: 'Could you tell me how to get there?', chinese: '你可以告訴我怎麼去那裡嗎？' },
+        { english: 'I have been learning English for three years.', chinese: '我學英文已經三年了。' }
     ],
     9: [
         { english: 'Learning from mistakes helps us grow.', chinese: '從錯誤中學習能幫助我們成長。' },
-        { english: 'We should take action to protect the environment.', chinese: '我們應該採取行動保護環境。' }
+        { english: 'We should take action to protect the environment.', chinese: '我們應該採取行動保護環境。' },
+        { english: 'The more we practice, the more confident we become.', chinese: '我們練習得越多，就會越有自信。' }
     ]
 };
 
@@ -107,7 +110,7 @@ const buildSentences = items => items.map((item, id) => {
             return { original: w, clean: clean, status: 'pending' };
         });
 
-        return { id, en, zh, words, sentenceScoreEarned: 0, wordScoreEarned: 0 };
+        return { id, en, zh, words, sentenceScoreEarned: 0, wordScoreEarned: 0, completed: false, transcript: '' };
     }).filter(item => item.en);
 
 const legacySentenceItems = () => config.value.sentences_raw
@@ -131,7 +134,11 @@ const selectGrade = async grade => {
         .order('id', { ascending: true });
 
     let items = !error && data?.length ? data : legacySentenceItems();
-    if (!items.length) items = defaultSentences[grade];
+    const usedEnglish = new Set(items.map(item => String(item.english || '').trim().toLowerCase()));
+    if (items.length < 3) {
+        items = [...items, ...defaultSentences[grade].filter(item => !usedEnglish.has(item.english.toLowerCase()))];
+    }
+    items = items.slice(0, 3);
     if (error) console.warn('年級句子題庫尚未建立，暫時使用原有句子：', error.message);
     sentences.value = buildSentences(items);
     isLoadingSentences.value = false;
@@ -168,6 +175,7 @@ const initSpeechRecognition = () => {
             isRecording.value = false;
             if (transcript.value === '聽取中...' || transcript.value.trim() === '') {
                 transcript.value = '(未能聽取到聲音，請再試一次)';
+                isEvaluated.value = Boolean(currentSentence.value?.completed);
             } else {
                 evaluateSpeech();
             }
@@ -176,6 +184,7 @@ const initSpeechRecognition = () => {
     
     recognition.onerror = (event) => {
         isRecording.value = false;
+        isEvaluated.value = Boolean(currentSentence.value?.completed);
         if (event.error === 'not-allowed') {
             transcript.value = '⚠️ 麥克風權限被拒絕！請允許瀏覽器使用麥克風。';
         } else {
@@ -191,8 +200,6 @@ const toggleRecording = () => {
     } else {
         if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
         
-        // 重置當前題目的狀態
-        currentSentence.value.words.forEach(w => w.status = 'pending');
         isEvaluated.value = false;
         transcript.value = '';
         
@@ -239,6 +246,8 @@ const evaluateSpeech = () => {
     // 寫入當前題目分數
     currentSentence.value.wordScoreEarned = earnedWordScore;
     currentSentence.value.sentenceScoreEarned = earnedSentenceScore;
+    currentSentence.value.completed = true;
+    currentSentence.value.transcript = transcript.value;
     
     // 累加至全域總分
     wordScoreTotal.value += earnedWordScore;
@@ -256,7 +265,17 @@ const startGame = () => {
     if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
     wordScoreTotal.value = 0;
     sentenceScoreTotal.value = 0;
+    timeSpent.value = 0;
+    sentences.value.forEach(sentence => {
+        sentence.wordScoreEarned = 0;
+        sentence.sentenceScoreEarned = 0;
+        sentence.completed = false;
+        sentence.transcript = '';
+        sentence.words.forEach(word => { word.status = 'pending'; });
+    });
     currentIndex.value = 0;
+    transcript.value = '';
+    isEvaluated.value = false;
     gameStartTime.value = Date.now();
     gameStatus.value = 'playing'; 
     
@@ -265,19 +284,19 @@ const startGame = () => {
     }, 1000);
 };
 
-const nextSentence = () => {
-    transcript.value = '';
-    isEvaluated.value = false;
-    if (currentIndex.value < sentences.value.length - 1) {
-        currentIndex.value++;
-    } else {
-        endGame();
-    }
+const selectSentence = index => {
+    if (isRecording.value || index === currentIndex.value) return;
+    currentIndex.value = index;
+    transcript.value = currentSentence.value.transcript || '';
+    isEvaluated.value = currentSentence.value.completed;
 };
 
 const totalCombinedScore = computed(() => wordScoreTotal.value + sentenceScoreTotal.value);
+const completedCount = computed(() => sentences.value.filter(sentence => sentence.completed).length);
+const allCompleted = computed(() => sentences.value.length === 3 && completedCount.value === 3);
 
 const endGame = async () => {
+    if (!allCompleted.value || gameStatus.value === 'end') return;
     gameStatus.value = 'end';
     clearInterval(timer);
     if (recognition && isRecording.value) recognition.stop();
@@ -318,8 +337,11 @@ onUnmounted(() => {
       <h2 class="t-title">🗣️ 英語口說學霸</h2>
       <span v-if="selectedGrade" class="grade-chip">{{ selectedGrade }} 年級</span>
       <div v-if="gameStatus === 'playing' || gameStatus === 'end'" class="t-timer">
-         <span style="color:#4caf50; margin-right: 10px;">單字: {{ wordScoreTotal }}</span>
-         <span style="color:#ff9800; margin-right: 15px;">句子: {{ sentenceScoreTotal }}</span>
+         <template v-if="allCompleted || gameStatus === 'end'">
+           <span style="color:#4caf50; margin-right: 10px;">單字: {{ wordScoreTotal }}</span>
+           <span style="color:#ff9800; margin-right: 15px;">句子: {{ sentenceScoreTotal }}</span>
+         </template>
+         <span v-else style="color:#ffeb3b; margin-right: 15px;">完成 {{ completedCount }} / 3</span>
          <span>⏱️ {{ timeSpent }}s</span>
       </div>
       <NuxtLink to="/" class="retro-btn btn-small btn-danger" style="text-decoration:none;">離開</NuxtLink>
@@ -346,7 +368,8 @@ onUnmounted(() => {
         <div class="rules-box" style="margin-bottom: 20px; border-color: #ff9800;">
             <p>1️⃣ <b>發音練習</b>：點擊喇叭可聽整句發音，點擊「個別單字」可單獨聽單字發音。</p>
             <p>2️⃣ <b>錄音檢測</b>：點擊錄音鈕後對著麥克風唸出句子，系統會自動評分！</p>
-            <p>3️⃣ <b>計分方式</b>：<br>
+            <p>3️⃣ <b>自由選題</b>：三句可用任意順序練習，全部完成後才會結算並儲存成績。</p>
+            <p>4️⃣ <b>計分方式</b>：<br>
                🔸 單字唸對 +{{ config.word_score }}，漏唸或唸錯 -{{ config.word_penalty }} 分。<br>
                🔸 句子完整度最高可得 {{ config.sentence_score }} 分。
             </p>
@@ -364,7 +387,18 @@ onUnmounted(() => {
     <div v-else-if="gameStatus === 'playing'" class="game-container">
         
         <div class="progress-bar">
-            <span>題目進度: {{ currentIndex + 1 }} / {{ sentences.length }}</span>
+            <span>完成進度：{{ completedCount }} / 3</span>
+            <small>三句可自由選擇，全部完成後才會結算成績</small>
+        </div>
+
+        <div class="sentence-picker" aria-label="選擇練習句子">
+            <button v-for="(sentence, index) in sentences" :key="sentence.id" type="button"
+                    class="sentence-choice" :class="{ active: currentIndex === index, completed: sentence.completed }"
+                    :disabled="isRecording" @click="selectSentence(index)">
+                <span class="choice-number">{{ sentence.completed ? '✓' : index + 1 }}</span>
+                <span class="choice-text">{{ sentence.en }}</span>
+                <small>{{ sentence.completed ? '已完成，可重新練習' : '尚未完成' }}</small>
+            </button>
         </div>
 
         <div class="sentence-box retro-element">
@@ -408,8 +442,8 @@ onUnmounted(() => {
                     <div class="s-val" style="color: #ff9800;">+{{ currentSentence.sentenceScoreEarned }} <span style="font-size:0.8rem; color:#aaa;">/ {{ config.sentence_score }}</span></div>
                 </div>
             </div>
-            <button class="retro-btn btn-primary" style="width: 100%; margin-top: 15px; font-size: 1.2rem; padding: 10px;" @click="nextSentence">
-                {{ currentIndex < sentences.length - 1 ? '⏭️ 繼續下一題' : '🏁 完成測驗' }}
+            <button class="retro-btn btn-primary" :disabled="!allCompleted" style="width: 100%; margin-top: 15px; font-size: 1.2rem; padding: 10px;" @click="endGame">
+                {{ allCompleted ? '🏁 三句皆完成，結算成績' : `尚有 ${3 - completedCount} 句未完成` }}
             </button>
         </div>
 
@@ -460,7 +494,19 @@ onUnmounted(() => {
 /* 遊戲畫面佈局 */
 .game-container { flex: 1; display: flex; flex-direction: column; max-width: 800px; margin: 0 auto; width: 100%; padding: 0 10px 20px 10px; gap: 15px; box-sizing: border-box; }
 
-.progress-bar { text-align: center; color: #aaa; font-weight: bold; font-size: 1.1rem; }
+.progress-bar { display:flex; flex-direction:column; gap:4px; text-align: center; color: #ddd; font-weight: bold; font-size: 1.1rem; }
+.progress-bar small { color:#ffcc80; font-size:.82rem; }
+.sentence-picker { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.sentence-choice { min-height:110px; display:flex; flex-direction:column; align-items:flex-start; gap:6px; padding:12px; border:2px solid #4a4e69; border-radius:9px; background:#101526; color:#fff; text-align:left; cursor:pointer; font:inherit; transition:.15s; }
+.sentence-choice:hover:not(:disabled), .sentence-choice.active { border-color:#ff9800; transform:translateY(-2px); }
+.sentence-choice.active { box-shadow:0 0 0 3px #ff980044; }
+.sentence-choice.completed { border-color:#4caf50; background:#102418; }
+.sentence-choice:disabled { cursor:not-allowed; opacity:.7; }
+.choice-number { display:grid; place-items:center; min-width:28px; height:28px; padding:0 4px; border-radius:999px; background:#ff9800; color:#111827; font-weight:900; }
+.sentence-choice.completed .choice-number { background:#4caf50; color:#fff; }
+.choice-text { font-weight:900; line-height:1.3; }
+.sentence-choice small { margin-top:auto; color:#aaa; }
+.sentence-choice.completed small { color:#a5d6a7; }
 
 /* 句子顯示區 */
 .sentence-box { display: flex; flex-direction: column; align-items: center; border-color: #0f3460; }
@@ -504,5 +550,10 @@ onUnmounted(() => {
 @media (min-width: 768px) {
     .word-span { font-size: 2.5rem; }
     .t-result { font-size: 1.5rem; }
+}
+@media (max-width: 700px) {
+    .sentence-picker { grid-template-columns:1fr; }
+    .sentence-choice { min-height:88px; }
+    .t-header { flex-wrap:wrap; gap:8px; }
 }
 </style>
