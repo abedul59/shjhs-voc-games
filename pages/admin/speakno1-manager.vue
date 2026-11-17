@@ -18,6 +18,7 @@ let translateTimer = null;
 
 const formData = ref({ id: null, grade: 7, english: '', chinese: '', sort_order: 0 });
 const gradeSentences = computed(() => sentences.value.filter(item => Number(item.grade) === selectedGrade.value));
+const canAddSentence = computed(() => gradeSentences.value.length < 3);
 
 const fetchSentences = async () => {
   isLoading.value = true;
@@ -41,6 +42,10 @@ onMounted(fetchSentences);
 onUnmounted(() => clearTimeout(translateTimer));
 
 const openAddModal = () => {
+  if (!canAddSentence.value) {
+    errorMessage.value = `${selectedGrade.value} 年級已有三句評量句子，請直接編輯或刪除後再新增。`;
+    return;
+  }
   isEditing.value = false;
   chineseManuallyEdited.value = false;
   formData.value = {
@@ -90,6 +95,13 @@ const scheduleTranslation = () => {
 const saveSentence = async () => {
   clearTimeout(translateTimer);
   if (!formData.value.english.trim()) return alert('請輸入英文句子。');
+  const targetGradeCount = sentences.value.filter(item =>
+    Number(item.grade) === Number(formData.value.grade) && item.id !== formData.value.id
+  ).length;
+  if (targetGradeCount >= 3) {
+    errorMessage.value = `${formData.value.grade} 年級已有三句評量句子，無法再加入第四句。`;
+    return;
+  }
   if (!formData.value.chinese.trim()) await translateEnglish(true);
   if (!formData.value.chinese.trim() && !confirm('目前沒有中文翻譯，仍要儲存嗎？')) return;
 
@@ -144,8 +156,8 @@ const moveSentence = async (index, direction) => {
   <div class="admin-container">
     <header>
       <NuxtLink to="/admin" class="back-btn">← 返回後台</NuxtLink>
-      <div><h1>🗣️ 口說學霸－多元評量</h1><p>七、八、九年級句子題庫管理</p></div>
-      <button class="add-btn" @click="openAddModal">＋ 新增句子</button>
+      <div><h1>🗣️ 口說學霸－多元評量</h1><p>七、八、九年級各設定三句；學生可自由選擇練習順序</p></div>
+      <button class="add-btn" :disabled="!canAddSentence" @click="openAddModal">＋ 新增句子</button>
     </header>
 
     <p v-if="errorMessage" class="message error">⚠️ {{ errorMessage }}</p>
@@ -186,5 +198,5 @@ const moveSentence = async (index, direction) => {
 </template>
 
 <style scoped>
-.admin-container{max-width:1000px;margin:auto;padding:28px 18px;font-family:system-ui,-apple-system,'Noto Sans TC',sans-serif;color:#1f2937}header{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:20px;border-bottom:2px solid #e5e7eb;padding-bottom:18px}header h1{margin:0;color:#9a3412}header p{margin:5px 0 0;color:#64748b}.back-btn,.add-btn{border:2px solid #c2410c;border-radius:9px;padding:9px 14px;background:white;color:#9a3412;text-decoration:none;font-weight:800;cursor:pointer}.add-btn{background:#c2410c;color:white}.message{padding:12px 15px;border-radius:9px}.message.error{background:#fff1f2;color:#9f1239}.grade-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:24px 0}.grade-tabs button{padding:14px;border:2px solid #fdba74;border-radius:10px;background:#fff7ed;color:#9a3412;font-size:18px;font-weight:900;cursor:pointer}.grade-tabs button.active{background:#c2410c;color:white}.grade-tabs small{display:block;font-size:12px;margin-top:4px}.sentence-list{display:grid;gap:10px}.sentence-card{display:grid;grid-template-columns:40px 1fr auto;gap:12px;align-items:center;padding:15px;border:1px solid #e2e8f0;border-radius:12px;background:white;box-shadow:0 3px 10px #0f172a0d}.order{font-size:20px;font-weight:900;color:#c2410c;text-align:center}.sentence-text{display:flex;flex-direction:column;gap:6px}.sentence-text strong{font-size:18px}.sentence-text span{color:#64748b}.actions{display:flex;gap:5px}.actions button,.modal-actions button,.translation-label button{border:1px solid #cbd5e1;border-radius:7px;background:#f8fafc;padding:7px 10px;cursor:pointer}.actions .danger{color:#be123c}.actions button:disabled{opacity:.35}.empty{text-align:center;padding:45px;color:#94a3b8;background:#f8fafc;border-radius:12px}.modal-overlay{position:fixed;inset:0;background:#0f172a99;display:grid;place-items:center;padding:18px;z-index:100}.modal-content{width:min(620px,100%);box-sizing:border-box;background:white;border-radius:16px;padding:26px;display:grid;gap:14px}.modal-content h2{margin:0;color:#9a3412}.modal-content label{display:grid;gap:6px;font-weight:800}.modal-content textarea,.modal-content input,.modal-content select{box-sizing:border-box;width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:10px;font:inherit}.translation-label{display:flex;align-items:center;gap:10px}.translation-label span{color:#0284c7}.translation-label button{margin-left:auto}.modal-actions{display:flex;justify-content:flex-end;gap:10px}.modal-actions .save{background:#c2410c;color:white;border-color:#c2410c}.modal-actions button:disabled{opacity:.5}@media(max-width:700px){header{grid-template-columns:1fr;text-align:center}.grade-tabs{grid-template-columns:1fr}.sentence-card{grid-template-columns:32px 1fr}.actions{grid-column:1/-1;justify-content:flex-end}}
+.admin-container{max-width:1000px;margin:auto;padding:28px 18px;font-family:system-ui,-apple-system,'Noto Sans TC',sans-serif;color:#1f2937}header{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:20px;border-bottom:2px solid #e5e7eb;padding-bottom:18px}header h1{margin:0;color:#9a3412}header p{margin:5px 0 0;color:#64748b}.back-btn,.add-btn{border:2px solid #c2410c;border-radius:9px;padding:9px 14px;background:white;color:#9a3412;text-decoration:none;font-weight:800;cursor:pointer}.add-btn{background:#c2410c;color:white}.add-btn:disabled{opacity:.45;cursor:not-allowed}.message{padding:12px 15px;border-radius:9px}.message.error{background:#fff1f2;color:#9f1239}.grade-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:24px 0}.grade-tabs button{padding:14px;border:2px solid #fdba74;border-radius:10px;background:#fff7ed;color:#9a3412;font-size:18px;font-weight:900;cursor:pointer}.grade-tabs button.active{background:#c2410c;color:white}.grade-tabs small{display:block;font-size:12px;margin-top:4px}.sentence-list{display:grid;gap:10px}.sentence-card{display:grid;grid-template-columns:40px 1fr auto;gap:12px;align-items:center;padding:15px;border:1px solid #e2e8f0;border-radius:12px;background:white;box-shadow:0 3px 10px #0f172a0d}.order{font-size:20px;font-weight:900;color:#c2410c;text-align:center}.sentence-text{display:flex;flex-direction:column;gap:6px}.sentence-text strong{font-size:18px}.sentence-text span{color:#64748b}.actions{display:flex;gap:5px}.actions button,.modal-actions button,.translation-label button{border:1px solid #cbd5e1;border-radius:7px;background:#f8fafc;padding:7px 10px;cursor:pointer}.actions .danger{color:#be123c}.actions button:disabled{opacity:.35}.empty{text-align:center;padding:45px;color:#94a3b8;background:#f8fafc;border-radius:12px}.modal-overlay{position:fixed;inset:0;background:#0f172a99;display:grid;place-items:center;padding:18px;z-index:100}.modal-content{width:min(620px,100%);box-sizing:border-box;background:white;border-radius:16px;padding:26px;display:grid;gap:14px}.modal-content h2{margin:0;color:#9a3412}.modal-content label{display:grid;gap:6px;font-weight:800}.modal-content textarea,.modal-content input,.modal-content select{box-sizing:border-box;width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:10px;font:inherit}.translation-label{display:flex;align-items:center;gap:10px}.translation-label span{color:#0284c7}.translation-label button{margin-left:auto}.modal-actions{display:flex;justify-content:flex-end;gap:10px}.modal-actions .save{background:#c2410c;color:white;border-color:#c2410c}.modal-actions button:disabled{opacity:.5}@media(max-width:700px){header{grid-template-columns:1fr;text-align:center}.grade-tabs{grid-template-columns:1fr}.sentence-card{grid-template-columns:32px 1fr}.actions{grid-column:1/-1;justify-content:flex-end}}
 </style>
