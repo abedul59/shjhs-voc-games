@@ -372,8 +372,10 @@ const toggleAngrybirdsDuel = event => {
         句子滿分<input type="number" v-model="config.speak_sentence_score" class="retro-input num-input" />分
       </div>
 
-      <div style="width: 100%; color: #f57f17; font-weight: bold; margin-bottom: 5px;">📝 自訂口說測驗句子 (一行一句，格式：英文|中文)：</div>
-      <textarea v-model="config.speak_sentences" class="retro-input" style="width: 100%; height: 120px; font-family: monospace; line-height: 1.5; padding: 10px;" placeholder="例如：\nHow are you?|你好嗎？\nI am a student.|我是一個學生。"></textarea>
+      <div class="speak-manager-link">
+        <div><strong>📝 分年級句子題庫</strong><small>七、八、九年級分開管理；輸入英文會自動產生中文翻譯。</small></div>
+        <NuxtLink to="/admin/speakno1-manager">前往句子管理 →</NuxtLink>
+      </div>
     </div>
 
 
@@ -791,6 +793,10 @@ const toggleAngrybirdsDuel = event => {
 .multi-input { display: flex; align-items: center; gap: 5px; font-size: 0.9rem; flex-wrap: wrap; }
 .num-input { width: 65px; text-align: center; padding: 5px; font-size: 1rem; background: var(--input-bg); color: var(--text-main); border: var(--border-width) solid var(--border-color); border-radius: 4px; outline: none; }
 .retro-input { padding: 8px; border: var(--border-width) solid var(--border-color); border-radius: var(--radius-element); background: var(--input-bg); color: var(--text-main); font-family: inherit; font-weight: bold; }
+.speak-manager-link { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px; box-sizing: border-box; border-radius: 8px; background: rgba(255,255,255,.65); color: #9a3412; }
+.speak-manager-link div { display: flex; flex-direction: column; gap: 4px; }
+.speak-manager-link small { color: #64748b; }
+.speak-manager-link a { flex: 0 0 auto; padding: 9px 12px; border-radius: 7px; background: #c2410c; color: white; text-decoration: none; font-weight: 900; }
 
 .setting-card { background: var(--tab-bg); border: var(--border-width) solid var(--border-color); border-radius: var(--radius-element); padding: 15px; display: flex; flex-direction: column; gap: 10px; }
 .card-title { margin: -15px -15px 15px -15px; padding: 10px 15px; font-weight: 900; font-size: 1.1rem; border-bottom: var(--border-width) solid var(--border-color); border-radius: var(--radius-element) var(--radius-element) 0 0; }
