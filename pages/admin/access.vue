@@ -388,6 +388,7 @@ const saveStudentAccess = async () => {
     <div class="header">
       <h1>🛑 遊戲權限與開放時間管理</h1>
       <div style="display: flex; gap: 10px;">
+        <NuxtLink to="/admin/game-unlocks" class="retro-btn btn-primary" style="text-decoration:none;">🔓 達標解鎖規則</NuxtLink>
         <NuxtLink to="/admin" class="retro-btn btn-secondary" style="text-decoration:none;">返回後台首頁</NuxtLink>
         <button v-if="isSuperAdmin" class="retro-btn btn-primary" @click="saveSettings">{{ isSaving ? '儲存中...' : '💾 儲存全域設定' }}</button>
       </div>
