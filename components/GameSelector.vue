@@ -3,6 +3,7 @@ import { ref, onMounted, computed, onUnmounted, watch } from 'vue';
 import { farmLessonAllowed, farmPolicyTableMissing } from '~/lib/happy-farm-access';
 import { ALL_VOCAB_SCOPE, isVocabScopeAllowed, normalizeVocabScope } from '~/lib/vocab-scope-access';
 import { SCHOOL_HOURS_LABEL, isTaipeiSchoolHours } from '~/lib/school-hours-access';
+import { evaluateGameUnlockRule, unlockProgressText } from '~/lib/game-unlock-access';
 
 const props = defineProps({ autoLogoutMinutes: { type: Number, default: 10 } });
 const supabase = useSupabaseClient();
@@ -119,6 +120,38 @@ const studentSchoolHoursAllowedGames = ref(['ALL']);
 const schoolHoursActive = ref(isTaipeiSchoolHours());
 const effectiveAllowedGames = computed(() => schoolHoursActive.value ? studentSchoolHoursAllowedGames.value : studentAllowedGames.value);
 const studentVocabScope = ref({ ...ALL_VOCAB_SCOPE, scopes: [] });
+const gameUnlockTasks = ref([]);
+const unlockStateByGame = computed(() => {
+  const states = new Map();
+  for (const task of gameUnlockTasks.value) {
+    for (const gameId of task.rule.target_game_ids) {
+      if (!states.has(gameId)) states.set(gameId, []);
+      states.get(gameId).push(task);
+    }
+  }
+  return new Map([...states.entries()].map(([gameId, tasks]) => {
+    const forcedLock = tasks.some(task => task.forcedLock);
+    const unlocked = !forcedLock && tasks.some(task => task.unlocked);
+    return [gameId, { governed: true, locked: !unlocked, unlocked, tasks }];
+  }));
+});
+const unlockStateForGame = gameId => unlockStateByGame.value.get(gameId);
+
+const loadGameUnlockTasks = async () => {
+  gameUnlockTasks.value = [];
+  if (!studentCookie.value || studentCookie.value.isAnon || !studentCookie.value.class || !studentCookie.value.id) return;
+  const { data: rules, error: ruleError } = await supabase.from('class_game_unlock_rules')
+    .select('*').eq('class_name', studentCookie.value.class).eq('enabled', true).order('id');
+  if (ruleError || !rules?.length) return;
+  const ruleIds = rules.map(rule => rule.id);
+  const [overrideResult, recordResult] = await Promise.all([
+    supabase.from('student_game_unlock_overrides').select('*').eq('student_id', String(studentCookie.value.id)).in('rule_id', ruleIds),
+    supabase.from('game_records').select('game_type,version,volume,unit_played,score,attempt_number').eq('student_id', studentCookie.value.id).limit(10000)
+  ]);
+  if (recordResult.error) return;
+  const overrides = new Map((overrideResult.data || []).map(item => [item.rule_id, item]));
+  gameUnlockTasks.value = rules.map(rule => evaluateGameUnlockRule(rule, overrides.get(rule.id), recordResult.data || []));
+};
 
 const lessonAllowedForStudent = (lesson) => isVocabScopeAllowed(studentVocabScope.value, lesson);
 const clearDisallowedSelection = () => {
@@ -238,6 +271,7 @@ onMounted(async () => {
     if (!schoolResult.error && Array.isArray(schoolResult.data?.school_hours_allowed_games)) {
       studentSchoolHoursAllowedGames.value = schoolResult.data.school_hours_allowed_games;
     }
+    await loadGameUnlockTasks();
     clearDisallowedSelection();
   }
 
@@ -295,8 +329,10 @@ const checkGameDisabled = (gameId) => {
     if (accessSettings.value.disabled_games?.includes(gameId)) return true;
     const gData = gameDict[gameId];
     if (gData && gData.pvpKey && pvpStatus.value) { if (pvpStatus.value[gData.pvpKey] === false) return true; }
+    const unlockState = unlockStateForGame(gameId);
+    if (unlockState?.locked) return true;
     if (effectiveAllowedGames.value && !effectiveAllowedGames.value.includes('ALL')) {
-        if (!effectiveAllowedGames.value.includes(gameId)) return true;
+        if (!effectiveAllowedGames.value.includes(gameId) && (schoolHoursActive.value || !unlockState?.unlocked)) return true;
     }
     return false;
 };
@@ -305,6 +341,11 @@ const handleStartGame = async () => {
   if (!isTimeAllowed.value) { errorMsg.value = '⚠️ 目前非開放遊玩時段！'; return; }
   
   if (checkGameDisabled(selectedGameType.value)) { 
+      const unlockState = unlockStateForGame(selectedGameType.value);
+      if (unlockState?.locked) {
+          errorMsg.value = `🔒 尚未達成解鎖條件：${unlockState.tasks.map(task => `${task.rule.name}（${unlockProgressText(task)}）`).join('；')}`;
+          return;
+      }
       if (!effectiveAllowedGames.value.includes('ALL') && !effectiveAllowedGames.value.includes(selectedGameType.value)) {
           errorMsg.value = schoolHoursActive.value
             ? '⚠️ 這個遊戲目前不在上學時段白名單中！'
@@ -380,6 +421,15 @@ onUnmounted(() => { removeIdleTracking(); clearInterval(schoolHoursTimer); });
       <div v-if="schoolHoursActive && !studentCookie.isAnon" class="school-hours-banner">
         🏫 上學時段白名單生效中（{{ SCHOOL_HOURS_LABEL }}，台灣時間）；放學後會自動恢復一般設定。
       </div>
+
+      <div v-if="gameUnlockTasks.length && !studentCookie.isAnon" class="unlock-tasks-panel">
+        <h4>🔓 我的遊戲解鎖任務</h4>
+        <div v-for="task in gameUnlockTasks" :key="task.rule.id" :class="['unlock-task', { done: task.unlocked }]">
+          <strong>{{ task.unlocked ? '✅' : '🔒' }} {{ task.rule.name }}</strong>
+          <span>{{ unlockProgressText(task) }}</span>
+          <small>目標：{{ task.rule.target_game_ids.map(id => gameDict[id]?.name || id).join('、') }}</small>
+        </div>
+      </div>
       
       <div v-if="!isTimeAllowed" class="lock-banner">
          ⏳ 系統目前為非開放時段，無法進行遊戲喔！<br>
@@ -395,7 +445,7 @@ onUnmounted(() => { removeIdleTracking(); clearInterval(schoolHoursTimer); });
                      :class="[{ active: selectedGameType === gameId }, gameDict[gameId].class]" 
                      @click="selectedGameType = gameId" 
                      :disabled="checkGameDisabled(gameId)">
-                {{ gameDict[gameId].name }} <span v-if="checkGameDisabled(gameId)">🔒</span>
+                {{ gameDict[gameId].name }} <span v-if="unlockStateForGame(gameId)?.unlocked">🔓</span><span v-else-if="checkGameDisabled(gameId)">🔒</span>
              </button>
           </template>
         </div>
@@ -424,6 +474,11 @@ onUnmounted(() => { removeIdleTracking(); clearInterval(schoolHoursTimer); });
 .lock-banner { background: #ffebee; border: 2px dashed #f44336; color: #c62828; padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; margin-bottom: 15px; font-size: 1.1rem; }
 .lock-banner.mini { padding: 8px; font-size: 0.95rem; margin-top: -5px; }
 .school-hours-banner { margin-bottom: 15px; padding: 10px 12px; border: 2px solid #7e57c2; border-radius: 8px; background: #f3e5f5; color: #4a148c; font-weight: bold; line-height: 1.5; }
+.unlock-tasks-panel { margin-bottom: 18px; padding: 12px; border: 2px solid #0f766e; border-radius: 9px; background: #f0fdfa; color: #134e4a; }
+.unlock-tasks-panel h4 { margin: 0 0 9px; }
+.unlock-task { display: grid; gap: 3px; padding: 8px; border-top: 1px dashed #5eead4; }
+.unlock-task.done { color: #166534; background: #dcfce7; }
+.unlock-task small { color: inherit; opacity: .85; }
 
 .picture2meaning-btn { background: #e1f5fe; color: #0288d1; border-color: #03a9f4;}
 .picture2meaning-btn.active { background: #0288d1; color: #fff; box-shadow: 0 4px 0 #01579b; border-color: #01579b; }
