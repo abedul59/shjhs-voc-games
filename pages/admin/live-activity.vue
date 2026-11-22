@@ -219,6 +219,7 @@ onUnmounted(() => {
     <div class="header">
       <div class="title-area">
         <h1>📡 學生即時動態</h1>
+        <NuxtLink to="/admin/focus-monitor" class="retro-btn btn-back">🛡️ 專注監控</NuxtLink>
         <NuxtLink to="/admin" class="retro-btn btn-back">⬅ 返回</NuxtLink>
       </div>
       

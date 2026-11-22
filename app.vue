@@ -200,6 +200,7 @@ const toggleMusic = () => {
     </div>
 
     <NuxtPage />
+    <FocusMonitorBanner />
   </div>
 </template>
 
