@@ -19,6 +19,7 @@ const students = ref([]);
 const vocabMenu = ref([]);
 const gameCategories = ref(normalizeGameCategories([]));
 const groupedGames = computed(() => gamesGroupedByCategory(gameCategories.value));
+const allVisibleGameIds = computed(() => [...new Set(groupedGames.value.flatMap(category => category.games.map(game => game.id)))]);
 const isLoading = ref(true);
 const isSaving = ref(false);
 const message = ref('');
@@ -26,6 +27,8 @@ const schemaAvailable = ref(true);
 const editingId = ref(null);
 const selectedRuleId = ref(null);
 const overrideDrafts = ref({});
+const overrideSavedDrafts = ref({});
+const overrideSaveStates = ref({});
 const scopeVersion = ref('');
 const scopeVolume = ref('');
 const scopeUnit = ref('');
@@ -100,6 +103,9 @@ const toggleCategoryGames = (field, category) => {
   form.value[field] = ids.every(id => current.includes(id))
     ? current.filter(id => !ids.includes(id)) : [...new Set([...current, ...ids])];
 };
+const setAllGames = (field, selected) => {
+  form.value[field] = selected ? [...allVisibleGameIds.value] : [];
+};
 const addScope = level => {
   if (!scopeVersion.value) return;
   const key = vocabScopeKey(scopeVersion.value, level === 'version' ? '*' : scopeVolume.value, level === 'unit' ? scopeUnit.value : '*');
@@ -144,6 +150,7 @@ const deleteRule = async rule => {
 const openOverrides = async rule => {
   selectedRuleId.value = rule.id;
   message.value = '';
+  overrideSaveStates.value = {};
   overrideDrafts.value = Object.fromEntries(students.value.map(student => [String(student.student_id), {
     override_mode: 'inherit', required_plays: rule.required_plays, required_score: rule.required_score
   }]));
@@ -158,6 +165,29 @@ const openOverrides = async rule => {
       required_score: saved?.required_score ?? rule.required_score
     }];
   }));
+  overrideSavedDrafts.value = JSON.parse(JSON.stringify(overrideDrafts.value));
+};
+const normalizedOverrideDraft = draft => {
+  if (!draft) return null;
+  if (draft.override_mode !== 'custom') return { override_mode: draft.override_mode };
+  return {
+    override_mode: 'custom',
+    required_plays: Math.max(0, Number(draft.required_plays) || 0),
+    required_score: Math.max(0, Number(draft.required_score) || 0)
+  };
+};
+const overrideIsDirty = student => {
+  const key = String(student.student_id);
+  return JSON.stringify(normalizedOverrideDraft(overrideDrafts.value[key])) !== JSON.stringify(normalizedOverrideDraft(overrideSavedDrafts.value[key]));
+};
+const overrideButtonText = student => {
+  const key = String(student.student_id);
+  const state = overrideSaveStates.value[key];
+  if (state === 'saving') return '儲存中…';
+  if (state === 'error') return '重試儲存';
+  if (!overrideIsDirty(student) && state === 'saved') return '✓ 已儲存';
+  if (!overrideIsDirty(student)) return '已是最新';
+  return '儲存';
 };
 const saveOverride = async student => {
   const key = String(student.student_id);
@@ -169,6 +199,7 @@ const saveOverride = async student => {
     if (usesPlays && Number(draft.required_plays) <= 0) return alert('個別完成次數必須大於 0。');
     if (usesScore && Number(draft.required_score) <= 0) return alert('個別最高分門檻必須大於 0。');
   }
+  overrideSaveStates.value[key] = 'saving';
   let error;
   if (draft.override_mode === 'inherit') {
     ({ error } = await supabase.from('student_game_unlock_overrides').delete().eq('rule_id', selectedRule.value.id).eq('student_id', key));
@@ -180,7 +211,21 @@ const saveOverride = async student => {
       updated_at: new Date().toISOString()
     }, { onConflict: 'rule_id,student_id' }));
   }
-  message.value = error ? `個別設定儲存失敗：${error.message}` : `已更新 ${student.real_name} 的解鎖設定。`;
+  if (!error) {
+    const verification = await supabase.from('student_game_unlock_overrides').select('override_mode,required_plays,required_score')
+      .eq('rule_id', selectedRule.value.id).eq('student_id', key).maybeSingle();
+    if (verification.error) error = verification.error;
+    else if (draft.override_mode === 'inherit' && verification.data) error = new Error('沿用班級設定仍有個別資料，請再試一次。');
+    else if (draft.override_mode !== 'inherit' && verification.data?.override_mode !== draft.override_mode) error = new Error('資料庫回讀結果與設定不一致。');
+  }
+  if (error) {
+    overrideSaveStates.value[key] = 'error';
+    message.value = `個別設定儲存失敗：${error.message}`;
+    return;
+  }
+  overrideSavedDrafts.value[key] = JSON.parse(JSON.stringify(draft));
+  overrideSaveStates.value[key] = 'saved';
+  message.value = `已確認儲存 ${student.real_name} 的解鎖設定。`;
 };
 </script>
 
@@ -193,7 +238,7 @@ const saveOverride = async student => {
     <section class="editor">
       <div class="section-title"><h2>{{ editingId ? '編輯規則' : '新增規則' }}</h2><button type="button" @click="newRule">清空／新增</button></div>
       <div class="form-grid"><label>規則名稱<input v-model="form.name" placeholder="例如：完成基礎練習後開放趣味遊戲"></label><label class="check"><input v-model="form.enabled" type="checkbox"> 啟用規則</label></div>
-      <h3>一、累積哪些遊戲的表現？</h3>
+      <div class="game-section-heading"><h3>一、累積哪些遊戲的表現？</h3><div><button type="button" @click="setAllGames('source_game_ids', true)">☑ 全選</button><button type="button" @click="setAllGames('source_game_ids', false)">☐ 全部取消</button></div></div>
       <div class="category-list"><fieldset v-for="category in groupedGames" :key="`source-${category.id}`"><legend><button type="button" @click="toggleCategoryGames('source_game_ids', category)">{{ category.name }}</button></legend><label v-for="game in category.games" :key="game.id"><input v-model="form.source_game_ids" type="checkbox" :value="game.id">{{ game.name }}</label></fieldset></div>
       <h3>二、限定教材範圍</h3>
       <div class="scope-mode"><label><input v-model="form.requirement_scope.mode" type="radio" value="ALL">全部範圍</label><label><input v-model="form.requirement_scope.mode" type="radio" value="CUSTOM">指定範圍</label></div>
@@ -204,17 +249,27 @@ const saveOverride = async student => {
       </template>
       <h3>三、達標條件</h3>
       <div class="form-grid"><label>判斷方式<select v-model="form.condition_mode"><option value="plays">完成次數</option><option value="score">最高分</option><option value="either">次數或最高分（任一）</option><option value="both">次數及最高分（皆須）</option></select></label><label v-if="form.condition_mode !== 'score'">至少完成次數<input v-model.number="form.required_plays" type="number" min="0"></label><label v-if="form.condition_mode !== 'plays'">至少最高分<input v-model.number="form.required_score" type="number" min="0"></label></div>
-      <h3>四、達標後解鎖哪些遊戲？</h3>
+      <div class="game-section-heading"><h3>四、達標後解鎖哪些遊戲？</h3><div><button type="button" @click="setAllGames('target_game_ids', true)">☑ 全選</button><button type="button" @click="setAllGames('target_game_ids', false)">☐ 全部取消</button></div></div>
       <div class="category-list"><fieldset v-for="category in groupedGames" :key="`target-${category.id}`"><legend><button type="button" @click="toggleCategoryGames('target_game_ids', category)">{{ category.name }}</button></legend><label v-for="game in category.games" :key="game.id"><input v-model="form.target_game_ids" type="checkbox" :value="game.id">{{ game.name }}</label></fieldset></div>
       <button class="primary" :disabled="isSaving || !schemaAvailable" @click="saveRule">{{ isSaving ? '儲存中…' : '💾 儲存班級解鎖規則' }}</button>
     </section>
 
     <section class="rules"><h2>{{ selectedClass }} 班現有規則</h2><p v-if="isLoading">讀取中…</p><article v-for="rule in rules" :key="rule.id"><div><h3>{{ rule.enabled ? '🟢' : '⚪' }} {{ rule.name }}</h3><p>{{ conditionLabel(rule.condition_mode) }}：{{ rule.required_plays }} 次／{{ rule.required_score }} 分；解鎖 {{ rule.target_game_ids?.map(gameName).join('、') }}</p></div><div><button @click="editRule(rule)">編輯</button><button @click="openOverrides(rule)">個別調整</button><button class="danger" @click="deleteRule(rule)">刪除</button></div></article><p v-if="!isLoading && !rules.length">尚未建立規則。</p></section>
 
-    <section v-if="selectedRule" class="overrides"><h2>👤 個別調整：{{ selectedRule.name }}</h2><p>「沿用班級」不另存資料；可強制解鎖、強制鎖定或改用個別門檻。</p><div class="student-row header-row"><b>學生</b><b>模式</b><b>個別門檻</b><b>操作</b></div><div v-for="student in students" :key="student.id" class="student-row"><span>{{ student.seat_number }}　{{ student.real_name }}</span><select v-model="overrideDrafts[String(student.student_id)].override_mode"><option value="inherit">沿用班級</option><option value="force_unlock">強制解鎖</option><option value="force_lock">強制鎖定</option><option value="custom">自訂門檻</option></select><div v-if="overrideDrafts[String(student.student_id)].override_mode === 'custom'" class="custom-threshold"><label>次數 <input v-model.number="overrideDrafts[String(student.student_id)].required_plays" type="number" min="0"></label><label>分數 <input v-model.number="overrideDrafts[String(student.student_id)].required_score" type="number" min="0"></label></div><span v-else>—</span><button @click="saveOverride(student)">儲存</button></div></section>
+    <section v-if="selectedRule" class="overrides">
+      <h2>👤 個別調整：{{ selectedRule.name }}</h2>
+      <p>「沿用班級」不另存資料；可強制解鎖、強制鎖定或改用個別門檻。修改後會顯示「尚未儲存」，成功寫入並回讀確認後才會顯示「已儲存」。</p>
+      <div class="student-row header-row"><b>學生</b><b>模式</b><b>個別門檻</b><b>操作</b></div>
+      <div v-for="student in students" :key="student.id" class="student-row" :class="{ 'row-dirty': overrideIsDirty(student), 'row-saved': overrideSaveStates[String(student.student_id)] === 'saved' && !overrideIsDirty(student), 'row-error': overrideSaveStates[String(student.student_id)] === 'error' }">
+        <span>{{ student.seat_number }}　{{ student.real_name }}</span>
+        <select v-model="overrideDrafts[String(student.student_id)].override_mode"><option value="inherit">沿用班級</option><option value="force_unlock">強制解鎖</option><option value="force_lock">強制鎖定</option><option value="custom">自訂門檻</option></select>
+        <div v-if="overrideDrafts[String(student.student_id)].override_mode === 'custom'" class="custom-threshold"><label>次數 <input v-model.number="overrideDrafts[String(student.student_id)].required_plays" type="number" min="0"></label><label>分數 <input v-model.number="overrideDrafts[String(student.student_id)].required_score" type="number" min="0"></label></div><span v-else>—</span>
+        <div class="save-cell"><small v-if="overrideSaveStates[String(student.student_id)] === 'error'" class="error-label">⚠ 儲存失敗</small><small v-else-if="overrideIsDirty(student)" class="dirty-label">● 尚未儲存</small><small v-else-if="overrideSaveStates[String(student.student_id)] === 'saved'" class="saved-label">✓ 資料庫已確認</small><button :disabled="overrideSaveStates[String(student.student_id)] === 'saving' || !overrideIsDirty(student)" @click="saveOverride(student)">{{ overrideButtonText(student) }}</button></div>
+      </div>
+    </section>
   </main>
 </template>
 
 <style scoped>
-.unlock-admin{max-width:1200px;margin:auto;padding:24px;color:#263238;font-family:system-ui,-apple-system,'Noto Sans TC',sans-serif}.unlock-admin header{display:flex;justify-content:space-between;align-items:center;gap:20px;border-bottom:2px solid #cbd5e1}.unlock-admin header h1{margin-bottom:4px;color:#0f766e}.unlock-admin header p{margin-top:0}.unlock-admin header a,.section-title button,.rules button,.overrides button,.scope-buttons button{padding:7px 11px;border:1px solid #64748b;border-radius:6px;background:white;color:#334155;text-decoration:none;font-weight:700;cursor:pointer}.message{padding:12px;border-left:4px solid #0f766e;background:#ccfbf1}.class-bar{display:flex;justify-content:space-between;align-items:center;margin:20px 0;padding:14px;background:#f0fdfa;border-radius:9px;font-weight:800}.class-bar select,.form-grid input,.form-grid select,.scope-builder select,.student-row select,.student-row input{padding:8px;border:1px solid #94a3b8;border-radius:6px;font:inherit}.editor,.rules,.overrides{margin-top:18px;padding:20px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;box-shadow:0 3px 12px #0f172a0d}.section-title{display:flex;justify-content:space-between;align-items:center}.editor h2,.rules h2,.overrides h2{color:#0f766e}.editor h3{margin-top:24px;padding-bottom:6px;border-bottom:1px dashed #94a3b8}.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.form-grid label{display:grid;gap:6px;font-weight:800}.form-grid .check{display:flex;align-items:center}.category-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px}.category-list fieldset{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow:auto;border:1px solid #cbd5e1;border-radius:8px}.category-list legend button{border:0;background:#e0f2fe;color:#075985;font-weight:900;cursor:pointer;padding:5px}.category-list label{display:flex;gap:7px;align-items:flex-start}.scope-mode,.scope-buttons,.tags{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}.scope-builder{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.tags span{padding:6px 10px;border-radius:999px;background:#e0f2fe;color:#075985}.tags button{border:0;background:transparent;color:#be123c;cursor:pointer}.primary{width:100%;margin-top:22px;padding:12px;border:0;border-radius:8px;background:#0f766e;color:white;font-size:1.05rem;font-weight:900;cursor:pointer}.primary:disabled{opacity:.45}.rules article{display:flex;justify-content:space-between;gap:15px;padding:12px 0;border-bottom:1px solid #e2e8f0}.rules article h3,.rules article p{margin:3px 0}.rules article>div:last-child{display:flex;align-items:center;gap:6px}.rules .danger{color:#be123c}.student-row{display:grid;grid-template-columns:1.1fr 1fr 1.5fr auto;gap:10px;align-items:center;padding:9px;border-bottom:1px solid #e2e8f0}.header-row{background:#f1f5f9}.custom-threshold{display:flex;gap:8px}.custom-threshold label{display:flex;align-items:center;gap:4px}.custom-threshold input{width:65px}@media(max-width:760px){.category-list,.scope-builder{grid-template-columns:1fr}.student-row{grid-template-columns:1fr}.header-row{display:none}.rules article,.unlock-admin header{flex-direction:column;align-items:stretch}.custom-threshold{flex-wrap:wrap}}
+.unlock-admin{max-width:1200px;margin:auto;padding:24px;color:#263238;font-family:system-ui,-apple-system,'Noto Sans TC',sans-serif}.unlock-admin header{display:flex;justify-content:space-between;align-items:center;gap:20px;border-bottom:2px solid #cbd5e1}.unlock-admin header h1{margin-bottom:4px;color:#0f766e}.unlock-admin header p{margin-top:0}.unlock-admin header a,.section-title button,.rules button,.overrides button,.scope-buttons button,.game-section-heading button{padding:7px 11px;border:1px solid #64748b;border-radius:6px;background:white;color:#334155;text-decoration:none;font-weight:700;cursor:pointer}.overrides button:disabled{cursor:default;opacity:.65}.message{padding:12px;border-left:4px solid #0f766e;background:#ccfbf1}.class-bar{display:flex;justify-content:space-between;align-items:center;margin:20px 0;padding:14px;background:#f0fdfa;border-radius:9px;font-weight:800}.class-bar select,.form-grid input,.form-grid select,.scope-builder select,.student-row select,.student-row input{padding:8px;border:1px solid #94a3b8;border-radius:6px;font:inherit}.editor,.rules,.overrides{margin-top:18px;padding:20px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;box-shadow:0 3px 12px #0f172a0d}.section-title,.game-section-heading{display:flex;justify-content:space-between;align-items:center;gap:12px}.game-section-heading h3{flex:1}.game-section-heading>div{display:flex;gap:6px;flex-wrap:wrap}.editor h2,.rules h2,.overrides h2{color:#0f766e}.editor h3{margin-top:24px;padding-bottom:6px;border-bottom:1px dashed #94a3b8}.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.form-grid label{display:grid;gap:6px;font-weight:800}.form-grid .check{display:flex;align-items:center}.category-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px}.category-list fieldset{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow:auto;border:1px solid #cbd5e1;border-radius:8px}.category-list legend button{border:0;background:#e0f2fe;color:#075985;font-weight:900;cursor:pointer;padding:5px}.category-list label{display:flex;gap:7px;align-items:flex-start}.scope-mode,.scope-buttons,.tags{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}.scope-builder{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.tags span{padding:6px 10px;border-radius:999px;background:#e0f2fe;color:#075985}.tags button{border:0;background:transparent;color:#be123c;cursor:pointer}.primary{width:100%;margin-top:22px;padding:12px;border:0;border-radius:8px;background:#0f766e;color:white;font-size:1.05rem;font-weight:900;cursor:pointer}.primary:disabled{opacity:.45}.rules article{display:flex;justify-content:space-between;gap:15px;padding:12px 0;border-bottom:1px solid #e2e8f0}.rules article h3,.rules article p{margin:3px 0}.rules article>div:last-child{display:flex;align-items:center;gap:6px}.rules .danger{color:#be123c}.student-row{display:grid;grid-template-columns:1.1fr 1fr 1.5fr minmax(120px,auto);gap:10px;align-items:center;padding:9px;border-bottom:1px solid #e2e8f0;transition:background .2s,border-color .2s}.header-row{background:#f1f5f9}.student-row.row-dirty{background:#fffbeb;border-left:4px solid #f59e0b}.student-row.row-saved{background:#f0fdf4;border-left:4px solid #22c55e}.student-row.row-error{background:#fef2f2;border-left:4px solid #ef4444}.custom-threshold{display:flex;gap:8px}.custom-threshold label{display:flex;align-items:center;gap:4px}.custom-threshold input{width:65px}.save-cell{display:flex;flex-direction:column;align-items:stretch;gap:4px}.save-cell small{text-align:center;font-weight:800;white-space:nowrap}.dirty-label{color:#a16207}.saved-label{color:#15803d}.error-label{color:#b91c1c}@media(max-width:760px){.category-list,.scope-builder{grid-template-columns:1fr}.student-row{grid-template-columns:1fr}.header-row{display:none}.rules article,.unlock-admin header,.game-section-heading{flex-direction:column;align-items:stretch}.custom-threshold{flex-wrap:wrap}.save-cell{align-items:stretch}}
 </style>
