@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from 'vue';
+import { defaultTeacherFeatureIds, normalizeTeacherFeatureIds } from '~/lib/admin-feature-permissions';
 
 const supabase = useSupabaseClient();
 const password = ref('');
@@ -54,11 +55,24 @@ const handleLogin = async () => {
       .single();
 
     if (teacher) {
+      const { data: featureSettings, error: featureSettingsError } = await supabase
+        .from('teacher_admin_feature_settings')
+        .select('allowed_features')
+        .eq('id', 1)
+        .maybeSingle();
+
+      if (featureSettingsError) {
+        console.warn('讀取教師後台功能權限失敗，暫時使用既有預設權限：', featureSettingsError.message);
+      }
+
       isAdmin.value = 'teacher'; 
       authCookie.value = {
         name: teacher.teacher_name,
         classes: teacher.allowed_classes, // 將陣列寫入 Cookie (例如 ['704', '901', '907'])
-        role: 'teacher'
+        role: 'teacher',
+        features: featureSettings
+          ? normalizeTeacherFeatureIds(featureSettings.allowed_features, [])
+          : [...defaultTeacherFeatureIds]
       };
       alert(`身分驗證：${teacher.teacher_name}！\n正在進入報表系統...`);
       await navigateTo('/admin'); 

@@ -1,5 +1,8 @@
+import { canTeacherUseAdminPath, defaultTeacherFeatureIds } from '~/lib/admin-feature-permissions';
+
 export default defineNuxtRouteMiddleware((to, from) => {
   const isAdmin = useCookie('isAdmin');
+  const authCookie = useCookie('teacher_auth');
 
   // 1. 如果完全沒登入，踢回登入頁
   if (!isAdmin.value) {
@@ -8,15 +11,12 @@ export default defineNuxtRouteMiddleware((to, from) => {
 
   // 2. 如果是「一般英語教師 (teacher)」
   if (isAdmin.value === 'teacher') {
-    // 🚫 定義一般老師「絕對不能去」的頁面 (包含剛剛新增的權限管理)
-    const forbiddenPaths = [
-      '/admin/teachers', 
-      '/admin/vocabularies', 
-      '/admin/tarot-manager'
-    ];
+    const features = Array.isArray(authCookie.value?.features)
+      ? authCookie.value.features
+      : defaultTeacherFeatureIds;
 
-    // 如果老師企圖進入這些敏感頁面，踢回後台首頁
-    if (forbiddenPaths.includes(to.path)) {
+    // 未列入教師功能清單的後台頁面一律拒絕，避免只藏按鈕卻仍可輸入網址進入。
+    if (!canTeacherUseAdminPath(to.path, features)) {
       return navigateTo('/admin');
     }
   }
