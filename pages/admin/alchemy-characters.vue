@@ -4,9 +4,6 @@ import { ALCHEMISTS, PARTY, PREVIOUS_ALCHEMIST_IDS, PREVIOUS_COMPANION_IDS, visi
 
 definePageMeta({ middleware: 'auth' });
 const db = useSupabaseClient();
-const isAdminCookie = useCookie('isAdmin');
-const authCookie = useCookie('teacher_auth');
-const isSuperAdmin = computed(() => isAdminCookie.value === true || isAdminCookie.value === 'superadmin' || authCookie.value?.classes?.includes('ALL'));
 const loading = ref(true);
 const saving = ref(false);
 const message = ref('');
@@ -21,7 +18,6 @@ const displayedHeroes = computed(() => ALCHEMISTS.filter(person => `${person.nam
 const displayedCompanions = computed(() => PARTY.filter(person => `${person.name} ${person.job} ${person.race}`.includes(companionSearch.value.trim())));
 
 onMounted(async () => {
-  if (!isSuperAdmin.value) { await navigateTo('/admin'); return; }
   const { data, error } = await db.from('system_settings').select('alchemy_character_visibility').eq('id', 1).maybeSingle();
   if (error) message.value = `讀取失敗：${error.message}。請先在新專案執行 20261004_alchemy_character_visibility.sql。`;
   else {
@@ -33,7 +29,7 @@ onMounted(async () => {
 });
 
 async function save() {
-  if (saving.value || !isSuperAdmin.value) return;
+  if (saving.value) return;
   if (!heroIds.value.length) { message.value = '至少保留一位可選主角，學生才能開始遊戲。'; return; }
   saving.value = true;
   message.value = '';
@@ -45,7 +41,7 @@ async function save() {
 </script>
 
 <template>
-  <main v-if="isSuperAdmin" class="character-admin">
+  <main class="character-admin">
     <header><div><small>ALCHEMY ATELIER</small><h1>鍊金工房角色顯示管理</h1><p>勾選學生可看到的角色。被隱藏的同伴會退出出戰隊伍，攜帶道具會回到工房背包；已選定主角的存檔會保留原主角。</p></div><NuxtLink to="/admin">返回後台</NuxtLink></header>
     <div v-if="loading" class="status">載入角色設定…</div>
     <template v-else>

@@ -3,18 +3,11 @@ import { ref, onMounted } from 'vue';
 
 definePageMeta({ middleware: 'auth' });
 const supabase = useSupabaseClient();
-const authCookie = useCookie('teacher_auth');
 
 const logs = ref([]);
 const isLoading = ref(true);
 
 onMounted(() => {
-  // 安全防護：只有總管理員能看
-  if (!authCookie.value || !authCookie.value.classes.includes('ALL')) {
-    alert('⛔ 拒絕存取：您沒有最高管理員權限！');
-    navigateTo('/admin');
-    return;
-  }
   fetchLogs();
 });
 
@@ -65,7 +58,7 @@ const formatDuration = (seconds) => {
   <div class="admin-container">
     <div class="header">
       <h1>🕵️ 教師活動足跡追蹤</h1>
-      <p class="role-badge">🔒 總管理員專屬頁面</p>
+      <p class="role-badge">🔐 需由總管理員開放此功能</p>
     </div>
 
     <div class="top-actions">

@@ -3,6 +3,11 @@ import { ref, onMounted, computed } from 'vue';
 import AdminGeneralSettings from '~/components/admin/AdminGeneralSettings.vue';
 import AdminGameSettings from '~/components/admin/AdminGameSettings.vue';
 import AdminThemeSettings from '~/components/admin/AdminThemeSettings.vue';
+import {
+  adminFeatureCatalog,
+  defaultTeacherFeatureIds,
+  normalizeTeacherFeatureIds
+} from '~/lib/admin-feature-permissions';
 
 definePageMeta({ middleware: 'auth' });
 const supabase = useSupabaseClient();
@@ -18,6 +23,19 @@ const isSuperAdmin = computed(() => {
          isAdminCookie.value === 'superadmin' || 
          (authCookie.value && authCookie.value.classes && authCookie.value.classes.includes('ALL'));
 });
+
+const teacherFeatures = computed(() => normalizeTeacherFeatureIds(
+  authCookie.value?.features,
+  defaultTeacherFeatureIds
+));
+const canUseFeature = (featureId) => isSuperAdmin.value || teacherFeatures.value.includes(featureId);
+const defaultFeatureSet = new Set(defaultTeacherFeatureIds);
+const advancedTeacherFeatureIds = adminFeatureCatalog
+  .filter(feature => !defaultFeatureSet.has(feature.id))
+  .map(feature => feature.id);
+const hasAdvancedTeacherFeatures = computed(() => (
+  isSuperAdmin.value || advancedTeacherFeatureIds.some(featureId => teacherFeatures.value.includes(featureId))
+));
 
 // 系統預設設定
 const config = ref({
@@ -210,64 +228,65 @@ const clearGhostRooms = async () => {
     </div>
     
     <div class="actions">
-      <NuxtLink to="/admin/verb-mastery" class="retro-btn action-btn" style="background-color: #fff3e0; border-color: #e65100; color: #d35400;">
+      <NuxtLink v-if="canUseFeature('verb-mastery')" to="/admin/verb-mastery" class="retro-btn action-btn" style="background-color: #fff3e0; border-color: #e65100; color: #d35400;">
         📊 動詞變化精熟度分析
       </NuxtLink>
-      <NuxtLink to="/admin/records" class="retro-btn record-btn">🏆 紀錄報表</NuxtLink>
-      <NuxtLink to="/admin/stats" class="retro-btn stats-btn">📈 對錯分析</NuxtLink>
-      <NuxtLink to="/admin/leaderboard" class="retro-btn test-btn">🏅 英雄榜</NuxtLink>
-      <NuxtLink to="/admin/logs" class="retro-btn log-btn">🕒 登入紀錄</NuxtLink>
-      <NuxtLink to="/admin/student-logs" class="retro-btn test-btn">👣 學生足跡</NuxtLink>
-      <NuxtLink to="/admin/live-activity" class="retro-btn" style="background: #4caf50; color: white; border-color: #2e7d32; box-shadow: 0 4px 0 #2e7d32;">📡 學生即時動態</NuxtLink>
-      <NuxtLink to="/admin/focus-monitor" class="retro-btn" style="background: #1e3a8a; color: white; border-color: #172554; box-shadow: 0 4px 0 #172554;">🛡️ 班級專注監控</NuxtLink>
-      <NuxtLink to="/admin/vocab-exam-generator" class="retro-btn" style="background: #7c3aed; color: white; border-color: #4c1d95; box-shadow: 0 4px 0 #4c1d95;">📝 單字會考出題器</NuxtLink>
-      <NuxtLink to="/admin/regular-exam-generator" class="retro-btn" style="background: #0369a1; color: white; border-color: #075985; box-shadow: 0 4px 0 #075985;">📚 段考出題器</NuxtLink>
+      <NuxtLink v-if="canUseFeature('records')" to="/admin/records" class="retro-btn record-btn">🏆 紀錄報表</NuxtLink>
+      <NuxtLink v-if="canUseFeature('stats')" to="/admin/stats" class="retro-btn stats-btn">📈 對錯分析</NuxtLink>
+      <NuxtLink v-if="canUseFeature('leaderboard')" to="/admin/leaderboard" class="retro-btn test-btn">🏅 英雄榜</NuxtLink>
+      <NuxtLink v-if="canUseFeature('logs')" to="/admin/logs" class="retro-btn log-btn">🕒 登入紀錄</NuxtLink>
+      <NuxtLink v-if="canUseFeature('student-logs')" to="/admin/student-logs" class="retro-btn test-btn">👣 學生足跡</NuxtLink>
+      <NuxtLink v-if="canUseFeature('live-activity')" to="/admin/live-activity" class="retro-btn" style="background: #4caf50; color: white; border-color: #2e7d32; box-shadow: 0 4px 0 #2e7d32;">📡 學生即時動態</NuxtLink>
+      <NuxtLink v-if="canUseFeature('focus-monitor')" to="/admin/focus-monitor" class="retro-btn" style="background: #1e3a8a; color: white; border-color: #172554; box-shadow: 0 4px 0 #172554;">🛡️ 班級專注監控</NuxtLink>
+      <NuxtLink v-if="canUseFeature('vocab-exam-generator')" to="/admin/vocab-exam-generator" class="retro-btn" style="background: #7c3aed; color: white; border-color: #4c1d95; box-shadow: 0 4px 0 #4c1d95;">📝 單字會考出題器</NuxtLink>
+      <NuxtLink v-if="canUseFeature('regular-exam-generator')" to="/admin/regular-exam-generator" class="retro-btn" style="background: #0369a1; color: white; border-color: #075985; box-shadow: 0 4px 0 #075985;">📚 段考出題器</NuxtLink>
       
-      <NuxtLink to="/admin/grammar-stats" class="retro-btn nav-btn" style="background: #e65100; border-color: #e65100;">🎡 學生文法答題分析</NuxtLink>
-      <NuxtLink to="/admin/exam-stats" class="retro-btn nav-btn" style="background: #00bcd4; border-color: #00838f;">📈 會考單題數據分析</NuxtLink>
-      <NuxtLink to="/admin/exam-stats2" class="retro-btn nav-btn" style="background: #00bcd4; border-color: #00838f;">📈 會考題組數據分析</NuxtLink>
+      <NuxtLink v-if="canUseFeature('grammar-stats')" to="/admin/grammar-stats" class="retro-btn nav-btn" style="background: #e65100; border-color: #e65100;">🎡 學生文法答題分析</NuxtLink>
+      <NuxtLink v-if="canUseFeature('exam-stats')" to="/admin/exam-stats" class="retro-btn nav-btn" style="background: #00bcd4; border-color: #00838f;">📈 會考單題數據分析</NuxtLink>
+      <NuxtLink v-if="canUseFeature('exam-stats2')" to="/admin/exam-stats2" class="retro-btn nav-btn" style="background: #00bcd4; border-color: #00838f;">📈 會考題組數據分析</NuxtLink>
       
-      <template v-if="isSuperAdmin">
+      <template v-if="hasAdvancedTeacherFeatures">
         
         <div class="admin-nav-bar retro-element">
           <h3 style="margin-top: 0; color: #0277bd;">🚀 進階管理專區入口</h3>
           
           <div class="nav-buttons">
-            <NuxtLink to="/admin/manage-verbs" class="retro-btn nav-btn" style="background: #00838f; border-color: #00838f;">🌀 不規則動詞管理</NuxtLink>
-            <NuxtLink to="/admin/speakno3-manager" class="retro-btn nav-btn" style="background: #e91e63; border-color: #c2185b;">🎤 口說學霸3(歌單管理)</NuxtLink>
-            <NuxtLink to="/admin/speakno1-manager" class="retro-btn nav-btn" style="background: #c2410c; border-color: #fb923c;">🗣️ 口說學霸(分年級句子)</NuxtLink>
-            <NuxtLink to="/admin/access" class="retro-btn nav-btn" style="background: #d32f2f; border-color: #e57373;">🛑 遊戲權限與時間管理</NuxtLink>
-            <NuxtLink to="/admin/game-unlocks" class="retro-btn nav-btn" style="background: #0f766e; border-color: #5eead4;">🔓 班級遊戲達標解鎖</NuxtLink>
-            <NuxtLink to="/admin/tarot-manager" class="retro-btn nav-btn" style="background: #673ab7; border-color: #9fa8da;">🔮 塔羅牌手動發放</NuxtLink>
-            <NuxtLink to="/admin/speakno2-manager" class="retro-btn nav-btn" style="background: #2e7d32; border-color: #a5d6a7;">📖 口說學霸2(文章管理)</NuxtLink>
+            <NuxtLink v-if="canUseFeature('manage-verbs')" to="/admin/manage-verbs" class="retro-btn nav-btn" style="background: #00838f; border-color: #00838f;">🌀 不規則動詞管理</NuxtLink>
+            <NuxtLink v-if="canUseFeature('speakno3-manager')" to="/admin/speakno3-manager" class="retro-btn nav-btn" style="background: #e91e63; border-color: #c2185b;">🎤 口說學霸3(歌單管理)</NuxtLink>
+            <NuxtLink v-if="canUseFeature('speakno1-manager')" to="/admin/speakno1-manager" class="retro-btn nav-btn" style="background: #c2410c; border-color: #fb923c;">🗣️ 口說學霸(分年級句子)</NuxtLink>
+            <NuxtLink v-if="canUseFeature('access')" to="/admin/access" class="retro-btn nav-btn" style="background: #d32f2f; border-color: #e57373;">🛑 遊戲權限與時間管理</NuxtLink>
+            <NuxtLink v-if="canUseFeature('game-unlocks')" to="/admin/game-unlocks" class="retro-btn nav-btn" style="background: #0f766e; border-color: #5eead4;">🔓 班級遊戲達標解鎖</NuxtLink>
+            <NuxtLink v-if="canUseFeature('tarot-manager')" to="/admin/tarot-manager" class="retro-btn nav-btn" style="background: #673ab7; border-color: #9fa8da;">🔮 塔羅牌手動發放</NuxtLink>
+            <NuxtLink v-if="canUseFeature('speakno2-manager')" to="/admin/speakno2-manager" class="retro-btn nav-btn" style="background: #2e7d32; border-color: #a5d6a7;">📖 口說學霸2(文章管理)</NuxtLink>
             
-            <button @click="clearGhostRooms" class="retro-btn nav-btn" style="background: #607d8b; border-color: #455a64; color: white;" :disabled="isLoading">
+            <button v-if="isSuperAdmin" @click="clearGhostRooms" class="retro-btn nav-btn" style="background: #607d8b; border-color: #455a64; color: white;" :disabled="isLoading">
               {{ isLoading ? '🧹 清理中...' : '🧹 一鍵清除對戰幽靈房間' }}
             </button>
             
-            <button @click="executeGradeUpgrade" class="retro-btn nav-btn" style="background: #3f51b5; border-color: #303f9f; color: white;" :disabled="isLoading">
+            <button v-if="isSuperAdmin" @click="executeGradeUpgrade" class="retro-btn nav-btn" style="background: #3f51b5; border-color: #303f9f; color: white;" :disabled="isLoading">
               {{ isLoading ? '處理中...' : '🚀 全校一鍵升年級' }}
             </button>
 
-            <button @click="executeGradeUndo" class="retro-btn nav-btn" style="background: #f44336; border-color: #d32f2f; color: white;" :disabled="isLoading">
+            <button v-if="isSuperAdmin" @click="executeGradeUndo" class="retro-btn nav-btn" style="background: #f44336; border-color: #d32f2f; color: white;" :disabled="isLoading">
               {{ isLoading ? '還原中...' : '🔄 復原 (時光倒流)' }}
             </button>
           </div>
         </div>
 
-        <NuxtLink to="/admin/manage-grammar" class="retro-btn nav-btn" style="background: #e65100; border-color: #e65100;">🎡 文法題庫管理</NuxtLink>
-        <NuxtLink to="/admin/students" class="retro-btn student-btn" style="grid-column: span 2;">🧑‍🎓 學生名單管理</NuxtLink>
-        <NuxtLink to="/admin/teacher-logs" class="retro-btn" style="background: #e91e63; color: white; border-color: #c2185b; box-shadow: 0 4px 0 #c2185b;">🕵️ 教師足跡追蹤</NuxtLink>
-        <NuxtLink to="/admin/teachers" class="retro-btn teacher-btn" style="grid-column: span 2; background: #9c27b0; color: white;">👨‍🏫 教師權限管理</NuxtLink>
-        <NuxtLink to="/admin/vocabularies" class="retro-btn vocab-btn">📝 編輯單字庫</NuxtLink>
-        <NuxtLink to="/admin/categories" class="retro-btn nav-btn" style="background: #ff9800; border-color: #ffb74d;">🗂️ 前台排版管理</NuxtLink>
-        <NuxtLink to="/admin/alchemy-characters" class="retro-btn nav-btn" style="background: #527d78; border-color: #315a57; color: white;">⚗️ 鍊金工房角色管理</NuxtLink>
-        <NuxtLink to="/admin/manage-announcements" class="retro-btn nav-btn" style="background: #03a9f4; border-color: #0288d1;">📢 公佈欄管理</NuxtLink>
-        <NuxtLink to="/admin/import-exam" class="retro-btn nav-btn" style="background: #e91e63; border-color: #7b1fa2;">📥 會考題庫匯入</NuxtLink>
-        <NuxtLink to="/admin/manage-exam" class="retro-btn nav-btn" style="background: #9c27b0; border-color: #6a1b9a;">✏️ 會考單題題庫管理</NuxtLink>
-        <NuxtLink to="/admin/manage-exam2" class="retro-btn nav-btn" style="background: #5e35b1; border-color: #4527a0;">📖 會考題組題庫管理</NuxtLink>
+        <NuxtLink v-if="canUseFeature('manage-grammar')" to="/admin/manage-grammar" class="retro-btn nav-btn" style="background: #e65100; border-color: #e65100;">🎡 文法題庫管理</NuxtLink>
+        <NuxtLink v-if="canUseFeature('students')" to="/admin/students" class="retro-btn student-btn" style="grid-column: span 2;">🧑‍🎓 學生名單管理</NuxtLink>
+        <NuxtLink v-if="canUseFeature('teacher-logs')" to="/admin/teacher-logs" class="retro-btn" style="background: #e91e63; color: white; border-color: #c2185b; box-shadow: 0 4px 0 #c2185b;">🕵️ 教師足跡追蹤</NuxtLink>
+        <NuxtLink v-if="isSuperAdmin" to="/admin/teacher-features" class="retro-btn teacher-btn" style="grid-column: span 2; background: #6d28d9; color: white;">🧩 教師後台功能開放設定</NuxtLink>
+        <NuxtLink v-if="isSuperAdmin" to="/admin/teachers" class="retro-btn teacher-btn" style="grid-column: span 2; background: #9c27b0; color: white;">👨‍🏫 教師帳號與班級權限管理</NuxtLink>
+        <NuxtLink v-if="canUseFeature('vocabularies')" to="/admin/vocabularies" class="retro-btn vocab-btn">📝 編輯單字庫</NuxtLink>
+        <NuxtLink v-if="canUseFeature('categories')" to="/admin/categories" class="retro-btn nav-btn" style="background: #ff9800; border-color: #ffb74d;">🗂️ 前台排版管理</NuxtLink>
+        <NuxtLink v-if="canUseFeature('alchemy-characters')" to="/admin/alchemy-characters" class="retro-btn nav-btn" style="background: #527d78; border-color: #315a57; color: white;">⚗️ 鍊金工房角色管理</NuxtLink>
+        <NuxtLink v-if="canUseFeature('manage-announcements')" to="/admin/manage-announcements" class="retro-btn nav-btn" style="background: #03a9f4; border-color: #0288d1;">📢 公佈欄管理</NuxtLink>
+        <NuxtLink v-if="canUseFeature('import-exam')" to="/admin/import-exam" class="retro-btn nav-btn" style="background: #e91e63; border-color: #7b1fa2;">📥 會考題庫匯入</NuxtLink>
+        <NuxtLink v-if="canUseFeature('manage-exam')" to="/admin/manage-exam" class="retro-btn nav-btn" style="background: #9c27b0; border-color: #6a1b9a;">✏️ 會考單題題庫管理</NuxtLink>
+        <NuxtLink v-if="canUseFeature('manage-exam2')" to="/admin/manage-exam2" class="retro-btn nav-btn" style="background: #5e35b1; border-color: #4527a0;">📖 會考題組題庫管理</NuxtLink>
 
-        <NuxtLink to="/admin/tenchi-manager" class="retro-btn test-btn" style="grid-column: span 2;">
+        <NuxtLink v-if="canUseFeature('tenchi-manager')" to="/admin/tenchi-manager" class="retro-btn test-btn" style="grid-column: span 2;">
           <div class="card-icon" style="font-size: 1.5rem; margin-right: 10px;">🐎</div>
           <div style="display: flex; flex-direction: column; align-items: flex-start;">
             <h2 style="margin: 0; font-size: 1.1rem;">吞食天地兵法庫</h2>
@@ -275,7 +294,7 @@ const clearGhostRooms = async () => {
           </div>
         </NuxtLink>
 
-        <NuxtLink to="/admin/law-exam"  class="retro-btn test-btn" style="grid-column: span 2;">
+        <NuxtLink v-if="isSuperAdmin" to="/admin/law-exam" class="retro-btn test-btn" style="grid-column: span 2;">
           <div class="ml-4">
             <h3 class="font-bold text-gray-800">管理員設定</h3>
             <p class="text-xs text-gray-500">調整系統進階參數與安全性配置</p>
