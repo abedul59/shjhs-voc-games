@@ -221,6 +221,7 @@ const clearGhostRooms = async () => {
       <NuxtLink to="/admin/live-activity" class="retro-btn" style="background: #4caf50; color: white; border-color: #2e7d32; box-shadow: 0 4px 0 #2e7d32;">📡 學生即時動態</NuxtLink>
       <NuxtLink to="/admin/focus-monitor" class="retro-btn" style="background: #1e3a8a; color: white; border-color: #172554; box-shadow: 0 4px 0 #172554;">🛡️ 班級專注監控</NuxtLink>
       <NuxtLink to="/admin/vocab-exam-generator" class="retro-btn" style="background: #7c3aed; color: white; border-color: #4c1d95; box-shadow: 0 4px 0 #4c1d95;">📝 單字會考出題器</NuxtLink>
+      <NuxtLink to="/admin/regular-exam-generator" class="retro-btn" style="background: #0369a1; color: white; border-color: #075985; box-shadow: 0 4px 0 #075985;">📚 段考出題器</NuxtLink>
       
       <NuxtLink to="/admin/grammar-stats" class="retro-btn nav-btn" style="background: #e65100; border-color: #e65100;">🎡 學生文法答題分析</NuxtLink>
       <NuxtLink to="/admin/exam-stats" class="retro-btn nav-btn" style="background: #00bcd4; border-color: #00838f;">📈 會考單題數據分析</NuxtLink>

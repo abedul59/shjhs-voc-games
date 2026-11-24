@@ -1,0 +1,277 @@
+<script setup>
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
+
+definePageMeta({ middleware: 'auth' });
+
+const supabase = useSupabaseClient();
+const labels = ['A', 'B', 'C', 'D'];
+const presets = {
+  7: { choicePercent: 50, nonChoicePercent: 50, grammarCount: 10, clozeCount: 0, readingCount: 10, directVocab: 7, contextVocab: 5, writtenSections: [{ title: '單字型態變化', count: 6 }, { title: '翻譯填充', count: 13 }] },
+  8: { choicePercent: 66, nonChoicePercent: 34, grammarCount: 10, clozeCount: 14, readingCount: 11, directVocab: 7, contextVocab: 3, writtenSections: [{ title: '單字型態變化', count: 6 }, { title: '翻譯填充', count: 12 }, { title: '依提示作答', count: 2 }] },
+  9: { choicePercent: 85, nonChoicePercent: 15, grammarCount: 15, clozeCount: 5, readingCount: 25, directVocab: 10, contextVocab: 5, writtenSections: [] }
+};
+
+const allVocabulary = ref([]);
+const allGrammar = ref([]);
+const selectedVocabLessons = ref([]);
+const selectedGrammarLessons = ref([]);
+const isLoading = ref(true);
+const isGenerating = ref(false);
+const exporting = ref('');
+const generated = ref(false);
+const message = ref('');
+const previewMode = ref('question');
+const editorTab = ref('listening');
+const questionPreview = ref(null);
+const answerPreview = ref(null);
+const variantNumber = ref(0);
+
+const metadata = ref({
+  schoolName: '台南市立新化國民中學', schoolYear: '115', semester: '1', grade: '8', examNumber: '1',
+  fileName: '115學年度第1學期8年級第1次定期評量英語科'
+});
+const listening = ref({ image: [], basic: [], comprehension: [] });
+const grammarQuestions = ref([]);
+const groups = ref([]);
+const nonChoice = ref({ vocabulary: [], sections: [] });
+
+const preset = computed(() => presets[metadata.value.grade]);
+const lessonKey = item => `${item.version || ''}|${item.volume || ''}|${item.unit || ''}`;
+const buildLessonCatalog = records => {
+  const map = new Map();
+  records.forEach(item => {
+    if (!item.version || !item.unit) return;
+    const key = lessonKey(item);
+    if (!map.has(key)) map.set(key, { key, version: item.version, volume: item.volume || '', unit: item.unit, count: 0 });
+    map.get(key).count += 1;
+  });
+  return [...map.values()].sort((a, b) => `${a.version}|${a.volume}|${a.unit}`.localeCompare(`${b.version}|${b.volume}|${b.unit}`, 'zh-Hant'));
+};
+const vocabLessons = computed(() => buildLessonCatalog(allVocabulary.value));
+const grammarLessons = computed(() => buildLessonCatalog(allGrammar.value));
+const selectedVocabCount = computed(() => allVocabulary.value.filter(item => selectedVocabLessons.value.includes(lessonKey(item))).length);
+const selectedGrammarCount = computed(() => allGrammar.value.filter(item => selectedGrammarLessons.value.includes(lessonKey(item))).length);
+const examData = computed(() => ({
+  metadata: metadata.value, preset: preset.value, listening: listening.value,
+  grammarQuestions: grammarQuestions.value, groups: groups.value, nonChoice: nonChoice.value
+}));
+
+const makeChoices = count => Array.from({ length: count }, () => '');
+const makeQuestion = (number = 0, choiceCount = 4) => ({ id: crypto.randomUUID(), number, stem: '', choices: makeChoices(choiceCount), answer: 0 });
+const makeListeningImageQuestion = number => ({ id: crypto.randomUUID(), number, stem: '', choices: Array.from({ length: 3 }, () => ({ text: '', image: '' })), answer: 0 });
+const makeWrittenItems = count => Array.from({ length: count }, () => ({ id: crypto.randomUUID(), prompt: '', answer: '' }));
+
+const resetBlueprint = () => {
+  const current = preset.value;
+  listening.value = {
+    image: Array.from({ length: 5 }, (_, index) => makeListeningImageQuestion(index + 1)),
+    basic: Array.from({ length: 5 }, (_, index) => makeQuestion(index + 6, 3)),
+    comprehension: Array.from({ length: 5 }, (_, index) => makeQuestion(index + 11, 3))
+  };
+  grammarQuestions.value = Array.from({ length: current.grammarCount }, (_, index) => makeQuestion(index + 16));
+  let nextNumber = 16 + current.grammarCount;
+  const nextGroups = [];
+  if (current.clozeCount) {
+    nextGroups.push({ id: crypto.randomUUID(), type: 'cloze', title: '五、克漏字測驗', passage: '', glossary: '', questions: Array.from({ length: current.clozeCount }, (_, index) => makeQuestion(nextNumber + index)) });
+    nextNumber += current.clozeCount;
+  }
+  const readingGroupCount = current.readingCount > 15 ? 3 : 2;
+  const base = Math.floor(current.readingCount / readingGroupCount);
+  const remainder = current.readingCount % readingGroupCount;
+  for (let groupIndex = 0; groupIndex < readingGroupCount; groupIndex += 1) {
+    const count = base + (groupIndex < remainder ? 1 : 0);
+    nextGroups.push({ id: crypto.randomUUID(), type: 'reading', title: `${current.clozeCount ? '六' : '五'}、閱讀測驗（題組 ${groupIndex + 1}）`, passage: '', glossary: '', questions: Array.from({ length: count }, (_, index) => makeQuestion(nextNumber + index)) });
+    nextNumber += count;
+  }
+  groups.value = nextGroups;
+  nonChoice.value = {
+    vocabulary: makeWrittenItems(current.directVocab + current.contextVocab),
+    sections: current.writtenSections.map(section => ({ id: crypto.randomUUID(), title: section.title, instructions: '', items: makeWrittenItems(section.count) }))
+  };
+  generated.value = false;
+  variantNumber.value = 0;
+};
+
+watch(() => metadata.value.grade, grade => {
+  metadata.value.fileName = `${metadata.value.schoolYear}學年度第${metadata.value.semester}學期${grade}年級第${metadata.value.examNumber}次定期評量英語科`;
+  resetBlueprint();
+});
+
+const shuffle = list => {
+  const copy = [...list];
+  for (let index = copy.length - 1; index > 0; index -= 1) {
+    const target = Math.floor(Math.random() * (index + 1));
+    [copy[index], copy[target]] = [copy[target], copy[index]];
+  }
+  return copy;
+};
+
+const uniqueVocabulary = items => {
+  const seen = new Set();
+  return items.filter(item => {
+    const en = item.en_us?.trim();
+    const zh = item.zh_tw?.trim();
+    if (!en || !zh || seen.has(en.toLowerCase())) return false;
+    seen.add(en.toLowerCase());
+    return true;
+  });
+};
+
+const maskedExample = item => {
+  const sentence = item.example_en?.trim() || '';
+  if (!sentence) return '';
+  const escaped = item.en_us.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const masked = sentence.replace(new RegExp(`\\b${escaped}[a-zA-Z]*\\b`, 'i'), `${item.en_us.charAt(0)}　　　${item.en_us.slice(-1)}`);
+  return masked === sentence ? `${sentence}（答案：${item.en_us.charAt(0)}　　　${item.en_us.slice(-1)}）` : masked;
+};
+
+const generateExam = async () => {
+  message.value = '';
+  const vocabPool = uniqueVocabulary(allVocabulary.value.filter(item => selectedVocabLessons.value.includes(lessonKey(item))));
+  const contextPool = shuffle(vocabPool.filter(item => item.example_en?.trim()));
+  if (contextPool.length < preset.value.contextVocab) {
+    message.value = `所選單字範圍只有 ${contextPool.length} 個含英文例句的有效單字，文意字彙需要 ${preset.value.contextVocab} 個。`;
+    return;
+  }
+  const contextItems = contextPool.slice(0, preset.value.contextVocab);
+  const contextIds = new Set(contextItems.map(item => item.id));
+  const directPool = shuffle(vocabPool.filter(item => !contextIds.has(item.id)));
+  if (directPool.length < preset.value.directVocab) {
+    message.value = `所選單字範圍不足，至少還需要 ${preset.value.directVocab} 個不重複單字。`;
+    return;
+  }
+  const grammarPool = shuffle(allGrammar.value.filter(item => selectedGrammarLessons.value.includes(lessonKey(item)) && item.question_text));
+  if (grammarPool.length < preset.value.grammarCount) {
+    message.value = `所選文法範圍只有 ${grammarPool.length} 題，需要 ${preset.value.grammarCount} 題。`;
+    return;
+  }
+
+  isGenerating.value = true;
+  grammarQuestions.value = grammarPool.slice(0, preset.value.grammarCount).map((item, index) => ({
+    id: `grammar-${item.id}`, number: index + 16, stem: item.question_text,
+    choices: [item.option_1, item.option_2, item.option_3, item.option_4].map(value => value || ''),
+    answer: Math.max(0, Math.min(3, Number(item.answer || 1) - 1))
+  }));
+  nonChoice.value.vocabulary = [
+    ...directPool.slice(0, preset.value.directVocab).map(item => ({ id: `direct-${item.id}`, prompt: item.zh_tw, answer: item.en_us })),
+    ...contextItems.map(item => ({ id: `context-${item.id}`, prompt: maskedExample(item), answer: item.en_us }))
+  ];
+  generated.value = true;
+  isGenerating.value = false;
+  previewMode.value = 'question';
+  await nextTick();
+  message.value = `已產生 ${metadata.value.grade} 年級段考草稿；聽力圖片、閱讀、克漏字與非選擇題仍可繼續編輯。`;
+};
+
+const shuffleQuestionChoices = question => {
+  const pairs = question.choices.map((choice, index) => ({ choice, correct: index === question.answer }));
+  const shuffled = shuffle(pairs);
+  question.choices = shuffled.map(item => item.choice);
+  question.answer = Math.max(0, shuffled.findIndex(item => item.correct));
+};
+
+const shuffleAllChoices = () => {
+  [...listening.value.image, ...listening.value.basic, ...listening.value.comprehension, ...grammarQuestions.value, ...groups.value.flatMap(group => group.questions)].forEach(shuffleQuestionChoices);
+  variantNumber.value += 1;
+  metadata.value.fileName = metadata.value.fileName.replace(/_補考版\d+$/, '') + `_補考版${variantNumber.value}`;
+  message.value = `已產生補考版 ${variantNumber.value}：所有題幹保持不變，選項順序與正確答案代號已同步更新。`;
+};
+
+const readImage = file => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = reject;
+  reader.readAsDataURL(file);
+});
+const setChoiceImage = async (choice, file) => { if (file?.type.startsWith('image/')) choice.image = await readImage(file); };
+const handleImageInput = async (event, choice) => { await setChoiceImage(choice, event.target.files?.[0]); event.target.value = ''; };
+const handleImagePaste = async (event, choice) => {
+  const file = [...(event.clipboardData?.items || [])].find(item => item.type.startsWith('image/'))?.getAsFile();
+  if (file) { event.preventDefault(); await setChoiceImage(choice, file); }
+};
+
+const exportWord = async answerMode => {
+  exporting.value = `${answerMode ? 'answer' : 'question'}-word`;
+  try {
+    const { downloadRegularExamWord } = await import('~/lib/regular-exam-export.client');
+    await downloadRegularExamWord(examData.value, answerMode);
+  } catch (error) { message.value = `Word 產生失敗：${error.message}`; }
+  finally { exporting.value = ''; }
+};
+const exportPdf = async answerMode => {
+  exporting.value = `${answerMode ? 'answer' : 'question'}-pdf`;
+  const previous = previewMode.value;
+  try {
+    previewMode.value = answerMode ? 'answer' : 'question';
+    await nextTick();
+    const component = answerMode ? answerPreview.value : questionPreview.value;
+    const { downloadRegularExamPdf } = await import('~/lib/regular-exam-export.client');
+    await downloadRegularExamPdf(component.getPages(), examData.value, answerMode);
+  } catch (error) { message.value = `PDF 產生失敗：${error.message}`; }
+  finally { previewMode.value = previous; exporting.value = ''; }
+};
+
+onMounted(async () => {
+  resetBlueprint();
+  const [vocabResult, grammarResult] = await Promise.all([
+    supabase.from('vocabularies').select('id,version,volume,unit,en_us,zh_tw,example_en,example_zh').order('id').limit(10000),
+    supabase.from('grammar_questions').select('id,version,volume,unit,question_text,option_1,option_2,option_3,option_4,answer').order('id').limit(10000)
+  ]);
+  if (vocabResult.error || grammarResult.error) message.value = `題庫讀取失敗：${vocabResult.error?.message || grammarResult.error?.message}`;
+  allVocabulary.value = vocabResult.data || [];
+  allGrammar.value = grammarResult.data || [];
+  isLoading.value = false;
+});
+</script>
+
+<template>
+  <main class="builder-page">
+    <header class="page-header"><div><h1>📚 段考出題器</h1><p>依 B4 雙欄格式建立七、八、九年級題目卷及 A4 正確答案。</p></div><NuxtLink to="/admin">← 返回後台</NuxtLink></header>
+    <p v-if="message" class="message">{{ message }}</p>
+
+    <section class="panel">
+      <h2>一、考卷資料與年級格式</h2>
+      <div class="grade-picker"><button v-for="grade in ['7','8','9']" :key="grade" :class="{ active: metadata.grade === grade }" @click="metadata.grade = grade">{{ grade }} 年級<span>非選 {{ presets[grade].nonChoicePercent }}%</span></button></div>
+      <div class="form-grid"><label>學校名稱<input v-model="metadata.schoolName"></label><label>學年度<input v-model="metadata.schoolYear"></label><label>學期<input v-model="metadata.semester"></label><label>第幾次定期評量<input v-model="metadata.examNumber"></label><label>下載檔名<input v-model="metadata.fileName"></label></div>
+      <p class="preset-note">目前格式：選擇題 {{ preset.choicePercent }}%、非選擇題 {{ preset.nonChoicePercent }}%；文法 {{ preset.grammarCount }} 題、閱讀／克漏字 {{ preset.readingCount + preset.clozeCount }} 題。</p>
+    </section>
+
+    <section class="panel">
+      <h2>二、選擇題庫範圍（皆可跨課多選）</h2>
+      <div v-if="isLoading">讀取單字與文法題庫中…</div>
+      <div v-else class="scope-columns">
+        <div><div class="scope-heading"><h3>單字與例句</h3><span>已選 {{ selectedVocabCount }} 筆</span></div><div class="lesson-grid"><label v-for="lesson in vocabLessons" :key="lesson.key" :class="{ selected: selectedVocabLessons.includes(lesson.key) }"><input v-model="selectedVocabLessons" type="checkbox" :value="lesson.key"><span><b>{{ lesson.version }} {{ lesson.volume }} {{ lesson.unit }}</b><small>{{ lesson.count }} 個單字</small></span></label></div></div>
+        <div><div class="scope-heading"><h3>文法遊樂園題庫</h3><span>已選 {{ selectedGrammarCount }} 題</span></div><div class="lesson-grid"><label v-for="lesson in grammarLessons" :key="lesson.key" :class="{ selected: selectedGrammarLessons.includes(lesson.key) }"><input v-model="selectedGrammarLessons" type="checkbox" :value="lesson.key"><span><b>{{ lesson.version }} {{ lesson.volume }} {{ lesson.unit }}</b><small>{{ lesson.count }} 題</small></span></label></div></div>
+      </div>
+      <button class="generate-btn" :disabled="isGenerating || !selectedVocabLessons.length || !selectedGrammarLessons.length" @click="generateExam">{{ isGenerating ? '產生中…' : generated ? '🎲 重新抽題' : '🎲 產生段考草稿' }}</button>
+    </section>
+
+    <template v-if="generated">
+      <section class="panel action-panel"><div><h2>三、預覽與輸出</h2><div class="preview-tabs"><button :class="{ active: previewMode === 'question' }" @click="previewMode = 'question'">B4 題目卷</button><button :class="{ active: previewMode === 'answer' }" @click="previewMode = 'answer'">A4 正確答案</button></div></div><div class="action-buttons"><button class="makeup" @click="shuffleAllChoices">🔀 產生補考版（交換選項）</button><button :disabled="Boolean(exporting)" @click="exportWord(false)">📘 題目卷 Word</button><button :disabled="Boolean(exporting)" @click="exportPdf(false)">📕 題目卷 PDF</button><button :disabled="Boolean(exporting)" @click="exportWord(true)">✅ 答案 Word</button><button :disabled="Boolean(exporting)" @click="exportPdf(true)">📄 答案 PDF</button></div></section>
+
+      <section class="preview-panel"><div class="preview-scroll"><AdminRegularExamSheet v-show="previewMode === 'question'" ref="questionPreview" :data="examData" /><AdminRegularExamSheet v-show="previewMode === 'answer'" ref="answerPreview" :data="examData" answer-mode /></div></section>
+
+      <section class="panel editor-panel">
+        <h2>四、編輯全部考卷內容</h2>
+        <div class="editor-tabs"><button v-for="tab in [{id:'listening',name:'🎧 聽力'},{id:'grammar',name:'🎡 文法'},{id:'groups',name:'📖 閱讀／克漏字'},{id:'written',name:'✍️ 非選擇題'}]" :key="tab.id" :class="{ active: editorTab === tab.id }" @click="editorTab = tab.id">{{ tab.name }}</button></div>
+
+        <div v-if="editorTab === 'listening'" class="editor-content">
+          <h3>辨識句意圖片題（可貼上剪貼簿圖片或選擇檔案）</h3>
+          <div v-for="question in listening.image" :key="question.id" class="question-editor image-editor"><b>第 {{ question.number }} 題</b><label>正確答案<select v-model.number="question.answer"><option v-for="(label,index) in labels.slice(0,3)" :key="label" :value="index">{{ label }}</option></select></label><button @click="shuffleQuestionChoices(question)">交換本題選項</button><div class="image-options"><div v-for="(choice,index) in question.choices" :key="index" class="image-upload" tabindex="0" @paste="handleImagePaste($event,choice)"><b>({{ labels[index] }})</b><input v-model="choice.text" placeholder="選項文字"><img v-if="choice.image" :src="choice.image" alt="選項圖片"><span v-else>點此後貼上圖片</span><input type="file" accept="image/*" @change="handleImageInput($event,choice)"><button v-if="choice.image" @click="choice.image = ''">移除圖片</button></div></div></div>
+          <h3>基本問答</h3><div v-for="question in listening.basic" :key="question.id" class="question-editor"><div class="question-top"><b>{{ question.number }}.</b><input v-model="question.stem" placeholder="可留空，聽力文字不印在題目卷"><select v-model.number="question.answer"><option v-for="(label,index) in labels.slice(0,3)" :key="label" :value="index">答案 {{ label }}</option></select><button @click="shuffleQuestionChoices(question)">交換選項</button></div><div class="choice-inputs"><label v-for="(_,index) in question.choices" :key="index">{{ labels[index] }}<input v-model="question.choices[index]"></label></div></div>
+          <h3>言談理解</h3><div v-for="question in listening.comprehension" :key="question.id" class="question-editor"><div class="question-top"><b>{{ question.number }}.</b><input v-model="question.stem" placeholder="題幹（可留空）"><select v-model.number="question.answer"><option v-for="(label,index) in labels.slice(0,3)" :key="label" :value="index">答案 {{ label }}</option></select><button @click="shuffleQuestionChoices(question)">交換選項</button></div><div class="choice-inputs"><label v-for="(_,index) in question.choices" :key="index">{{ labels[index] }}<input v-model="question.choices[index]"></label></div></div>
+        </div>
+
+        <div v-else-if="editorTab === 'grammar'" class="editor-content"><p>以下題目來自文法遊樂園，可逐題修改或交換選項。</p><div v-for="question in grammarQuestions" :key="question.id" class="question-editor"><div class="question-top"><b>{{ question.number }}.</b><textarea v-model="question.stem"></textarea><select v-model.number="question.answer"><option v-for="(label,index) in labels" :key="label" :value="index">答案 {{ label }}</option></select><button @click="shuffleQuestionChoices(question)">交換選項</button></div><div class="choice-inputs"><label v-for="(_,index) in question.choices" :key="index">{{ labels[index] }}<input v-model="question.choices[index]"></label></div></div></div>
+
+        <div v-else-if="editorTab === 'groups'" class="editor-content"><p>題組保留空白格式，可貼入閱讀文章、對話、克漏字及自訂題目。</p><article v-for="group in groups" :key="group.id" class="group-editor"><input v-model="group.title" class="group-title"><label>文章／對話<textarea v-model="group.passage" rows="10"></textarea></label><label>單字提示<textarea v-model="group.glossary" rows="2"></textarea></label><div v-for="question in group.questions" :key="question.id" class="question-editor"><div class="question-top"><b>{{ question.number }}.</b><textarea v-model="question.stem"></textarea><select v-model.number="question.answer"><option v-for="(label,index) in labels" :key="label" :value="index">答案 {{ label }}</option></select><button @click="shuffleQuestionChoices(question)">交換選項</button></div><div class="choice-inputs"><label v-for="(_,index) in question.choices" :key="index">{{ labels[index] }}<input v-model="question.choices[index]"></label></div></div></article></div>
+
+        <div v-else class="editor-content"><h3>單字與文意字彙</h3><div class="written-grid"><div v-for="(item,index) in nonChoice.vocabulary" :key="item.id"><b>{{ index + 1 }}</b><textarea v-model="item.prompt" placeholder="題目"></textarea><input v-model="item.answer" placeholder="答案"></div></div><article v-for="section in nonChoice.sections" :key="section.id" class="written-editor"><input v-model="section.title" class="group-title"><textarea v-model="section.instructions" placeholder="作答說明或共同題幹"></textarea><div class="written-grid"><div v-for="(item,index) in section.items" :key="item.id"><b>{{ index + 1 }}</b><textarea v-model="item.prompt" placeholder="題目"></textarea><input v-model="item.answer" placeholder="正確答案"></div></div></article></div>
+      </section>
+    </template>
+  </main>
+</template>
+
+<style scoped>
+.builder-page{min-height:100vh;padding:24px;background:#eef2f7;color:#1e293b;font-family:system-ui,'Noto Sans TC',sans-serif}.page-header,.panel,.preview-panel{max-width:1500px;margin:0 auto 18px}.page-header{display:flex;justify-content:space-between;gap:20px}.page-header h1{margin:0;color:#1d4ed8}.page-header p{margin:5px 0;color:#64748b}.page-header a{height:max-content;padding:10px 15px;border-radius:8px;background:#1e3a8a;color:white;text-decoration:none;font-weight:800}.message{max-width:1470px;margin:0 auto 15px;padding:12px 15px;border-left:5px solid #2563eb;background:#dbeafe}.panel{box-sizing:border-box;padding:18px;border:1px solid #cbd5e1;border-radius:14px;background:#fff;box-shadow:0 3px 14px #0f172a12}.panel h2{margin:0 0 12px;color:#1e3a8a}.grade-picker{display:flex;gap:10px;margin-bottom:14px}.grade-picker button{display:flex;flex-direction:column;min-width:150px;padding:12px;border:2px solid #cbd5e1;border-radius:9px;background:white;font-size:1.1rem;font-weight:900;cursor:pointer}.grade-picker button span{font-size:.8rem;color:#64748b}.grade-picker button.active{border-color:#2563eb;background:#eff6ff;color:#1d4ed8}.form-grid{display:grid;grid-template-columns:2fr repeat(3,1fr) 2.5fr;gap:10px}.form-grid label{display:grid;gap:4px;font-size:.85rem;font-weight:800}.form-grid input,.question-editor input,.question-editor select,.question-editor textarea,.group-editor textarea,.group-title,.written-editor textarea,.written-grid textarea,.written-grid input,.image-upload input{box-sizing:border-box;width:100%;padding:8px;border:1px solid #94a3b8;border-radius:7px;font:inherit}.preset-note{margin-bottom:0;padding:9px;background:#f1f5f9}.scope-columns{display:grid;grid-template-columns:1fr 1fr;gap:16px}.scope-heading{display:flex;justify-content:space-between;align-items:center}.scope-heading h3{margin:0}.scope-heading span{color:#1d4ed8;font-weight:800}.lesson-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:6px;max-height:270px;overflow:auto;margin-top:8px;padding:3px}.lesson-grid label{display:flex;gap:7px;align-items:center;padding:8px;border:2px solid #cbd5e1;border-radius:8px;cursor:pointer}.lesson-grid label.selected{border-color:#2563eb;background:#eff6ff}.lesson-grid span{display:grid}.lesson-grid small{color:#64748b}.generate-btn{width:100%;margin-top:15px;padding:13px;border:0;border-radius:9px;background:#2563eb;color:white;font-size:1.05rem;font-weight:900;cursor:pointer}.generate-btn:disabled{opacity:.5}.action-panel{display:flex;justify-content:space-between;gap:15px}.preview-tabs,.action-buttons,.editor-tabs{display:flex;gap:8px;flex-wrap:wrap}.preview-tabs button,.action-buttons button,.editor-tabs button,.question-editor button{padding:9px 11px;border:1px solid #64748b;border-radius:7px;background:#fff;font-weight:800;cursor:pointer}.preview-tabs button.active,.editor-tabs button.active{background:#1e3a8a;color:#fff}.action-buttons{justify-content:flex-end}.action-buttons .makeup{background:#f97316;color:white;border-color:#c2410c}.preview-panel{padding:18px;border-radius:14px;background:#475569;overflow:hidden}.preview-scroll{overflow:auto;max-height:850px}.preview-scroll :deep(.regular-exam-page){box-shadow:0 6px 25px #0f172a99}.editor-tabs{margin-bottom:14px}.editor-content{display:grid;gap:10px}.question-editor{padding:12px;border:1px solid #cbd5e1;border-radius:9px;background:#f8fafc}.question-top{display:grid;grid-template-columns:45px 1fr 120px 110px;gap:8px;align-items:start}.question-top textarea{min-height:50px}.choice-inputs{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:8px}.choice-inputs label{display:grid;grid-template-columns:22px 1fr;align-items:center;font-weight:800}.image-editor>label{display:inline-flex;gap:6px;margin:0 8px}.image-options{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:9px}.image-upload{display:grid;gap:6px;padding:9px;border:2px dashed #94a3b8;border-radius:8px;background:white}.image-upload:focus{border-color:#2563eb}.image-upload img{width:100%;height:145px;object-fit:contain;background:#f1f5f9}.image-upload>span{display:grid;place-items:center;height:145px;color:#64748b;background:#f1f5f9}.group-editor,.written-editor{display:grid;gap:9px;padding:14px;border:2px solid #cbd5e1;border-radius:10px}.group-title{font-size:1.15rem;font-weight:900;color:#1d4ed8}.written-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.written-grid>div{display:grid;grid-template-columns:35px 1.5fr 1fr;gap:6px;align-items:start;padding:8px;border:1px solid #e2e8f0;border-radius:7px}.written-grid textarea{min-height:58px}@media(max-width:1000px){.form-grid,.scope-columns{grid-template-columns:1fr 1fr}.action-panel,.page-header{flex-direction:column}.question-top{grid-template-columns:40px 1fr}.choice-inputs,.written-grid{grid-template-columns:1fr 1fr}}@media(max-width:650px){.builder-page{padding:10px}.form-grid,.scope-columns,.choice-inputs,.written-grid,.image-options{grid-template-columns:1fr}.grade-picker{display:grid;grid-template-columns:repeat(3,1fr)}.grade-picker button{min-width:0}.written-grid>div{grid-template-columns:30px 1fr}.written-grid input{grid-column:2}}
+</style>
