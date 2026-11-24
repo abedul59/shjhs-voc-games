@@ -218,8 +218,7 @@ onUnmounted(() => {
   <div class="activity-container">
     <div class="header">
       <div class="title-area">
-        <h1>📡 學生即時動態</h1>
-        <NuxtLink to="/admin/focus-monitor" class="retro-btn btn-back">🛡️ 專注監控</NuxtLink>
+        <div><h1>📡🛡️ 學生動態與專注監控</h1><p>即時查看活動，或啟動班級專注監控場次。</p></div>
         <NuxtLink to="/admin" class="retro-btn btn-back">⬅ 返回</NuxtLink>
       </div>
       
@@ -240,6 +239,11 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+
+    <nav class="monitor-tabs" aria-label="學生監控功能">
+      <span class="active">📡 學生即時動態</span>
+      <NuxtLink to="/admin/focus-monitor">🛡️ 班級專注監控</NuxtLink>
+    </nav>
     
     <p class="refresh-note">最後更新時間：{{ lastRefreshTime }} (系統每 30 秒自動更新)</p>
     <p v-if="errorMessage" class="error-msg" role="alert">⚠️ {{ errorMessage }}</p>
@@ -285,6 +289,10 @@ onUnmounted(() => {
 .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px dashed #ccc; padding-bottom: 15px; margin-bottom: 10px; flex-wrap: wrap; gap: 15px;}
 .title-area { display: flex; align-items: center; gap: 15px; }
 .title-area h1 { margin: 0; color: #1565c0; font-weight: 900; }
+.title-area p { margin: 4px 0 0; color: #64748b; font-weight: 700; }
+.monitor-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 18px; padding: 7px; border-radius: 11px; background: #e2e8f0; }
+.monitor-tabs a,.monitor-tabs span { padding: 11px; border-radius: 8px; color: #334155; text-align: center; text-decoration: none; font-weight: 900; }
+.monitor-tabs .active { background: #43a047; color: white; box-shadow: 0 3px 0 #2e7d32; }
 
 .controls { display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
 .action-buttons { display: flex; gap: 10px; }

@@ -258,9 +258,14 @@ onUnmounted(() => {
 <template>
   <main class="monitor-page">
     <header class="page-header">
-      <div><h1>🛡️ 班級專注監控</h1><p>教師啟動場次後，系統才會記錄該班學生的心跳與分頁狀態。</p></div>
+      <div><h1>📡🛡️ 學生動態與專注監控</h1><p>教師啟動場次後，系統才會記錄該班學生的心跳與分頁狀態。</p></div>
       <div class="header-actions"><button class="notify-btn" @click="enableNotifications">{{ notificationEnabled ? '🔔 通知已啟用' : '🔕 啟用聲音與通知' }}</button><NuxtLink to="/admin">← 返回後台</NuxtLink></div>
     </header>
+
+    <nav class="monitor-tabs" aria-label="學生監控功能">
+      <NuxtLink to="/admin/live-activity">📡 學生即時動態</NuxtLink>
+      <span class="active">🛡️ 班級專注監控</span>
+    </nav>
 
     <p v-if="!schemaAvailable" class="schema-warning">⚠️ 尚未建立監控資料表，請先在 Supabase SQL Editor 執行 <code>class_focus_monitor_existing_project_setup.sql</code>。</p>
     <p v-if="message" class="message">{{ message }}</p>
@@ -312,6 +317,9 @@ onUnmounted(() => {
 .monitor-page { min-height: 100vh; padding: 24px; box-sizing: border-box; background: #f4f7fb; color: #172033; font-family: system-ui, sans-serif; }
 .page-header { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; max-width: 1450px; margin: 0 auto 18px; }
 .page-header h1 { margin: 0 0 6px; font-size: 2rem; }.page-header p { margin: 0; color: #526075; }.header-actions { display: flex; gap: 10px; align-items: center; }.header-actions a,.notify-btn { border: 0; border-radius: 9px; background: #1e3a8a; color: white; padding: 11px 14px; text-decoration: none; font-weight: 800; cursor: pointer; }
+.monitor-tabs { max-width: 1450px; margin: 0 auto 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 7px; border-radius: 11px; background: #e2e8f0; box-sizing: border-box; }
+.monitor-tabs a,.monitor-tabs span { padding: 11px; border-radius: 8px; color: #334155; text-align: center; text-decoration: none; font-weight: 900; }
+.monitor-tabs .active { background: #1e3a8a; color: white; box-shadow: 0 3px 0 #172554; }
 .schema-warning,.message,.offline-alert { max-width: 1450px; margin: 10px auto; padding: 12px 15px; border-radius: 10px; font-weight: 700; }.schema-warning { background: #fff3cd; color: #704d00; }.message { background: #dbeafe; color: #1e3a8a; }.offline-alert { background: #fee2e2; color: #991b1b; font-size: 1.05rem; }.offline-alert button { float: right; }
 .control-card { max-width: 1450px; margin: 0 auto 18px; display: grid; grid-template-columns: 1.2fr 1.8fr .8fr .8fr auto; gap: 12px; align-items: end; background: white; padding: 16px; border-radius: 14px; box-shadow: 0 3px 14px #d7deea; }.control-card label { display: grid; grid-template-columns: 1fr auto; gap: 5px; color: #475569; font-size: .85rem; font-weight: 800; }.control-card label select,.control-card label input { grid-column: 1 / -1; min-width: 0; border: 1px solid #b8c2d1; border-radius: 8px; padding: 10px; font: inherit; background: white; }.start-btn,.stop-btn { border: 0; border-radius: 9px; padding: 11px 16px; color: white; font-weight: 900; cursor: pointer; }.start-btn { background: #15803d; }.stop-btn { background: #b91c1c; }
 .session-info { max-width: 1450px; box-sizing: border-box; margin: 0 auto 14px; background: #172033; color: white; padding: 14px 18px; border-radius: 12px; display: flex; justify-content: space-between; gap: 15px; align-items: center; }.session-info strong { margin-right: 12px; }.session-badge { border-radius: 999px; padding: 4px 9px; font-size: .75rem; font-weight: 900; }.session-badge.active { background: #22c55e; }.session-badge.ended { background: #64748b; }

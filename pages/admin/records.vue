@@ -32,6 +32,16 @@ const formatDateTime = (dateString) => {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 };
 
+const parseSpeakingDetails = value => {
+  if (typeof value !== 'string' || !value.startsWith('SPEAKING_V2:')) return null;
+  try {
+    const parsed = JSON.parse(value.slice('SPEAKING_V2:'.length));
+    return Array.isArray(parsed?.sentences) ? parsed : null;
+  } catch (error) {
+    return null;
+  }
+};
+
 const formatIntervals = (jsonObj) => {
   if (!jsonObj) return [];
   
@@ -65,6 +75,7 @@ const fetchRecords = async () => {
         school: isAnon ? '無' : (stu.school || '未知'),
         short_device: parseDevice(record.device_info),
         formatted_datetime: formatDateTime(record.played_at),
+        speaking_details: parseSpeakingDetails(record.correct_words),
         isAnonRecord: isAnon
       };
     });
@@ -116,13 +127,26 @@ const deleteRecord = async (id) => { if (!confirm('⚠️ 確定要刪除這筆�
 
 const exportToCSV = () => {
   if (filteredRecords.value.length === 0) return alert('目前沒有任何成績可以匯出！');
-  const exportData = filteredRecords.value.map(r => ({
-    '測驗時間': r.formatted_datetime, '學校': r.school, '班級': r.class_name, '座號': r.seat_number, '學號': r.student_id, '姓名': r.real_name,
-    '遊戲模式': r.game_type || '單字方塊消消樂', '教科書版本': r.version, '冊數': r.volume, '單元(課)': r.unit_played,
-    '分數': r.score, '耗時(秒)': r.time_taken_seconds, '錯誤次數': r.mistakes, 
-    '不熟單字(錯)': r.wrong_words || '無', '熟練單字(對)': r.correct_words || '無',
-    'IP位址': r.ip_address || '無紀錄', '設備ID與資訊': r.device_info || '無紀錄'
-  }));
+  const exportData = filteredRecords.value.map(r => {
+    const row = {
+      '測驗時間': r.formatted_datetime, '學校': r.school, '班級': r.class_name, '座號': r.seat_number, '學號': r.student_id, '姓名': r.real_name,
+      '遊戲模式': r.game_type || '單字方塊消消樂', '教科書版本': r.version, '冊數': r.volume, '單元(課)': r.unit_played,
+      '總分': r.score, '滿分': r.speaking_details?.totalMaxScore || '', '耗時(秒)': r.time_taken_seconds, '錯漏字數': r.mistakes,
+      '錯漏字': r.wrong_words || '無', '熟練單字(對)': r.speaking_details ? '' : (r.correct_words || '無'),
+      'IP位址': r.ip_address || '無紀錄', '設備ID與資訊': r.device_info || '無紀錄'
+    };
+    r.speaking_details?.sentences.forEach((sentence, index) => {
+      const prefix = `第${index + 1}句`;
+      row[`${prefix}目標句`] = sentence.target;
+      row[`${prefix}辨識文字`] = sentence.transcript;
+      row[`${prefix}得分`] = sentence.score;
+      row[`${prefix}正確字數`] = `${sentence.correctCount}/${sentence.wordCount}`;
+      row[`${prefix}每字配分`] = sentence.pointsPerWord;
+      row[`${prefix}漏字`] = sentence.missedWords?.join('、') || '無';
+      row[`${prefix}多餘字`] = sentence.extraWords?.join('、') || '無';
+    });
+    return row;
+  });
   const csvString = Papa.unparse(exportData);
   const blob = new Blob(['\uFEFF' + csvString], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a'); link.href = URL.createObjectURL(blob);
@@ -223,7 +247,7 @@ const exportToCSV = () => {
     <p v-if="selectedGameType === '單字異世界悠閒農莊'">✧ 每次學習逐題儲存，答對一題得 10 分；點學生姓名可查看對錯單字，亦可匯出 CSV。</p>
     <p v-if="selectedGameType === '單字鍊金工房'">⚗️ 採集、調合和戰鬥逐題記錄；點學生姓名可查看對錯單字，亦可匯出 CSV。</p>
     <p v-if="selectedGameType === '單字鐵路旅遊高手'">🚂 每局結束儲存經營分與逐題對錯單字；點學生姓名可查看明細並匯出 CSV。</p>
-    <p v-if="selectedGameType === '英語口說學霸'">🗣️ 分年級多元評量會顯示評量年級、題數、總成績、單字分、句子分及錯漏題；點選學生姓名可查看完整錯漏字，也可匯出 CSV。</p>
+    <p v-if="selectedGameType === '英語口說學霸'">🗣️ 每句滿分 100 分、每字平均配分；後台分別顯示三句得分、辨識文字、正確字數、漏字與多餘字，亦可匯出 CSV。</p>
     <p v-if="verbMonopolyTypes.includes(selectedGameType)">🏘️ 分數為本局結算現金；點學生姓名可查看每局對錯動詞，也可匯出 CSV。</p>
     <div class="table-container retro-element">
       <p v-if="isLoading" class="loading-msg">⏳ 讀取中...</p>
@@ -243,8 +267,10 @@ const exportToCSV = () => {
             <td>
               <span class="score-text">{{ record.score }}分</span> ({{ record.time_taken_seconds }}s)
               <template v-if="selectedGameType === '英語口說學霸'">
-                <br>
-                <small class="score-breakdown">{{ record.correct_words || '尚無分項成績' }}</small>
+                <div v-if="record.speaking_details" class="sentence-score-row">
+                  <span v-for="sentence in record.speaking_details.sentences" :key="sentence.number">第{{ sentence.number }}句 {{ sentence.score }}/100</span>
+                </div>
+                <small v-else class="score-breakdown">{{ record.correct_words || '尚無分項成績' }}</small>
               </template>
               <br v-if="record.mistakes > 0">
               <small class="mistake-text" v-if="record.mistakes > 0">
@@ -271,8 +297,18 @@ const exportToCSV = () => {
               </div>
               <div class="hi-body"><span class="hi-score">{{ item.score }} 分</span><span class="hi-details">花費 {{ item.time_taken_seconds }} 秒 | 錯 {{ item.mistakes }} 次</span></div>
               <div class="hi-words-box">
+                <div v-if="item.speaking_details" class="speaking-details">
+                  <article v-for="sentence in item.speaking_details.sentences" :key="sentence.number">
+                    <h4>第 {{ sentence.number }} 句：{{ sentence.score }} / 100</h4>
+                    <p><strong>目標：</strong>{{ sentence.target }}</p>
+                    <p><strong>辨識：</strong>{{ sentence.transcript || '未記錄' }}</p>
+                    <p><strong>正確：</strong>{{ sentence.correctCount }} / {{ sentence.wordCount }} 字（每字 {{ sentence.pointsPerWord }} 分）</p>
+                    <p><strong>漏字：</strong>{{ sentence.missedWords?.join('、') || '無' }}</p>
+                    <p><strong>多餘字：</strong>{{ sentence.extraWords?.join('、') || '無' }}</p>
+                  </article>
+                </div>
                 <div v-if="item.wrong_words" class="wrong-box"><strong>⚠️ 錯：</strong>{{ item.wrong_words }}</div>
-                <div v-if="item.correct_words" class="correct-box"><strong>🌟 對：</strong>{{ item.correct_words }}</div>
+                <div v-if="item.correct_words && !item.speaking_details" class="correct-box"><strong>🌟 對：</strong>{{ item.correct_words }}</div>
                 <div v-if="item.word_intervals" class="intervals-row"><strong>⏱️ 秒數：</strong>
                   <span v-for="i in formatIntervals(item.word_intervals)" :key="i.word">{{ i.word }}({{ i.time }}s) </span>
                 </div>
@@ -322,6 +358,8 @@ const exportToCSV = () => {
 .retro-table th { background: var(--tab-bg); font-weight: 900; }
 .score-text { font-weight: 900; color: var(--danger-color); font-size: 1.2rem; }
 .score-breakdown { color: var(--text-muted); font-weight: bold; white-space: normal; }
+.sentence-score-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.sentence-score-row span { padding: 3px 6px; border-radius: 999px; background: #fff3e0; color: #9a3412; font-size: .75rem; font-weight: 900; }
 .mistake-text { color: var(--danger-color); font-weight: bold; }
 .tag { background: var(--info-bg); padding: 2px 6px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.8rem; font-weight: bold; margin-right: 4px; }
 .volume-tag { background: var(--success-bg); color: var(--success-color); border-color: var(--success-color); }
@@ -340,6 +378,10 @@ const exportToCSV = () => {
 
 .wrong-box { color: var(--danger-color); margin-bottom: 6px; }
 .correct-box { color: var(--success-color); margin-bottom: 6px; }
+.speaking-details { display: grid; gap: 8px; margin-bottom: 10px; }
+.speaking-details article { padding: 10px; border: 1px solid var(--border-color); border-radius: 7px; background: var(--tab-bg); }
+.speaking-details h4 { margin: 0 0 7px; color: #c2410c; }
+.speaking-details p { margin: 4px 0; white-space: normal; line-height: 1.45; }
 .intervals-row { color: var(--text-muted); font-size: 0.85rem; border-top: 1px dashed var(--border-color); padding-top: 5px; margin-top: 5px; }
 
 .form-grid { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;}

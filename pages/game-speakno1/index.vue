@@ -20,12 +20,8 @@ const isLoadingSentences = ref(false);
 let timer = null;
 
 // 計分系統
-const wordScoreTotal = ref(0);
-const sentenceScoreTotal = ref(0);
+const sentenceMaxScore = 100;
 const config = ref({ 
-    word_score: 10, 
-    word_penalty: 2, 
-    sentence_score: 100, 
     sentences_raw: '' 
 });
 
@@ -90,9 +86,6 @@ onMounted(async () => {
 
     const { data: settings } = await supabase.from('system_settings').select('*').eq('id', 1).single();
     if (settings) {
-        if (settings.speak_word_score !== undefined) config.value.word_score = settings.speak_word_score;
-        if (settings.speak_word_penalty !== undefined) config.value.word_penalty = settings.speak_word_penalty;
-        if (settings.speak_sentence_score !== undefined) config.value.sentence_score = settings.speak_sentence_score;
         if (settings.speak_sentences) config.value.sentences_raw = settings.speak_sentences;
     }
 
@@ -110,7 +103,11 @@ const buildSentences = items => items.map((item, id) => {
             return { original: w, clean: clean, status: 'pending' };
         });
 
-        return { id, en, zh, words, sentenceScoreEarned: 0, wordScoreEarned: 0, completed: false, transcript: '' };
+        return {
+            id, en, zh, words, scoreEarned: 0, correctCount: 0,
+            wordCount: words.filter(word => word.clean).length,
+            missedWords: [], extraWords: [], completed: false, transcript: ''
+        };
     }).filter(item => item.en);
 
 const legacySentenceItems = () => config.value.sentences_raw
@@ -213,7 +210,6 @@ const evaluateSpeech = () => {
     // 將辨識到的句子轉小寫並拆成陣列
     const spokenWords = transcript.value.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/);
     let correctCount = 0;
-    let earnedWordScore = 0;
 
     // 比對每個目標單字
     currentSentence.value.words.forEach(w => {
@@ -224,34 +220,26 @@ const evaluateSpeech = () => {
             w.status = 'correct';
             correctCount++;
             spokenWords.splice(idx, 1); // 消耗掉該單字，避免重複計分
-            earnedWordScore += config.value.word_score;
         } else {
             w.status = 'wrong';
-            earnedWordScore -= config.value.word_penalty;
         }
     });
 
-    // 防止單字總分扣到負的
-    earnedWordScore = Math.max(0, earnedWordScore);
-    
-    // 計算句子總分 (正確比例 * 滿分)
+    // 每句固定 100 分，每個目標單字平均分配分數。
     const validWordsLength = currentSentence.value.words.filter(w => w.clean.length > 0).length;
     const ratio = validWordsLength > 0 ? (correctCount / validWordsLength) : 0;
-    const earnedSentenceScore = Math.round(ratio * config.value.sentence_score);
-
-    // 重測同一句時以最新一次結果取代，避免重複累加成績。
-    wordScoreTotal.value -= currentSentence.value.wordScoreEarned;
-    sentenceScoreTotal.value -= currentSentence.value.sentenceScoreEarned;
+    const earnedSentenceScore = Math.round(ratio * sentenceMaxScore);
 
     // 寫入當前題目分數
-    currentSentence.value.wordScoreEarned = earnedWordScore;
-    currentSentence.value.sentenceScoreEarned = earnedSentenceScore;
+    currentSentence.value.scoreEarned = earnedSentenceScore;
+    currentSentence.value.correctCount = correctCount;
+    currentSentence.value.wordCount = validWordsLength;
+    currentSentence.value.missedWords = currentSentence.value.words
+        .filter(word => word.clean && word.status === 'wrong')
+        .map(word => word.original);
+    currentSentence.value.extraWords = spokenWords.filter(Boolean);
     currentSentence.value.completed = true;
     currentSentence.value.transcript = transcript.value;
-    
-    // 累加至全域總分
-    wordScoreTotal.value += earnedWordScore;
-    sentenceScoreTotal.value += earnedSentenceScore;
 
     isEvaluated.value = true;
     
@@ -263,12 +251,12 @@ const evaluateSpeech = () => {
 const startGame = () => {
     if (!selectedGrade.value || !sentences.value.length || isLoadingSentences.value) return;
     if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-    wordScoreTotal.value = 0;
-    sentenceScoreTotal.value = 0;
     timeSpent.value = 0;
     sentences.value.forEach(sentence => {
-        sentence.wordScoreEarned = 0;
-        sentence.sentenceScoreEarned = 0;
+        sentence.scoreEarned = 0;
+        sentence.correctCount = 0;
+        sentence.missedWords = [];
+        sentence.extraWords = [];
         sentence.completed = false;
         sentence.transcript = '';
         sentence.words.forEach(word => { word.status = 'pending'; });
@@ -291,7 +279,7 @@ const selectSentence = index => {
     isEvaluated.value = currentSentence.value.completed;
 };
 
-const totalCombinedScore = computed(() => wordScoreTotal.value + sentenceScoreTotal.value);
+const totalCombinedScore = computed(() => sentences.value.reduce((total, sentence) => total + sentence.scoreEarned, 0));
 const completedCount = computed(() => sentences.value.filter(sentence => sentence.completed).length);
 const allCompleted = computed(() => sentences.value.length === 3 && completedCount.value === 3);
 
@@ -302,10 +290,23 @@ const endGame = async () => {
     if (recognition && isRecording.value) recognition.stop();
 
     if (studentCookie.value && !studentCookie.value.isAnon) {
-        const missedWords = sentences.value.flatMap(sentence => {
-            const missed = sentence.words.filter(word => word.status === 'wrong').map(word => word.original);
-            return missed.length ? [`${sentence.en}：${missed.join('、')}`] : [];
-        });
+        const missedWords = sentences.value.flatMap(sentence => sentence.missedWords);
+        const speakingDetails = {
+            version: 2,
+            sentenceMaxScore,
+            totalMaxScore: sentences.value.length * sentenceMaxScore,
+            sentences: sentences.value.map((sentence, index) => ({
+                number: index + 1,
+                target: sentence.en,
+                transcript: sentence.transcript,
+                score: sentence.scoreEarned,
+                correctCount: sentence.correctCount,
+                wordCount: sentence.wordCount,
+                pointsPerWord: sentence.wordCount ? Number((sentenceMaxScore / sentence.wordCount).toFixed(2)) : 0,
+                missedWords: sentence.missedWords,
+                extraWords: sentence.extraWords
+            }))
+        };
         const { error } = await supabase.from('game_records').insert([{
             student_id: studentCookie.value.id, 
             game_type: '英語口說學霸', 
@@ -315,8 +316,11 @@ const endGame = async () => {
             score: totalCombinedScore.value, 
             time_taken_seconds: timeSpent.value,
             mistakes: missedWords.length,
-            wrong_words: missedWords.join('；'),
-            correct_words: `單字得分：${wordScoreTotal.value}；句子得分：${sentenceScoreTotal.value}`,
+            wrong_words: speakingDetails.sentences
+                .filter(sentence => sentence.missedWords.length)
+                .map(sentence => `第${sentence.number}句：${sentence.missedWords.join('、')}`)
+                .join('；'),
+            correct_words: `SPEAKING_V2:${JSON.stringify(speakingDetails)}`,
             device_info: navigator.userAgent
         }]);
         if (error) errorMsg.value = `⚠️ 成績儲存失敗：${error.message}`;
@@ -338,8 +342,7 @@ onUnmounted(() => {
       <span v-if="selectedGrade" class="grade-chip">{{ selectedGrade }} 年級</span>
       <div v-if="gameStatus === 'playing' || gameStatus === 'end'" class="t-timer">
          <template v-if="allCompleted || gameStatus === 'end'">
-           <span style="color:#4caf50; margin-right: 10px;">單字: {{ wordScoreTotal }}</span>
-           <span style="color:#ff9800; margin-right: 15px;">句子: {{ sentenceScoreTotal }}</span>
+           <span style="color:#4caf50; margin-right: 15px;">總分: {{ totalCombinedScore }} / 300</span>
          </template>
          <span v-else style="color:#ffeb3b; margin-right: 15px;">完成 {{ completedCount }} / 3</span>
          <span>⏱️ {{ timeSpent }}s</span>
@@ -370,8 +373,8 @@ onUnmounted(() => {
             <p>2️⃣ <b>錄音檢測</b>：點擊錄音鈕後對著麥克風唸出句子，系統會自動評分！</p>
             <p>3️⃣ <b>自由選題</b>：三句可用任意順序練習，全部完成後才會結算並儲存成績。</p>
             <p>4️⃣ <b>計分方式</b>：<br>
-               🔸 單字唸對 +{{ config.word_score }}，漏唸或唸錯 -{{ config.word_penalty }} 分。<br>
-               🔸 句子完整度最高可得 {{ config.sentence_score }} 分。
+               🔸 每句滿分 100 分，三句合計 300 分。<br>
+               🔸 每個單字平均分配該句 100 分；例如 5 個字，每字 20 分。
             </p>
         </div>
 
@@ -434,12 +437,13 @@ onUnmounted(() => {
             <h3 style="margin-top:0; color: #ffeb3b;">📊 評分結果</h3>
             <div class="score-details">
                 <div class="s-card">
-                    <div class="s-title">單字得分</div>
-                    <div class="s-val" style="color: #4caf50;">+{{ currentSentence.wordScoreEarned }}</div>
+                    <div class="s-title">正確單字</div>
+                    <div class="s-val" style="color: #4caf50;">{{ currentSentence.correctCount }} / {{ currentSentence.wordCount }}</div>
+                    <small>每字 {{ currentSentence.wordCount ? (100 / currentSentence.wordCount).toFixed(2) : 0 }} 分</small>
                 </div>
                 <div class="s-card">
-                    <div class="s-title">句子完整度</div>
-                    <div class="s-val" style="color: #ff9800;">+{{ currentSentence.sentenceScoreEarned }} <span style="font-size:0.8rem; color:#aaa;">/ {{ config.sentence_score }}</span></div>
+                    <div class="s-title">本句得分</div>
+                    <div class="s-val" style="color: #ff9800;">{{ currentSentence.scoreEarned }} <span style="font-size:0.8rem; color:#aaa;">/ 100</span></div>
                 </div>
             </div>
             <button class="retro-btn btn-primary" :disabled="!allCompleted" style="width: 100%; margin-top: 15px; font-size: 1.2rem; padding: 10px;" @click="endGame">
@@ -453,10 +457,9 @@ onUnmounted(() => {
        <div class="rpg-dialog retro-element">
           <h1>🎉 測驗完成</h1>
           <div class="final-score-box">
-              <p style="color:#4caf50;">單字總分：{{ wordScoreTotal }}</p>
-              <p style="color:#ff9800;">句子總分：{{ sentenceScoreTotal }}</p>
+              <p v-for="(sentence, index) in sentences" :key="sentence.id" style="color:#ffcc80;">第 {{ index + 1 }} 句：{{ sentence.scoreEarned }} / 100</p>
               <hr style="border-color: #555; margin: 10px 0;">
-              <h2 style="margin:0; color:#fff;">總成績：{{ totalCombinedScore }}</h2>
+              <h2 style="margin:0; color:#fff;">總成績：{{ totalCombinedScore }} / 300</h2>
           </div>
           <NuxtLink to="/" class="retro-btn btn-primary" style="margin-top:20px; display:inline-block; width: 100%;">返回首頁</NuxtLink>
        </div>
