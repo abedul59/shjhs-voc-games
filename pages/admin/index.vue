@@ -236,8 +236,7 @@ const clearGhostRooms = async () => {
       <NuxtLink v-if="canUseFeature('leaderboard')" to="/admin/leaderboard" class="retro-btn test-btn">🏅 英雄榜</NuxtLink>
       <NuxtLink v-if="canUseFeature('logs')" to="/admin/logs" class="retro-btn log-btn">🕒 登入紀錄</NuxtLink>
       <NuxtLink v-if="canUseFeature('student-logs')" to="/admin/student-logs" class="retro-btn test-btn">👣 學生足跡</NuxtLink>
-      <NuxtLink v-if="canUseFeature('live-activity')" to="/admin/live-activity" class="retro-btn" style="background: #4caf50; color: white; border-color: #2e7d32; box-shadow: 0 4px 0 #2e7d32;">📡 學生即時動態</NuxtLink>
-      <NuxtLink v-if="canUseFeature('focus-monitor')" to="/admin/focus-monitor" class="retro-btn" style="background: #1e3a8a; color: white; border-color: #172554; box-shadow: 0 4px 0 #172554;">🛡️ 班級專注監控</NuxtLink>
+      <NuxtLink v-if="canUseFeature('live-activity')" to="/admin/live-activity" class="retro-btn" style="background: linear-gradient(135deg, #43a047 0 50%, #1e3a8a 50%); color: white; border-color: #172554; box-shadow: 0 4px 0 #172554; grid-column: span 2;">📡🛡️ 學生動態與專注監控</NuxtLink>
       <NuxtLink v-if="canUseFeature('vocab-exam-generator')" to="/admin/vocab-exam-generator" class="retro-btn" style="background: #7c3aed; color: white; border-color: #4c1d95; box-shadow: 0 4px 0 #4c1d95;">📝 單字會考出題器</NuxtLink>
       <NuxtLink v-if="canUseFeature('regular-exam-generator')" to="/admin/regular-exam-generator" class="retro-btn" style="background: #0369a1; color: white; border-color: #075985; box-shadow: 0 4px 0 #075985;">📚 段考出題器</NuxtLink>
       

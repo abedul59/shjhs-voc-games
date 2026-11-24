@@ -367,9 +367,7 @@ const toggleAngrybirdsDuel = event => {
       <label style="color:#f57f17; margin-bottom: 10px; font-weight: bold;">🗣️ 英語口說學霸 / 多元評量 (game-speakno1):</label>
 
       <div class="multi-input" style="margin-bottom: 10px;">
-        單字唸對加<input type="number" v-model="config.speak_word_score" class="retro-input num-input" />分,
-        唸錯扣<input type="number" v-model="config.speak_word_penalty" class="retro-input num-input" />分,
-        句子滿分<input type="number" v-model="config.speak_sentence_score" class="retro-input num-input" />分
+        固定配分：每句 100 分，依該句英文單字數平均分配；三句全部完成後，以 300 分為總分。
       </div>
 
       <div class="speak-manager-link">
