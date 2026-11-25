@@ -140,7 +140,7 @@ const loadDraft = async () => {
 
 const metadata = ref({
   schoolName: '台南市立新化國民中學', schoolYear: '115', semester: '1', grade: '8', examNumber: '1',
-  fileName: '115學年度第1學期8年級第1次定期評量英語科'
+  fileName: '115學年度第1學期8年級第1次定期評量英語科', answerFontSize: 10
 });
 const scoring = ref({ choicePercent: 66, nonChoicePercent: 34 });
 const questionCounts = ref({ grammar: 10, directVocab: 7, contextVocab: 3, translation: 12, blanksPerSentence: 1 });
@@ -188,7 +188,7 @@ const resetBlueprint = () => {
   let nextNumber = 16 + questionCounts.value.grammar;
   const nextGroups = [];
   if (current.clozeCount) {
-    nextGroups.push({ id: crypto.randomUUID(), type: 'cloze', title: '五、克漏字測驗', passage: '', glossary: '', autoGlossary: true, outOfScopeCount: 0, unknownWordCount: 0, startNewPage: false, questions: Array.from({ length: current.clozeCount }, (_, index) => makeQuestion(nextNumber + index)) });
+    nextGroups.push({ id: crypto.randomUUID(), type: 'cloze', title: '五、克漏字測驗', passage: '', images: ['', ''], glossary: '', autoGlossary: true, outOfScopeCount: 0, unknownWordCount: 0, startNewPage: false, questions: Array.from({ length: current.clozeCount }, (_, index) => makeQuestion(nextNumber + index)) });
     nextNumber += current.clozeCount;
   }
   const readingGroupCount = current.readingCount > 15 ? 3 : 2;
@@ -196,7 +196,7 @@ const resetBlueprint = () => {
   const remainder = current.readingCount % readingGroupCount;
   for (let groupIndex = 0; groupIndex < readingGroupCount; groupIndex += 1) {
     const count = base + (groupIndex < remainder ? 1 : 0);
-    nextGroups.push({ id: crypto.randomUUID(), type: 'reading', title: `${current.clozeCount ? '六' : '五'}、閱讀測驗（題組 ${groupIndex + 1}）`, passage: '', glossary: '', autoGlossary: true, outOfScopeCount: 0, unknownWordCount: 0, startNewPage: false, questions: Array.from({ length: count }, (_, index) => makeQuestion(nextNumber + index)) });
+    nextGroups.push({ id: crypto.randomUUID(), type: 'reading', title: `${current.clozeCount ? '六' : '五'}、閱讀測驗（題組 ${groupIndex + 1}）`, passage: '', images: ['', ''], glossary: '', autoGlossary: true, outOfScopeCount: 0, unknownWordCount: 0, startNewPage: false, questions: Array.from({ length: count }, (_, index) => makeQuestion(nextNumber + index)) });
     nextNumber += count;
   }
   groups.value = nextGroups;
@@ -288,16 +288,13 @@ const chooseBlank = (item, index) => {
   item.blankIndices = [...selected].sort((a, b) => a - b);
   refreshTranslation();
 };
-const makeTranslationItems = (pool, count, blanksPerSentence) => {
+const makeTranslationItems = (pool, count, blanksPerSentence, forbiddenWords) => {
   const items = Array.from({ length: count }, (_, index) => {
-    const word = pool[index % pool.length];
+    const word = pool[index];
     const tokens = sentenceTokens(word.example_en);
-    const target = tokens.findIndex(token => token.toLowerCase().replace(/[^a-z]/g, '') === word.en_us.toLowerCase().replace(/[^a-z]/g, ''));
-    const indexes = [target >= 0 ? target : 0];
-    for (let offset = 1; indexes.length < Math.min(blanksPerSentence, tokens.length); offset += 1) {
-      const next = (indexes[0] + offset) % tokens.length;
-      if (!indexes.includes(next)) indexes.push(next);
-    }
+    const available = tokens.map((token, tokenIndex) => ({ tokenIndex, key: token.toLowerCase().replace(/[^a-z]/g, '') })).filter(token => !forbiddenWords.has(token.key));
+    const target = available.find(token => token.key === word.en_us.toLowerCase().replace(/[^a-z]/g, ''));
+    const indexes = [target, ...available.filter(token => token !== target)].filter(Boolean).slice(0, blanksPerSentence).map(token => token.tokenIndex);
     return { id: crypto.randomUUID(), sourceEn: word.example_en, sourceZh: word.example_zh || '', blankIndices: indexes.sort((a, b) => a - b) };
   });
   return buildTranslationFill(items);
@@ -327,6 +324,21 @@ const generateExam = async () => {
     message.value = `所選文法範圍只有 ${grammarPool.length} 題，需要 ${counts.grammar} 題。`;
     return;
   }
+  const directItems = directPool.slice(0, counts.directVocab);
+  const usedWords = new Set([...directItems, ...contextItems].map(item => item.en_us.toLowerCase().replace(/[^a-z]/g, '')));
+  const usedSentences = new Set(contextItems.map(item => item.example_en?.trim().toLowerCase()));
+  const seenSentences = new Set();
+  const translationPool = contextPool.filter(item => {
+    const sentence = item.example_en?.trim().toLowerCase();
+    if (!sentence || usedWords.has(item.en_us.toLowerCase().replace(/[^a-z]/g, '')) || usedSentences.has(sentence) || seenSentences.has(sentence)) return false;
+    if (sentenceTokens(item.example_en).filter(token => !usedWords.has(token.toLowerCase().replace(/[^a-z]/g, ''))).length < counts.blanksPerSentence) return false;
+    seenSentences.add(sentence);
+    return true;
+  });
+  if (translationPool.length < counts.translation) {
+    message.value = `可用且不與單字題重複的例句只有 ${translationPool.length} 句，翻譯填充要求 ${counts.translation} 句；請增加單字課次或減少題數／每句空格數。`;
+    return;
+  }
 
   isGenerating.value = true;
   grammarQuestions.value = grammarPool.slice(0, counts.grammar).map((item, index) => ({
@@ -335,20 +347,20 @@ const generateExam = async () => {
     answer: Math.max(0, Math.min(3, Number(item.answer || 1) - 1))
   }));
   nonChoice.value.vocabulary = [
-    ...directPool.slice(0, counts.directVocab).map(item => ({ id: `direct-${item.id}`, prompt: item.zh_tw, answer: item.en_us })),
+    ...directItems.map(item => ({ id: `direct-${item.id}`, prompt: item.zh_tw, answer: item.en_us })),
     ...contextItems.map(item => ({ id: `context-${item.id}`, prompt: maskedExample(item), answer: item.en_us }))
   ];
   let nextNumber = 16 + counts.grammar;
   groups.value.forEach(group => group.questions.forEach(question => { question.number = nextNumber++; }));
   if (!translationSection.value && counts.translation > 0) nonChoice.value.sections.push({ id: crypto.randomUUID(), type: 'translation', title: '翻譯填充', instructions: '', items: [] });
   if (translationSection.value) translationSection.value.items = counts.translation
-    ? makeTranslationItems(contextPool, counts.translation, counts.blanksPerSentence) : [];
+    ? makeTranslationItems(translationPool, counts.translation, counts.blanksPerSentence, usedWords) : [];
   allocateScores();
   generated.value = true;
   isGenerating.value = false;
   previewMode.value = 'question';
   await nextTick();
-  message.value = `已產生 ${metadata.value.grade} 年級段考草稿；聽力圖片、閱讀、克漏字與非選擇題仍可繼續編輯。${counts.translation > contextPool.length ? '翻譯填充句數超過例句數，部分句子將重複，請人工調整。' : ''}`;
+  message.value = `已產生 ${metadata.value.grade} 年級段考草稿；聽力圖片、閱讀、克漏字與非選擇題仍可繼續編輯。`;
 };
 
 const shuffleQuestionChoices = question => {
@@ -376,6 +388,19 @@ const handleImageInput = async (event, choice) => { await setChoiceImage(choice,
 const handleImagePaste = async (event, choice) => {
   const file = [...(event.clipboardData?.items || [])].find(item => item.type.startsWith('image/'))?.getAsFile();
   if (file) { event.preventDefault(); await setChoiceImage(choice, file); }
+};
+const setGroupImage = async (group, index, file) => {
+  if (!file?.type.startsWith('image/')) return;
+  if (!group.images) group.images = ['', ''];
+  group.images[index] = await readImage(file);
+};
+const handleGroupImageInput = async (event, group, index) => {
+  await setGroupImage(group, index, event.target.files?.[0]);
+  event.target.value = '';
+};
+const handleGroupImagePaste = async (event, group, index) => {
+  const file = [...(event.clipboardData?.items || [])].find(item => item.type.startsWith('image/'))?.getAsFile();
+  if (file) { event.preventDefault(); await setGroupImage(group, index, file); }
 };
 
 const exportWord = async mode => {
@@ -424,7 +449,7 @@ onMounted(async () => {
     <section class="panel">
       <h2>一、考卷資料與年級格式</h2>
       <div class="grade-picker"><button v-for="grade in ['7','8','9']" :key="grade" :class="{ active: metadata.grade === grade }" @click="metadata.grade = grade">{{ grade }} 年級<span>參考非選 {{ presets[grade].nonChoicePercent }}%</span></button></div>
-      <div class="form-grid"><label>學校名稱<input v-model="metadata.schoolName"></label><label>學年度<input v-model="metadata.schoolYear"></label><label>學期<input v-model="metadata.semester"></label><label>第幾次定期評量<input v-model="metadata.examNumber"></label><label>下載檔名<input v-model="metadata.fileName"></label></div>
+      <div class="form-grid"><label>學校名稱<input v-model="metadata.schoolName"></label><label>學年度<input v-model="metadata.schoolYear"></label><label>學期<input v-model="metadata.semester"></label><label>第幾次定期評量<input v-model="metadata.examNumber"></label><label>下載檔名<input v-model="metadata.fileName"></label><label>正確答案字體（8～16 pt）<input v-model.number="metadata.answerFontSize" type="number" min="8" max="16" step="1"></label></div>
       <div class="score-settings">
         <label>選擇題比例<input v-model.number="scoring.choicePercent" type="number" min="0" max="100">%</label>
         <label>非選擇題比例<input v-model.number="scoring.nonChoicePercent" type="number" min="0" max="100">%</label>
@@ -463,7 +488,24 @@ onMounted(async () => {
 
         <div v-else-if="editorTab === 'grammar'" class="editor-content"><p>以下題目來自文法遊樂園，可逐題修改或交換選項。將「題幹＋A、B、C、D 四個選項」整段貼入題幹欄，系統會自動拆分。</p><div v-for="question in grammarQuestions" :key="question.id" class="question-editor"><div class="question-top"><b>{{ question.number }}.</b><textarea v-model="question.stem" placeholder="貼上完整題目與四個選項，可自動拆分" @paste="handleQuestionPaste($event, question)"></textarea><select v-model.number="question.answer"><option v-for="(label,index) in labels" :key="label" :value="index">答案 {{ label }}</option></select><button @click="shuffleQuestionChoices(question)">交換選項</button></div><div class="choice-inputs"><label v-for="(_,index) in question.choices" :key="index">{{ labels[index] }}<input v-model="question.choices[index]"></label></div></div></div>
 
-        <div v-else-if="editorTab === 'groups'" class="editor-content"><p>題組會依內容長度自動流入下一欄或下一頁；每一小題不會被拆開。文章／對話會以虛線框區隔。貼上文章後，系統會依上方所選課次自動找出範圍外單字，並從完整單字庫帶入中文。</p><article v-for="group in groups" :key="group.id" class="group-editor"><div class="group-layout-row"><input v-model="group.title" class="group-title"><label><input v-model="group.startNewPage" type="checkbox"> 此題組前強制換頁</label></div><label>文章／對話<textarea v-model="group.passage" class="passage-editor" rows="10" placeholder="貼上閱讀文章或對話後，將自動檢測範圍外單字" @input="scheduleGroupVocabularyDetection(group)"></textarea></label><div class="glossary-heading"><b>單字提示</b><span v-if="group.outOfScopeCount">範圍外 {{ group.outOfScopeCount }} 個<span v-if="group.unknownWordCount">／待補中文 {{ group.unknownWordCount }} 個</span></span><button type="button" @click="detectGroupVocabulary(group)">🔍 重新檢測單字範圍</button></div><textarea v-model="group.glossary" rows="3" placeholder="自動產生後仍可人工增刪或修改中文" @input="editGlossaryManually(group)"></textarea><small v-if="!group.autoGlossary" class="manual-note">目前為人工編輯模式；按「重新檢測」可恢復自動結果。</small><div v-for="question in group.questions" :key="question.id" class="question-editor"><div class="question-top"><b class="editor-question-number">{{ question.number }}.</b><textarea v-model="question.stem" placeholder="貼上完整題目與四個選項，可自動拆分" @paste="handleQuestionPaste($event, question)"></textarea><select v-model.number="question.answer"><option v-for="(label,index) in labels" :key="label" :value="index">答案 {{ label }}</option></select><button @click="shuffleQuestionChoices(question)">交換選項</button></div><div class="choice-inputs"><label v-for="(_,index) in question.choices" :key="index">{{ labels[index] }}<input v-model="question.choices[index]"></label></div></div></article></div>
+        <div v-else-if="editorTab === 'groups'" class="editor-content">
+          <p>題組會依內容長度自動流入下一欄或下一頁；每一小題不會被拆開。文章／對話會以虛線框區隔。貼上文章後，系統會依上方所選課次自動找出範圍外單字，並從完整單字庫帶入中文。</p>
+          <article v-for="group in groups" :key="group.id" class="group-editor">
+            <div class="group-layout-row"><input v-model="group.title" class="group-title"><label><input v-model="group.startNewPage" type="checkbox"> 此題組前強制換頁</label></div>
+            <label>文章／對話<textarea v-model="group.passage" class="passage-editor" rows="10" placeholder="貼上閱讀文章或對話後，將自動檢測範圍外單字" @input="scheduleGroupVocabularyDetection(group)"></textarea></label>
+            <div class="reading-image-editor">
+              <b>閱讀圖片（最多兩張）</b>
+              <div class="reading-image-slots"><div v-for="index in 2" :key="index" class="image-upload" tabindex="0" @paste="handleGroupImagePaste($event, group, index - 1)">
+                <b>圖片 {{ index }}</b><img v-if="group.images?.[index - 1]" :src="group.images[index - 1]" alt="閱讀圖片預覽"><span v-else>點此後直接貼上圖片</span>
+                <input type="file" accept="image/*" @change="handleGroupImageInput($event, group, index - 1)">
+                <button v-if="group.images?.[index - 1]" type="button" @click="group.images[index - 1] = ''">移除圖片</button>
+              </div></div>
+            </div>
+            <div class="glossary-heading"><b>單字提示</b><span v-if="group.outOfScopeCount">範圍外 {{ group.outOfScopeCount }} 個<span v-if="group.unknownWordCount">／待補中文 {{ group.unknownWordCount }} 個</span></span><button type="button" @click="detectGroupVocabulary(group)">🔍 重新檢測單字範圍</button></div>
+            <textarea v-model="group.glossary" rows="3" placeholder="自動產生後仍可人工增刪或修改中文" @input="editGlossaryManually(group)"></textarea><small v-if="!group.autoGlossary" class="manual-note">目前為人工編輯模式；按「重新檢測」可恢復自動結果。</small>
+            <div v-for="question in group.questions" :key="question.id" class="question-editor"><div class="question-top"><b class="editor-question-number">{{ question.number }}.</b><textarea v-model="question.stem" placeholder="貼上完整題目與四個選項，可自動拆分" @paste="handleQuestionPaste($event, question)"></textarea><select v-model.number="question.answer"><option v-for="(label,index) in labels" :key="label" :value="index">答案 {{ label }}</option></select><button @click="shuffleQuestionChoices(question)">交換選項</button></div><div class="choice-inputs"><label v-for="(_,index) in question.choices" :key="index">{{ labels[index] }}<input v-model="question.choices[index]"></label></div></div>
+          </article>
+        </div>
 
         <div v-else class="editor-content"><h3>單字與文意字彙</h3><div class="written-grid"><div v-for="(item,index) in nonChoice.vocabulary" :key="item.id"><b>{{ index + 1 }}</b><textarea v-model="item.prompt" placeholder="題目"></textarea><input v-model="item.answer" placeholder="答案"></div></div><article v-for="section in nonChoice.sections" :key="section.id" class="written-editor"><input v-model="section.title" class="group-title"><textarea v-model="section.instructions" placeholder="作答說明或共同題幹"></textarea><template v-if="section.type === 'translation' || section.title === '翻譯填充'"><p>例句與中文可編輯；點擊下方英文單字可切換是否挖空，系統會自動更新格號與答案。</p><div v-for="(item,index) in section.items" :key="item.id" class="translation-editor"><b>第 {{ index + 1 }} 句</b><label>英文例句<textarea v-model="item.sourceEn" @change="refreshTranslation"></textarea></label><label>中文翻譯<input v-model="item.sourceZh" @change="refreshTranslation"></label><div class="token-list"><button v-for="(token,tokenIndex) in sentenceTokens(item.sourceEn)" :key="tokenIndex" type="button" :class="{ selected: item.blankIndices?.includes(tokenIndex) }" @click="chooseBlank(item,tokenIndex)">{{ token }}</button></div><small>目前 {{ item.blankIndices?.length || 0 }} 格；格號：{{ item.answer }}</small></div></template><div v-else class="written-grid"><div v-for="(item,index) in section.items" :key="item.id"><b>{{ index + 1 }}</b><textarea v-model="item.prompt" placeholder="題目"></textarea><input v-model="item.answer" placeholder="正確答案"></div></div></article></div>
       </section>
@@ -476,4 +518,5 @@ onMounted(async () => {
 .draft-panel{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.draft-panel h2,.draft-panel p{width:100%;margin:0}.draft-panel input,.draft-panel select{min-width:220px;flex:1;padding:9px}.draft-panel button,.score-panel button{padding:9px;cursor:pointer}.score-section{padding:10px;border-bottom:1px solid #cbd5e1}.score-section>label{display:inline-flex;align-items:center;gap:8px}.score-section input{width:65px;padding:5px}.score-section>span{margin-left:12px}.score-items{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.score-items label{padding:5px;background:#eff6ff}.score-summary{font-weight:800;color:#15803d}.score-panel .invalid{color:#b91c1c}
 .builder-page{min-height:100vh;padding:24px;background:#eef2f7;color:#1e293b;font-family:system-ui,'Noto Sans TC',sans-serif}.page-header,.panel,.preview-panel{max-width:1500px;margin:0 auto 18px}.page-header{display:flex;justify-content:space-between;gap:20px}.page-header h1{margin:0;color:#1d4ed8}.page-header p{margin:5px 0;color:#64748b}.page-header a{height:max-content;padding:10px 15px;border-radius:8px;background:#1e3a8a;color:white;text-decoration:none;font-weight:800}.message{max-width:1470px;margin:0 auto 15px;padding:12px 15px;border-left:5px solid #2563eb;background:#dbeafe}.panel{box-sizing:border-box;padding:18px;border:1px solid #cbd5e1;border-radius:14px;background:#fff;box-shadow:0 3px 14px #0f172a12}.panel h2{margin:0 0 12px;color:#1e3a8a}.grade-picker{display:flex;gap:10px;margin-bottom:14px}.grade-picker button{display:flex;flex-direction:column;min-width:150px;padding:12px;border:2px solid #cbd5e1;border-radius:9px;background:white;font-size:1.1rem;font-weight:900;cursor:pointer}.grade-picker button span{font-size:.8rem;color:#64748b}.grade-picker button.active{border-color:#2563eb;background:#eff6ff;color:#1d4ed8}.form-grid{display:grid;grid-template-columns:2fr repeat(3,1fr) 2.5fr;gap:10px}.form-grid label{display:grid;gap:4px;font-size:.85rem;font-weight:800}.form-grid input,.score-settings input,.question-editor input,.question-editor select,.question-editor textarea,.group-editor textarea,.group-title,.written-editor textarea,.written-grid textarea,.written-grid input,.image-upload input{box-sizing:border-box;width:100%;padding:8px;border:1px solid #94a3b8;border-radius:7px;font:inherit}.score-settings{display:flex;align-items:end;gap:12px;margin-top:13px}.score-settings label{display:grid;grid-template-columns:auto 80px auto;align-items:center;gap:6px;font-weight:800}.score-settings span{padding:8px 10px;border-radius:7px;background:#dcfce7;color:#166534;font-weight:900}.score-settings span.invalid{background:#fee2e2;color:#b91c1c}.preset-note{margin-bottom:0;padding:9px;background:#f1f5f9}.scope-columns{display:grid;grid-template-columns:1fr 1fr;gap:16px}.scope-heading{display:flex;justify-content:space-between;align-items:center}.scope-heading h3{margin:0}.scope-heading span{color:#1d4ed8;font-weight:800}.lesson-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:6px;max-height:270px;overflow:auto;margin-top:8px;padding:3px}.lesson-grid label{display:flex;gap:7px;align-items:center;padding:8px;border:2px solid #cbd5e1;border-radius:8px;cursor:pointer}.lesson-grid label.selected{border-color:#2563eb;background:#eff6ff}.lesson-grid span{display:grid}.lesson-grid small{color:#64748b}.generate-btn{width:100%;margin-top:15px;padding:13px;border:0;border-radius:9px;background:#2563eb;color:white;font-size:1.05rem;font-weight:900;cursor:pointer}.generate-btn:disabled{opacity:.5}.action-panel{display:flex;justify-content:space-between;gap:15px}.preview-tabs,.action-buttons,.editor-tabs{display:flex;gap:8px;flex-wrap:wrap}.preview-tabs button,.action-buttons button,.editor-tabs button,.question-editor button{padding:9px 11px;border:1px solid #64748b;border-radius:7px;background:#fff;font-weight:800;cursor:pointer}.preview-tabs button.active,.editor-tabs button.active{background:#1e3a8a;color:#fff}.action-buttons{justify-content:flex-end}.action-buttons .makeup{background:#f97316;color:white;border-color:#c2410c}.preview-panel{padding:18px;border-radius:14px;background:#475569;overflow:hidden}.preview-scroll{overflow:auto;max-height:850px}.preview-scroll :deep(.regular-exam-page){box-shadow:0 6px 25px #0f172a99}.editor-tabs{margin-bottom:14px}.editor-content{display:grid;gap:10px}.question-editor{padding:12px;border:1px solid #cbd5e1;border-radius:9px;background:#f8fafc}.question-top{display:grid;grid-template-columns:45px 1fr 120px 110px;gap:8px;align-items:start}.question-top textarea{min-height:50px}.choice-inputs{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:8px}.choice-inputs label{display:grid;grid-template-columns:22px 1fr;align-items:center;font-weight:800}.image-editor>label{display:inline-flex;gap:6px;margin:0 8px}.image-options{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:9px}.image-upload{display:grid;gap:6px;padding:9px;border:2px dashed #94a3b8;border-radius:8px;background:white}.image-upload:focus{border-color:#2563eb}.image-upload img{width:100%;height:145px;object-fit:contain;background:#f1f5f9}.image-upload>span{display:grid;place-items:center;height:145px;color:#64748b;background:#f1f5f9}.group-editor,.written-editor{display:grid;gap:9px;padding:14px;border:2px solid #cbd5e1;border-radius:10px}.group-layout-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px}.group-layout-row>label{display:flex;align-items:center;gap:6px;white-space:nowrap;font-weight:800}.group-layout-row input[type=checkbox]{width:auto}.group-title{font-size:1.15rem;font-weight:900;color:#1d4ed8}.written-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.written-grid>div{display:grid;grid-template-columns:35px 1.5fr 1fr;gap:6px;align-items:start;padding:8px;border:1px solid #e2e8f0;border-radius:7px}.written-grid textarea{min-height:58px}@media(max-width:1000px){.form-grid,.scope-columns{grid-template-columns:1fr 1fr}.action-panel,.page-header{flex-direction:column}.question-top{grid-template-columns:40px 1fr}.choice-inputs,.written-grid{grid-template-columns:1fr 1fr}}@media(max-width:650px){.builder-page{padding:10px}.form-grid,.scope-columns,.choice-inputs,.written-grid,.image-options{grid-template-columns:1fr}.grade-picker{display:grid;grid-template-columns:repeat(3,1fr)}.grade-picker button{min-width:0}.score-settings{align-items:stretch;flex-direction:column}.group-layout-row{grid-template-columns:1fr}.written-grid>div{grid-template-columns:30px 1fr}.written-grid input{grid-column:2}}
 .passage-editor{border:2px dashed #64748b!important;background:#fff}.glossary-heading{display:flex;align-items:center;gap:10px}.glossary-heading>span{margin-left:auto;color:#b45309;font-weight:800}.glossary-heading button{padding:7px 10px;border:1px solid #2563eb;border-radius:7px;background:#eff6ff;color:#1d4ed8;font-weight:800;cursor:pointer}.manual-note{color:#b45309}.editor-question-number{display:grid;place-items:center;min-height:42px;border-radius:7px;background:#1e3a8a;color:#fff;font-size:1.08rem}@media(max-width:650px){.glossary-heading{align-items:stretch;flex-direction:column}.glossary-heading>span{margin-left:0}}
+.reading-image-slots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:8px}.reading-image-editor> b{color:#1e3a8a}@media(max-width:650px){.reading-image-slots{grid-template-columns:1fr}}
 </style>
