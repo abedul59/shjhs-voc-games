@@ -13,6 +13,45 @@ const choiceQuestions = computed(() => [
   ...props.data.grammarQuestions,
   ...props.data.groups.flatMap(group => group.questions)
 ].sort((a, b) => a.number - b.number));
+const answerEntries = section => {
+  if (section.type === 'translation' || section.title === '翻譯填充') {
+    return section.items.flatMap((item, index) => {
+      const entries = String(item.answer || '').split('　').map(part => {
+      const match = part.match(/^(\d+)\.\s*(.*)$/);
+      return match ? { number: match[1], answer: match[2] } : null;
+      }).filter(Boolean);
+      return entries.length ? entries : [{ number: index + 1, answer: item.answer }];
+    });
+  }
+  return section.items.map((item, index) => ({ number: index + 1, answer: item.answer }));
+};
+const answerColumns = computed(() => props.data.metadata.grade === '7' ? 6 : 5);
+const answerPages = computed(() => {
+  const columns = answerColumns.value;
+  const maxRows = props.blankMode ? 10 : 8;
+  const pages = [{ sections: [], usedRows: 0 }];
+  const next = () => pages.push({ sections: [], usedRows: 0 });
+  const source = [
+    { id: 'vocabulary', title: '單字與文意字彙', entries: props.data.nonChoice.vocabulary.map((item, index) => ({ number: index + 1, answer: item.answer })) },
+    ...props.data.nonChoice.sections.map(section => ({ id: section.id, title: section.title, entries: answerEntries(section) }))
+  ];
+  for (const section of source) {
+    let start = 0;
+    while (start < section.entries.length) {
+      let page = pages.at(-1);
+      const capacity = Math.max(0, maxRows - page.usedRows - 1);
+      if (!capacity) { next(); page = pages.at(-1); }
+      const size = Math.min(section.entries.length - start, Math.max(1, maxRows - page.usedRows - 1) * columns);
+      page.sections.push({ ...section, entries: section.entries.slice(start, start + size), continued: start > 0 });
+      page.usedRows += 1 + Math.ceil(size / columns);
+      start += size;
+    }
+  }
+  if (!props.blankMode && pages.at(-1).usedRows > 6) next();
+  if (props.blankMode && pages.at(-1).usedRows > 8) next();
+  pages.at(-1).showFooter = true;
+  return pages;
+});
 
 const textLines = (value, width = 48) => String(value || '').split('\n').reduce((total, line) => total + Math.max(1, Math.ceil(line.length / width)), 0);
 const questionSize = question => 2 + textLines(question.stem, 50) + textLines(question.choices.join('　'), 58);
@@ -119,18 +158,17 @@ defineExpose({ getPages: () => [...root.value.querySelectorAll('.regular-exam-pa
     </template>
 
     <template v-else>
-      <article class="regular-exam-page a4-page answer-page">
+      <article v-for="(page,pageIndex) in answerPages" :key="pageIndex" class="regular-exam-page a4-page answer-page">
         <header class="exam-header answer-header">
-          <h1>{{ data.metadata.schoolName }}{{ data.metadata.schoolYear }}學年度第{{ data.metadata.semester }}學期{{ data.metadata.grade }}年級第{{ data.metadata.examNumber }}次定期評量　英語科　{{ blankMode ? '答案卷' : '正確答案' }}</h1>
+          <h1>{{ data.metadata.schoolName }}{{ data.metadata.schoolYear }}學年度第{{ data.metadata.semester }}學期{{ data.metadata.grade }}年級第{{ data.metadata.examNumber }}次定期評量　英語科　{{ blankMode ? '答案卷' : '正確答案' }}{{ pageIndex ? '（續）' : '' }}</h1>
           <p v-if="blankMode">{{ data.metadata.grade }}年　　班　座號　　　姓名　　　　　　　　　</p>
         </header>
-        <template v-if="!blankMode"><h2>第一部分：選擇題 {{ data.preset.choicePercent }}%</h2><div class="answer-grid"><span v-for="question in choiceQuestions" :key="question.number"><b>{{ question.number }}.</b>{{ labels[question.answer] || '＿' }}</span></div></template>
-        <h2 class="answer-part-title">第二部分：非選擇題 {{ data.preset.nonChoicePercent }}%</h2>
+        <h2 class="answer-part-title">第二部分：非選擇題【請在答案卷上作答】{{ data.preset.nonChoicePercent }}%</h2>
         <div class="written-answer-flow">
-          <section v-if="data.nonChoice.vocabulary.length" class="answer-section"><h3>單字與文意字彙</h3><span v-for="(item,index) in data.nonChoice.vocabulary" :key="item.id"><b>{{ index + 1 }}.</b> {{ blankMode ? '　　　　　　　　　' : item.answer }}</span></section>
-          <section v-for="section in data.nonChoice.sections" :key="section.id" class="answer-section"><h3>{{ section.title }}</h3><span v-for="(item,index) in section.items" :key="item.id"><b>{{ index + 1 }}.</b> {{ blankMode ? '　　　　　　　　　' : item.answer }}</span></section>
+          <section v-for="section in page.sections" :key="section.id + section.entries[0]?.number" class="answer-section"><h3>{{ section.title }}{{ section.continued ? '（續）' : '' }}（{{ data.sectionPoints?.[section.id] || 0 }} 分）</h3><div class="answer-cells" :style="{ '--answer-columns': answerColumns }"><div v-for="(item,index) in section.entries" :key="index" class="answer-cell"><small>{{ item.number }}</small><span>{{ blankMode ? '' : item.answer }}</span></div></div></section>
         </div>
-        <div v-if="blankMode" class="score-boxes"><div>選擇題分數<br><br></div><div>非選擇題分數<br><br></div><div>總分<br><br></div></div>
+        <template v-if="!blankMode && page.showFooter"><h2 class="answer-part-title">第一部分：選擇題 {{ data.preset.choicePercent }}%</h2><div class="choice-answer-lines"><div v-for="start in Math.ceil(choiceQuestions.length / 10)" :key="start"><b>{{ (start - 1) * 10 + 1 }}–{{ Math.min(start * 10, choiceQuestions.length) }}</b><span>{{ choiceQuestions.slice((start - 1) * 10, start * 10).map(question => labels[question.answer] || '＿').join('') }}</span></div></div></template>
+        <div v-if="blankMode && page.showFooter" class="score-boxes"><div>選擇題分數<br><br></div><div>非選擇題分數<br><br></div><div>總分<br><br></div></div>
       </article>
     </template>
   </div>
@@ -139,4 +177,5 @@ defineExpose({ getPages: () => [...root.value.querySelectorAll('.regular-exam-pa
 <style scoped>
 .regular-exam-document{display:grid;gap:18px;color:#000;font-family:'Times New Roman','新細明體',serif}.regular-exam-page{box-sizing:border-box;position:relative;margin:auto;background:#fff;overflow:hidden}.b4-page{width:257mm;height:364mm;padding:9mm 10mm}.a4-page{width:210mm;height:297mm;padding:9mm 10mm}.exam-header h1{margin:0;text-align:center;font-size:18pt;line-height:1.25}.exam-header p{margin:4px 0 7px;text-align:right;font-size:12pt}.exam-header.small h1{font-size:13pt;margin-bottom:3mm}.two-columns{display:grid;grid-template-columns:1fr 1fr;gap:7mm;height:calc(100% - 25mm)}.two-columns>section+section{padding-left:6mm;border-left:1px solid #000}h2{margin:3px 0;font-size:12pt}h3{margin:5px 0 3px;font-size:10.5pt;line-height:1.25}.image-question{display:grid;grid-template-columns:8mm repeat(3,1fr);border:1px solid #000;border-bottom:0;min-height:34mm;break-inside:avoid}.image-question:last-of-type{border-bottom:1px solid #000}.image-question>b{display:grid;place-items:center;font-size:18pt;border-right:1px solid #000}.image-choice{display:flex;flex-direction:column;align-items:center;gap:2px;padding:2px;border-right:1px solid #000;text-align:center}.image-choice:last-child{border-right:0}.image-choice img{max-width:100%;height:24mm;object-fit:contain}.image-choice em{display:grid;place-items:center;width:100%;height:24mm;color:#777;border:1px dashed #aaa;font-size:9pt}.mcq{display:grid;gap:1px;margin:0 0 4px;font-size:10pt;line-height:1.24;break-inside:avoid-column}.mcq b{font-weight:400}.mcq.compact{font-size:9.4pt;margin-bottom:2.5px}.flow-columns{height:calc(100% - 16mm);column-count:2;column-gap:8mm;column-rule:1px solid #000;column-fill:auto;overflow:hidden}.flow-group{display:block;margin:0 0 4mm;break-inside:auto}.flow-group h2{margin-top:0;break-after:avoid-column}.passage{white-space:pre-wrap;font-size:11pt;line-height:1.4;text-align:justify;margin-bottom:2.5mm;orphans:3;widows:3}.glossary{margin:0 0 2.5mm;padding:1.5mm;border:1px solid #555;white-space:pre-wrap;font-size:9.5pt;break-inside:avoid-column}.compact-written-flow{height:calc(100% - 28mm);column-count:2;column-gap:8mm;column-rule:1px solid #000;column-fill:balance;overflow:hidden}.written-section{margin:0 0 3mm;break-inside:auto}.written-section h3{break-after:avoid-column}.written-section p{margin:0 0 1.5mm;white-space:pre-wrap;font-size:10pt}.written-item{max-width:100%;margin:0 0 1.5mm;font-size:10.5pt;line-height:1.28;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;break-inside:avoid-column}.exam-end{position:absolute;bottom:11mm;left:28%;right:28%;padding-top:2mm;border-top:1px dashed #000;text-align:center;font-size:12pt;font-weight:700}.regular-exam-page footer{position:absolute;bottom:3mm;left:0;right:0;text-align:center;font-size:9pt}.answer-header h1{font-size:14.5pt;margin-bottom:3mm}.answer-page h2{font-size:11pt}.answer-grid{display:grid;grid-template-columns:repeat(10,1fr);gap:1.5mm 2mm;margin-top:2mm;font-size:10pt}.answer-grid span{padding:1mm 0;border-bottom:1px solid #777}.answer-part-title{margin-top:4mm!important;padding-top:2mm;border-top:1px solid #000}.written-answer-flow{column-count:3;column-gap:5mm;column-rule:1px solid #aaa;column-fill:balance;height:190mm;overflow:hidden}.answer-section{display:flex;flex-direction:column;margin-bottom:2.5mm;break-inside:avoid-column}.answer-section h3{margin:0 0 1mm;font-size:9.5pt;break-after:avoid-column}.answer-section span{padding:.6mm 0;border-bottom:1px dotted #aaa;font-size:9pt;line-height:1.2;overflow-wrap:anywhere;break-inside:avoid-column}@media(max-width:900px){.regular-exam-page{transform-origin:top left}}
 .mcq{grid-template-columns:8mm 1fr;gap:1px 0}.mcq .question-number{grid-column:1;grid-row:1/-1;font-weight:700;font-size:1.06em}.mcq .question-stem,.mcq>span:not(.question-stem){grid-column:2}.passage{padding:2mm;border:1px dashed #000}.score-boxes{position:absolute;bottom:12mm;left:9mm;right:9mm;display:grid;grid-template-columns:repeat(3,1fr);gap:3mm;text-align:center}.score-boxes div{border:1px solid #000;padding:2mm;height:23mm}.answer-page:has(.score-boxes) .written-answer-flow{height:210mm}
+.answer-page .written-answer-flow{height:auto;overflow:visible;column-count:initial}.answer-page .answer-section{display:block;margin:0 0 5mm;break-inside:avoid}.answer-section h3{margin-bottom:2mm;font-size:11pt}.answer-cells{display:grid;grid-template-columns:repeat(var(--answer-columns),1fr);border-top:1px solid #000;border-left:1px solid #000}.answer-cell{display:grid;grid-template-rows:auto 1fr;min-height:15mm;padding:1mm 2mm;border-right:1px solid #000;border-bottom:1px solid #000}.answer-cell small{font-size:8pt}.answer-cell span{align-self:center;text-align:center;font-size:10pt;overflow-wrap:anywhere}.choice-answer-lines{display:grid;gap:1.5mm;margin:2mm 0;font-size:11pt}.choice-answer-lines>div{display:flex;gap:8mm}.answer-page:has(.score-boxes) .written-answer-flow{height:auto}
 </style>
