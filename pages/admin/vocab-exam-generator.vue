@@ -4,6 +4,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue';
 definePageMeta({ middleware: 'auth' });
 
 const supabase = useSupabaseClient();
+const accessVerified = ref(false);
 const allVocabulary = ref([]);
 const selectedLessonKeys = ref([]);
 const filterVersion = ref('');
@@ -217,7 +218,8 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main class="generator-page">
+  <AdminExamAccessGate v-if="!accessVerified" @verified="accessVerified = true" />
+  <main v-else class="generator-page">
     <header class="page-header"><div><h1>📝 單字會考出題器</h1><p>依課次多選單字範圍，產生與參考檔相同的 50 題 A4 題目卷及答案卷。</p></div><NuxtLink to="/admin">← 返回後台</NuxtLink></header>
     <p v-if="message" class="message">{{ message }}</p>
 
