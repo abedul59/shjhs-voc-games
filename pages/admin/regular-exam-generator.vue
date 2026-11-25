@@ -6,6 +6,7 @@ import { detectOutOfScopeVocabulary, formatVocabularyGlossary } from '~/lib/regu
 definePageMeta({ middleware: 'auth' });
 
 const supabase = useSupabaseClient();
+const accessVerified = ref(false);
 const labels = ['A', 'B', 'C', 'D'];
 const presets = {
   7: { choicePercent: 50, nonChoicePercent: 50, grammarCount: 10, clozeCount: 0, readingCount: 10, directVocab: 7, contextVocab: 5, writtenSections: [{ title: '單字型態變化', count: 6 }, { title: '翻譯填充', count: 13 }] },
@@ -26,7 +27,71 @@ const previewMode = ref('question');
 const editorTab = ref('listening');
 const questionPreview = ref(null);
 const answerPreview = ref(null);
+const blankPreview = ref(null);
 const variantNumber = ref(0);
+const draftName = ref('');
+const draftList = ref([]);
+const selectedDraft = ref('');
+const loadingDraft = ref(false);
+const draftStorageKey = 'regular-exam-drafts-v1';
+const sectionPoints = ref({});
+const sections = computed(() => [
+  { id: 'image', title: '一、辨識句意', items: listening.value.image },
+  { id: 'basic', title: '二、基本問答', items: listening.value.basic },
+  { id: 'comprehension', title: '三、言談理解', items: listening.value.comprehension },
+  { id: 'grammar', title: '四、文法選擇', items: grammarQuestions.value },
+  ...groups.value.map(group => ({ id: group.id, title: group.title, items: group.questions })),
+  { id: 'vocabulary', title: '非選擇題：單字與文意字彙', items: nonChoice.value.vocabulary },
+  ...nonChoice.value.sections.map(section => ({ id: section.id, title: `非選擇題：${section.title}`, items: section.items }))
+]);
+const pointsOf = items => Math.round(items.reduce((sum, item) => sum + (Number(item.points) || 0), 0) * 100) / 100;
+const scoreTotal = computed(() => Math.round(sections.value.reduce((sum, section) => sum + (Number(sectionPoints.value[section.id]) || 0), 0) * 100) / 100);
+const scoreDifference = computed(() => Math.round((100 - scoreTotal.value) * 100) / 100);
+const invalidSections = computed(() => sections.value.filter(section => Math.abs(pointsOf(section.items) - (Number(sectionPoints.value[section.id]) || 0)) > 0.001));
+const allocateScores = () => {
+  const choice = [listening.value.image, listening.value.basic, listening.value.comprehension, grammarQuestions.value, ...groups.value.map(group => group.questions)].flat();
+  const written = [nonChoice.value.vocabulary, ...nonChoice.value.sections.map(section => section.items)].flat();
+  const allocate = (items, total) => items.forEach((item, index) => {
+    item.points = (Math.round(total * 100 * (index + 1) / items.length) - Math.round(total * 100 * index / items.length)) / 100;
+  });
+  if (choice.length) allocate(choice, Number(scoring.value.choicePercent) || 0);
+  if (written.length) allocate(written, Number(scoring.value.nonChoicePercent) || 0);
+  sectionPoints.value = Object.fromEntries(sections.value.map(section => [section.id, pointsOf(section.items)]));
+};
+const refreshDrafts = () => {
+  try { draftList.value = JSON.parse(localStorage.getItem(draftStorageKey) || '[]'); }
+  catch { draftList.value = []; }
+};
+const saveDraft = () => {
+  const name = draftName.value.trim();
+  if (!name) { message.value = '請先輸入草稿名稱。'; return; }
+  const now = new Date();
+  const stamp = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')} ${now.toLocaleTimeString('zh-TW')}`;
+  const draft = { id: crypto.randomUUID(), name, savedAt: stamp, metadata: metadata.value, scoring: scoring.value, listening: listening.value, grammarQuestions: grammarQuestions.value, groups: groups.value, nonChoice: nonChoice.value, selectedVocabLessons: selectedVocabLessons.value, selectedGrammarLessons: selectedGrammarLessons.value, sectionPoints: sectionPoints.value };
+  try {
+    localStorage.setItem(draftStorageKey, JSON.stringify([draft, ...draftList.value]));
+    refreshDrafts(); selectedDraft.value = draft.id; message.value = `草稿「${name}」已儲存於這台裝置的瀏覽器。`;
+  } catch { message.value = '草稿儲存失敗：瀏覽器容量不足；圖片較多時請縮小圖片後再試。'; }
+};
+const loadDraft = async () => {
+  const draft = draftList.value.find(item => item.id === selectedDraft.value);
+  if (!draft) return;
+  loadingDraft.value = true;
+  metadata.value = structuredClone(draft.metadata);
+  await nextTick();
+  scoring.value = structuredClone(draft.scoring);
+  listening.value = structuredClone(draft.listening);
+  grammarQuestions.value = structuredClone(draft.grammarQuestions);
+  groups.value = structuredClone(draft.groups);
+  nonChoice.value = structuredClone(draft.nonChoice);
+  selectedVocabLessons.value = [...draft.selectedVocabLessons];
+  selectedGrammarLessons.value = [...draft.selectedGrammarLessons];
+  sectionPoints.value = structuredClone(draft.sectionPoints || {});
+  draftName.value = draft.name; generated.value = true;
+  if (!draft.sectionPoints) allocateScores();
+  loadingDraft.value = false;
+  message.value = `已載入「${draft.name}」（${draft.savedAt}）。`;
+};
 
 const metadata = ref({
   schoolName: '台南市立新化國民中學', schoolYear: '115', semester: '1', grade: '8', examNumber: '1',
@@ -57,7 +122,7 @@ const selectedVocabCount = computed(() => allVocabulary.value.filter(item => sel
 const selectedGrammarCount = computed(() => allGrammar.value.filter(item => selectedGrammarLessons.value.includes(lessonKey(item))).length);
 const examData = computed(() => ({
   metadata: metadata.value, preset: { ...preset.value, ...scoring.value }, listening: listening.value,
-  grammarQuestions: grammarQuestions.value, groups: groups.value, nonChoice: nonChoice.value
+  grammarQuestions: grammarQuestions.value, groups: groups.value, nonChoice: nonChoice.value, sectionPoints: sectionPoints.value
 }));
 
 const makeChoices = count => Array.from({ length: count }, () => '');
@@ -92,11 +157,13 @@ const resetBlueprint = () => {
     vocabulary: makeWrittenItems(current.directVocab + current.contextVocab),
     sections: current.writtenSections.map(section => ({ id: crypto.randomUUID(), title: section.title, instructions: '', items: makeWrittenItems(section.count) }))
   };
+  allocateScores();
   generated.value = false;
   variantNumber.value = 0;
 };
 
 watch(() => metadata.value.grade, grade => {
+  if (loadingDraft.value) return;
   metadata.value.fileName = `${metadata.value.schoolYear}學年度第${metadata.value.semester}學期${grade}年級第${metadata.value.examNumber}次定期評量英語科`;
   scoring.value = { choicePercent: presets[grade].choicePercent, nonChoicePercent: presets[grade].nonChoicePercent };
   resetBlueprint();
@@ -194,6 +261,7 @@ const generateExam = async () => {
     ...directPool.slice(0, preset.value.directVocab).map(item => ({ id: `direct-${item.id}`, prompt: item.zh_tw, answer: item.en_us })),
     ...contextItems.map(item => ({ id: `context-${item.id}`, prompt: maskedExample(item), answer: item.en_us }))
   ];
+  allocateScores();
   generated.value = true;
   isGenerating.value = false;
   previewMode.value = 'question';
@@ -228,28 +296,29 @@ const handleImagePaste = async (event, choice) => {
   if (file) { event.preventDefault(); await setChoiceImage(choice, file); }
 };
 
-const exportWord = async answerMode => {
-  exporting.value = `${answerMode ? 'answer' : 'question'}-word`;
+const exportWord = async mode => {
+  exporting.value = `${mode}-word`;
   try {
     const { downloadRegularExamWord } = await import('~/lib/regular-exam-export.client');
-    await downloadRegularExamWord(examData.value, answerMode);
+    await downloadRegularExamWord(examData.value, mode);
   } catch (error) { message.value = `Word 產生失敗：${error.message}`; }
   finally { exporting.value = ''; }
 };
-const exportPdf = async answerMode => {
-  exporting.value = `${answerMode ? 'answer' : 'question'}-pdf`;
+const exportPdf = async mode => {
+  exporting.value = `${mode}-pdf`;
   const previous = previewMode.value;
   try {
-    previewMode.value = answerMode ? 'answer' : 'question';
+    previewMode.value = mode;
     await nextTick();
-    const component = answerMode ? answerPreview.value : questionPreview.value;
+    const component = mode === 'answer' ? answerPreview.value : mode === 'blank' ? blankPreview.value : questionPreview.value;
     const { downloadRegularExamPdf } = await import('~/lib/regular-exam-export.client');
-    await downloadRegularExamPdf(component.getPages(), examData.value, answerMode);
+    await downloadRegularExamPdf(component.getPages(), examData.value, mode);
   } catch (error) { message.value = `PDF 產生失敗：${error.message}`; }
   finally { previewMode.value = previous; exporting.value = ''; }
 };
 
 onMounted(async () => {
+  refreshDrafts();
   resetBlueprint();
   const [vocabResult, grammarResult] = await Promise.all([
     supabase.from('vocabularies').select('id,version,volume,unit,en_us,zh_tw,example_en,example_zh').order('id').limit(10000),
@@ -263,9 +332,12 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main class="builder-page">
+  <AdminExamAccessGate v-if="!accessVerified" @verified="accessVerified = true" />
+  <main v-else class="builder-page">
     <header class="page-header"><div><h1>📚 段考出題器</h1><p>依 B4 雙欄格式建立七、八、九年級題目卷及 A4 正確答案。</p></div><NuxtLink to="/admin">← 返回後台</NuxtLink></header>
     <p v-if="message" class="message">{{ message }}</p>
+
+    <section class="panel draft-panel"><h2>草稿暫存</h2><p>草稿保存在這台裝置的瀏覽器；清除瀏覽資料後無法載入。</p><input v-model="draftName" placeholder="草稿名稱，例如 115學年度八年級第一次段考"><button :disabled="!generated" @click="saveDraft">儲存目前草稿</button><select v-model="selectedDraft"><option value="">選擇已存草稿</option><option v-for="draft in draftList" :key="draft.id" :value="draft.id">{{ draft.savedAt }}｜{{ draft.name }}</option></select><button :disabled="!selectedDraft" @click="loadDraft">載入草稿</button></section>
 
     <section class="panel">
       <h2>一、考卷資料與年級格式</h2>
@@ -290,9 +362,10 @@ onMounted(async () => {
     </section>
 
     <template v-if="generated">
-      <section class="panel action-panel"><div><h2>三、預覽與輸出</h2><div class="preview-tabs"><button :class="{ active: previewMode === 'question' }" @click="previewMode = 'question'">B4 題目卷</button><button :class="{ active: previewMode === 'answer' }" @click="previewMode = 'answer'">A4 正確答案</button></div></div><div class="action-buttons"><button class="makeup" @click="shuffleAllChoices">🔀 產生補考版（交換選項）</button><button :disabled="Boolean(exporting)" @click="exportWord(false)">📘 題目卷 Word</button><button :disabled="Boolean(exporting)" @click="exportPdf(false)">📕 題目卷 PDF</button><button :disabled="Boolean(exporting)" @click="exportWord(true)">✅ 答案 Word</button><button :disabled="Boolean(exporting)" @click="exportPdf(true)">📄 答案 PDF</button></div></section>
+      <section class="panel score-panel"><h2>各大題／小題配分</h2><p>可調整大題與每一小題；兩者不相符時會提示。滿分為 100 分。</p><div v-for="section in sections" :key="section.id" class="score-section"><label><strong>{{ section.title }}</strong> 大題 <input v-model.number="sectionPoints[section.id]" type="number" min="0" step="0.01"> 分</label><span :class="{ invalid: pointsOf(section.items) !== Number(sectionPoints[section.id]) }">小題合計 {{ pointsOf(section.items) }} 分</span><div class="score-items"><label v-for="(item,index) in section.items" :key="item.id">第 {{ item.number || index + 1 }} 題 <input v-model.number="item.points" type="number" min="0" step="0.01"> 分</label></div></div><p class="score-summary" :class="{ invalid: scoreDifference !== 0 || invalidSections.length }">大題總分 {{ scoreTotal }}／100 分；{{ scoreDifference > 0 ? `未滿 ${scoreDifference} 分` : scoreDifference < 0 ? `超出 ${-scoreDifference} 分` : '總分 100 分' }}{{ invalidSections.length ? `；${invalidSections.length} 個大題與小題合計不符` : '' }}</p><button @click="allocateScores">依選擇題／非選擇題比例重新平均分配</button></section>
+      <section class="panel action-panel"><div><h2>三、預覽與輸出</h2><div class="preview-tabs"><button v-for="mode in [{id:'question',name:'B4 題目卷'},{id:'answer',name:'A4 正確答案'},{id:'blank',name:'A4 空白答案卷'}]" :key="mode.id" :class="{ active: previewMode === mode.id }" @click="previewMode = mode.id">{{ mode.name }}</button></div></div><div class="action-buttons"><button class="makeup" @click="shuffleAllChoices">🔀 產生補考版（交換選項）</button><button v-for="mode in [{id:'question',name:'題目卷'},{id:'answer',name:'正確答案'},{id:'blank',name:'空白答案卷'}]" :key="mode.id" :disabled="Boolean(exporting)" @click="exportWord(mode.id)">{{ mode.name }} Word</button><button v-for="mode in [{id:'question',name:'題目卷'},{id:'answer',name:'正確答案'},{id:'blank',name:'空白答案卷'}]" :key="mode.id+'pdf'" :disabled="Boolean(exporting)" @click="exportPdf(mode.id)">{{ mode.name }} PDF</button></div></section>
 
-      <section class="preview-panel"><div class="preview-scroll"><AdminRegularExamSheet v-show="previewMode === 'question'" ref="questionPreview" :data="examData" /><AdminRegularExamSheet v-show="previewMode === 'answer'" ref="answerPreview" :data="examData" answer-mode /></div></section>
+      <section class="preview-panel"><div class="preview-scroll"><AdminRegularExamSheet v-show="previewMode === 'question'" ref="questionPreview" :data="examData" /><AdminRegularExamSheet v-show="previewMode === 'answer'" ref="answerPreview" :data="examData" answer-mode /><AdminRegularExamSheet v-show="previewMode === 'blank'" ref="blankPreview" :data="examData" blank-mode /></div></section>
 
       <section class="panel editor-panel">
         <h2>四、編輯全部考卷內容</h2>
@@ -316,6 +389,7 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.draft-panel{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.draft-panel h2,.draft-panel p{width:100%;margin:0}.draft-panel input,.draft-panel select{min-width:220px;flex:1;padding:9px}.draft-panel button,.score-panel button{padding:9px;cursor:pointer}.score-section{padding:10px;border-bottom:1px solid #cbd5e1}.score-section>label{display:inline-flex;align-items:center;gap:8px}.score-section input{width:65px;padding:5px}.score-section>span{margin-left:12px}.score-items{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.score-items label{padding:5px;background:#eff6ff}.score-summary{font-weight:800;color:#15803d}.score-panel .invalid{color:#b91c1c}
 .builder-page{min-height:100vh;padding:24px;background:#eef2f7;color:#1e293b;font-family:system-ui,'Noto Sans TC',sans-serif}.page-header,.panel,.preview-panel{max-width:1500px;margin:0 auto 18px}.page-header{display:flex;justify-content:space-between;gap:20px}.page-header h1{margin:0;color:#1d4ed8}.page-header p{margin:5px 0;color:#64748b}.page-header a{height:max-content;padding:10px 15px;border-radius:8px;background:#1e3a8a;color:white;text-decoration:none;font-weight:800}.message{max-width:1470px;margin:0 auto 15px;padding:12px 15px;border-left:5px solid #2563eb;background:#dbeafe}.panel{box-sizing:border-box;padding:18px;border:1px solid #cbd5e1;border-radius:14px;background:#fff;box-shadow:0 3px 14px #0f172a12}.panel h2{margin:0 0 12px;color:#1e3a8a}.grade-picker{display:flex;gap:10px;margin-bottom:14px}.grade-picker button{display:flex;flex-direction:column;min-width:150px;padding:12px;border:2px solid #cbd5e1;border-radius:9px;background:white;font-size:1.1rem;font-weight:900;cursor:pointer}.grade-picker button span{font-size:.8rem;color:#64748b}.grade-picker button.active{border-color:#2563eb;background:#eff6ff;color:#1d4ed8}.form-grid{display:grid;grid-template-columns:2fr repeat(3,1fr) 2.5fr;gap:10px}.form-grid label{display:grid;gap:4px;font-size:.85rem;font-weight:800}.form-grid input,.score-settings input,.question-editor input,.question-editor select,.question-editor textarea,.group-editor textarea,.group-title,.written-editor textarea,.written-grid textarea,.written-grid input,.image-upload input{box-sizing:border-box;width:100%;padding:8px;border:1px solid #94a3b8;border-radius:7px;font:inherit}.score-settings{display:flex;align-items:end;gap:12px;margin-top:13px}.score-settings label{display:grid;grid-template-columns:auto 80px auto;align-items:center;gap:6px;font-weight:800}.score-settings span{padding:8px 10px;border-radius:7px;background:#dcfce7;color:#166534;font-weight:900}.score-settings span.invalid{background:#fee2e2;color:#b91c1c}.preset-note{margin-bottom:0;padding:9px;background:#f1f5f9}.scope-columns{display:grid;grid-template-columns:1fr 1fr;gap:16px}.scope-heading{display:flex;justify-content:space-between;align-items:center}.scope-heading h3{margin:0}.scope-heading span{color:#1d4ed8;font-weight:800}.lesson-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:6px;max-height:270px;overflow:auto;margin-top:8px;padding:3px}.lesson-grid label{display:flex;gap:7px;align-items:center;padding:8px;border:2px solid #cbd5e1;border-radius:8px;cursor:pointer}.lesson-grid label.selected{border-color:#2563eb;background:#eff6ff}.lesson-grid span{display:grid}.lesson-grid small{color:#64748b}.generate-btn{width:100%;margin-top:15px;padding:13px;border:0;border-radius:9px;background:#2563eb;color:white;font-size:1.05rem;font-weight:900;cursor:pointer}.generate-btn:disabled{opacity:.5}.action-panel{display:flex;justify-content:space-between;gap:15px}.preview-tabs,.action-buttons,.editor-tabs{display:flex;gap:8px;flex-wrap:wrap}.preview-tabs button,.action-buttons button,.editor-tabs button,.question-editor button{padding:9px 11px;border:1px solid #64748b;border-radius:7px;background:#fff;font-weight:800;cursor:pointer}.preview-tabs button.active,.editor-tabs button.active{background:#1e3a8a;color:#fff}.action-buttons{justify-content:flex-end}.action-buttons .makeup{background:#f97316;color:white;border-color:#c2410c}.preview-panel{padding:18px;border-radius:14px;background:#475569;overflow:hidden}.preview-scroll{overflow:auto;max-height:850px}.preview-scroll :deep(.regular-exam-page){box-shadow:0 6px 25px #0f172a99}.editor-tabs{margin-bottom:14px}.editor-content{display:grid;gap:10px}.question-editor{padding:12px;border:1px solid #cbd5e1;border-radius:9px;background:#f8fafc}.question-top{display:grid;grid-template-columns:45px 1fr 120px 110px;gap:8px;align-items:start}.question-top textarea{min-height:50px}.choice-inputs{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:8px}.choice-inputs label{display:grid;grid-template-columns:22px 1fr;align-items:center;font-weight:800}.image-editor>label{display:inline-flex;gap:6px;margin:0 8px}.image-options{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:9px}.image-upload{display:grid;gap:6px;padding:9px;border:2px dashed #94a3b8;border-radius:8px;background:white}.image-upload:focus{border-color:#2563eb}.image-upload img{width:100%;height:145px;object-fit:contain;background:#f1f5f9}.image-upload>span{display:grid;place-items:center;height:145px;color:#64748b;background:#f1f5f9}.group-editor,.written-editor{display:grid;gap:9px;padding:14px;border:2px solid #cbd5e1;border-radius:10px}.group-layout-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px}.group-layout-row>label{display:flex;align-items:center;gap:6px;white-space:nowrap;font-weight:800}.group-layout-row input[type=checkbox]{width:auto}.group-title{font-size:1.15rem;font-weight:900;color:#1d4ed8}.written-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.written-grid>div{display:grid;grid-template-columns:35px 1.5fr 1fr;gap:6px;align-items:start;padding:8px;border:1px solid #e2e8f0;border-radius:7px}.written-grid textarea{min-height:58px}@media(max-width:1000px){.form-grid,.scope-columns{grid-template-columns:1fr 1fr}.action-panel,.page-header{flex-direction:column}.question-top{grid-template-columns:40px 1fr}.choice-inputs,.written-grid{grid-template-columns:1fr 1fr}}@media(max-width:650px){.builder-page{padding:10px}.form-grid,.scope-columns,.choice-inputs,.written-grid,.image-options{grid-template-columns:1fr}.grade-picker{display:grid;grid-template-columns:repeat(3,1fr)}.grade-picker button{min-width:0}.score-settings{align-items:stretch;flex-direction:column}.group-layout-row{grid-template-columns:1fr}.written-grid>div{grid-template-columns:30px 1fr}.written-grid input{grid-column:2}}
 .passage-editor{border:2px dashed #64748b!important;background:#fff}.glossary-heading{display:flex;align-items:center;gap:10px}.glossary-heading>span{margin-left:auto;color:#b45309;font-weight:800}.glossary-heading button{padding:7px 10px;border:1px solid #2563eb;border-radius:7px;background:#eff6ff;color:#1d4ed8;font-weight:800;cursor:pointer}.manual-note{color:#b45309}.editor-question-number{display:grid;place-items:center;min-height:42px;border-radius:7px;background:#1e3a8a;color:#fff;font-size:1.08rem}@media(max-width:650px){.glossary-heading{align-items:stretch;flex-direction:column}.glossary-heading>span{margin-left:0}}
 </style>
