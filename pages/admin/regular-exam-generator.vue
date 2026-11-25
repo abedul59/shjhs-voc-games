@@ -2,11 +2,15 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { parseRegularExamQuestion } from '~/lib/regular-exam-question-parser';
 import { detectOutOfScopeVocabulary, formatVocabularyGlossary } from '~/lib/regular-exam-vocabulary';
+import { sentenceTokens, buildTranslationFill } from '~/lib/regular-exam-translation';
 
 definePageMeta({ middleware: 'auth' });
 
 const supabase = useSupabaseClient();
+const authCookie = useCookie('teacher_auth');
 const accessVerified = ref(false);
+const accessCode = ref('');
+const unlockExam = code => { accessCode.value = code; accessVerified.value = true; refreshDrafts(); };
 const labels = ['A', 'B', 'C', 'D'];
 const presets = {
   7: { choicePercent: 50, nonChoicePercent: 50, grammarCount: 10, clozeCount: 0, readingCount: 10, directVocab: 7, contextVocab: 5, writtenSections: [{ title: '單字型態變化', count: 6 }, { title: '翻譯填充', count: 13 }] },
@@ -34,6 +38,10 @@ const draftList = ref([]);
 const selectedDraft = ref('');
 const loadingDraft = ref(false);
 const draftStorageKey = 'regular-exam-drafts-v1';
+const draftOwner = computed(() => {
+  const auth = authCookie.value;
+  return auth?.role === 'admin' ? 'superadmin' : `teacher:${auth?.name || 'unknown'}`;
+});
 const sectionPoints = ref({});
 const sections = computed(() => [
   { id: 'image', title: '一、辨識句意', items: listening.value.image },
@@ -44,38 +52,74 @@ const sections = computed(() => [
   { id: 'vocabulary', title: '非選擇題：單字與文意字彙', items: nonChoice.value.vocabulary },
   ...nonChoice.value.sections.map(section => ({ id: section.id, title: `非選擇題：${section.title}`, items: section.items }))
 ]);
-const pointsOf = items => Math.round(items.reduce((sum, item) => sum + (Number(item.points) || 0), 0) * 100) / 100;
 const scoreTotal = computed(() => Math.round(sections.value.reduce((sum, section) => sum + (Number(sectionPoints.value[section.id]) || 0), 0) * 100) / 100);
 const scoreDifference = computed(() => Math.round((100 - scoreTotal.value) * 100) / 100);
-const invalidSections = computed(() => sections.value.filter(section => Math.abs(pointsOf(section.items) - (Number(sectionPoints.value[section.id]) || 0)) > 0.001));
+const sectionSize = section => (section.id === translationSection.value?.id)
+  ? section.items.reduce((sum, item) => sum + (item.blankIndices?.length || 0), 0)
+  : section.items.length;
+const perQuestion = section => sectionSize(section) ? Math.round((Number(sectionPoints.value[section.id]) || 0) / sectionSize(section) * 100) / 100 : 0;
+const scoreWarnings = computed(() => sections.value.flatMap(section => {
+  const total = Number(sectionPoints.value[section.id]);
+  if (!Number.isFinite(total) || total < 0) return [`${section.title} 分數不可為負或空白`];
+  if (!sectionSize(section) && total) return [`${section.title} 沒有題目，卻設定了 ${total} 分`];
+  if (sectionSize(section) && !total) return [`${section.title} 每題 0 分`];
+  if (sectionSize(section) && Math.round(total * 100) % sectionSize(section)) return [`${section.title} 每題約 ${perQuestion(section)} 分，無法平均分至小數點後兩位`];
+  return [];
+}));
+const choiceScore = computed(() => Math.round(sections.value.slice(0, 4 + groups.value.length).reduce((sum, section) => sum + (Number(sectionPoints.value[section.id]) || 0), 0) * 100) / 100);
+const writtenScore = computed(() => Math.round((scoreTotal.value - choiceScore.value) * 100) / 100);
 const allocateScores = () => {
-  const choice = [listening.value.image, listening.value.basic, listening.value.comprehension, grammarQuestions.value, ...groups.value.map(group => group.questions)].flat();
-  const written = [nonChoice.value.vocabulary, ...nonChoice.value.sections.map(section => section.items)].flat();
-  const allocate = (items, total) => items.forEach((item, index) => {
-    item.points = (Math.round(total * 100 * (index + 1) / items.length) - Math.round(total * 100 * index / items.length)) / 100;
-  });
-  if (choice.length) allocate(choice, Number(scoring.value.choicePercent) || 0);
-  if (written.length) allocate(written, Number(scoring.value.nonChoicePercent) || 0);
-  sectionPoints.value = Object.fromEntries(sections.value.map(section => [section.id, pointsOf(section.items)]));
+  const choice = sections.value.slice(0, 4 + groups.value.length);
+  const written = sections.value.slice(4 + groups.value.length);
+  const scores = {};
+  const allocate = (parts, total) => {
+    const count = parts.reduce((sum, section) => sum + sectionSize(section), 0);
+    let assigned = 0;
+    parts.forEach((section, index) => {
+      scores[section.id] = count ? index === parts.length - 1 ? Math.round((total - assigned) * 100) / 100 : Math.round(total * sectionSize(section) / count * 100) / 100 : 0;
+      assigned += scores[section.id];
+    });
+  };
+  allocate(choice, Number(scoring.value.choicePercent) || 0);
+  allocate(written, Number(scoring.value.nonChoicePercent) || 0);
+  sectionPoints.value = scores;
 };
-const refreshDrafts = () => {
-  try { draftList.value = JSON.parse(localStorage.getItem(draftStorageKey) || '[]'); }
-  catch { draftList.value = []; }
+const refreshDrafts = async () => {
+  if (!accessCode.value) return;
+  const { data, error } = await supabase.rpc('list_regular_exam_drafts', { p_owner: draftOwner.value, p_code: accessCode.value });
+  if (error) { message.value = `草稿資料庫讀取失敗：${error.message}。請先執行段考草稿 SQL。`; return; }
+  draftList.value = data || [];
 };
-const saveDraft = () => {
+const localDraftCount = ref(0);
+const importLocalDrafts = async () => {
+  let old = [];
+  try { old = JSON.parse(localStorage.getItem(draftStorageKey) || '[]'); } catch { /* 舊資料格式無法解析 */ }
+  if (!old.length) return;
+  const rows = old.map(draft => ({ id: draft.id || crypto.randomUUID(), owner_key: draftOwner.value, name: draft.name || '舊版草稿', payload: { ...draft, questionCounts: draft.questionCounts || questionCounts.value }, updated_at: new Date().toISOString() }));
+  for (const row of rows) {
+    const { error } = await supabase.rpc('save_regular_exam_draft', { p_id: row.id, p_owner: row.owner_key, p_name: row.name, p_payload: row.payload, p_code: accessCode.value });
+    if (error) { message.value = `舊草稿匯入失敗：${error.message}`; return; }
+  }
+  localStorage.removeItem(draftStorageKey);
+  localDraftCount.value = 0;
+  await refreshDrafts();
+  message.value = `已將 ${rows.length} 份舊版瀏覽器草稿移至資料庫。`;
+};
+const saveDraft = async () => {
   const name = draftName.value.trim();
   if (!name) { message.value = '請先輸入草稿名稱。'; return; }
-  const now = new Date();
-  const stamp = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')} ${now.toLocaleTimeString('zh-TW')}`;
-  const draft = { id: crypto.randomUUID(), name, savedAt: stamp, metadata: metadata.value, scoring: scoring.value, listening: listening.value, grammarQuestions: grammarQuestions.value, groups: groups.value, nonChoice: nonChoice.value, selectedVocabLessons: selectedVocabLessons.value, selectedGrammarLessons: selectedGrammarLessons.value, sectionPoints: sectionPoints.value };
-  try {
-    localStorage.setItem(draftStorageKey, JSON.stringify([draft, ...draftList.value]));
-    refreshDrafts(); selectedDraft.value = draft.id; message.value = `草稿「${name}」已儲存於這台裝置的瀏覽器。`;
-  } catch { message.value = '草稿儲存失敗：瀏覽器容量不足；圖片較多時請縮小圖片後再試。'; }
+  const id = selectedDraft.value || crypto.randomUUID();
+  const payload = { metadata: metadata.value, scoring: scoring.value, listening: listening.value, grammarQuestions: grammarQuestions.value, groups: groups.value, nonChoice: nonChoice.value, selectedVocabLessons: selectedVocabLessons.value, selectedGrammarLessons: selectedGrammarLessons.value, sectionPoints: sectionPoints.value, questionCounts: questionCounts.value };
+  const { error } = await supabase.rpc('save_regular_exam_draft', { p_id: id, p_owner: draftOwner.value, p_name: name, p_payload: payload, p_code: accessCode.value });
+  if (error) { message.value = `草稿儲存失敗：${error.message}`; return; }
+  selectedDraft.value = id;
+  await refreshDrafts();
+  message.value = `草稿「${name}」已儲存到資料庫。`;
 };
 const loadDraft = async () => {
-  const draft = draftList.value.find(item => item.id === selectedDraft.value);
-  if (!draft) return;
+  const { data: row, error } = await supabase.rpc('get_regular_exam_draft', { p_id: selectedDraft.value, p_owner: draftOwner.value, p_code: accessCode.value });
+  if (error || !row) { message.value = `草稿載入失敗：${error?.message || '找不到草稿'}`; return; }
+  const draft = row.payload;
   loadingDraft.value = true;
   metadata.value = structuredClone(draft.metadata);
   await nextTick();
@@ -87,10 +131,11 @@ const loadDraft = async () => {
   selectedVocabLessons.value = [...draft.selectedVocabLessons];
   selectedGrammarLessons.value = [...draft.selectedGrammarLessons];
   sectionPoints.value = structuredClone(draft.sectionPoints || {});
-  draftName.value = draft.name; generated.value = true;
+  questionCounts.value = { ...questionCounts.value, ...(draft.questionCounts || {}) };
+  draftName.value = row.name; generated.value = true;
   if (!draft.sectionPoints) allocateScores();
   loadingDraft.value = false;
-  message.value = `已載入「${draft.name}」（${draft.savedAt}）。`;
+  message.value = `已載入「${row.name}」（${new Date(row.updated_at).toLocaleString('zh-TW')}）。`;
 };
 
 const metadata = ref({
@@ -98,6 +143,7 @@ const metadata = ref({
   fileName: '115學年度第1學期8年級第1次定期評量英語科'
 });
 const scoring = ref({ choicePercent: 66, nonChoicePercent: 34 });
+const questionCounts = ref({ grammar: 10, directVocab: 7, contextVocab: 3, translation: 12, blanksPerSentence: 1 });
 const listening = ref({ image: [], basic: [], comprehension: [] });
 const grammarQuestions = ref([]);
 const groups = ref([]);
@@ -132,13 +178,14 @@ const makeWrittenItems = count => Array.from({ length: count }, () => ({ id: cry
 
 const resetBlueprint = () => {
   const current = preset.value;
+  questionCounts.value = { grammar: current.grammarCount, directVocab: current.directVocab, contextVocab: current.contextVocab, translation: current.writtenSections.find(section => section.title === '翻譯填充')?.count || 0, blanksPerSentence: 1 };
   listening.value = {
     image: Array.from({ length: 5 }, (_, index) => makeListeningImageQuestion(index + 1)),
     basic: Array.from({ length: 5 }, (_, index) => makeQuestion(index + 6, 3)),
     comprehension: Array.from({ length: 5 }, (_, index) => makeQuestion(index + 11, 3))
   };
-  grammarQuestions.value = Array.from({ length: current.grammarCount }, (_, index) => makeQuestion(index + 16));
-  let nextNumber = 16 + current.grammarCount;
+  grammarQuestions.value = Array.from({ length: questionCounts.value.grammar }, (_, index) => makeQuestion(index + 16));
+  let nextNumber = 16 + questionCounts.value.grammar;
   const nextGroups = [];
   if (current.clozeCount) {
     nextGroups.push({ id: crypto.randomUUID(), type: 'cloze', title: '五、克漏字測驗', passage: '', glossary: '', autoGlossary: true, outOfScopeCount: 0, unknownWordCount: 0, startNewPage: false, questions: Array.from({ length: current.clozeCount }, (_, index) => makeQuestion(nextNumber + index)) });
@@ -154,8 +201,8 @@ const resetBlueprint = () => {
   }
   groups.value = nextGroups;
   nonChoice.value = {
-    vocabulary: makeWrittenItems(current.directVocab + current.contextVocab),
-    sections: current.writtenSections.map(section => ({ id: crypto.randomUUID(), title: section.title, instructions: '', items: makeWrittenItems(section.count) }))
+    vocabulary: makeWrittenItems(questionCounts.value.directVocab + questionCounts.value.contextVocab),
+    sections: current.writtenSections.map(section => ({ id: crypto.randomUUID(), type: section.title === '翻譯填充' ? 'translation' : 'written', title: section.title, instructions: '', items: makeWrittenItems(section.count) }))
   };
   allocateScores();
   generated.value = false;
@@ -230,43 +277,78 @@ const maskedExample = item => {
   return masked === sentence ? `${sentence}（提示：${blank}）` : masked;
 };
 
+const translationSection = computed(() => nonChoice.value.sections.find(section => section.type === 'translation' || section.title === '翻譯填充'));
+const refreshTranslation = () => {
+  if (translationSection.value) translationSection.value.items = buildTranslationFill(translationSection.value.items);
+};
+const chooseBlank = (item, index) => {
+  const selected = new Set(item.blankIndices || []);
+  if (selected.has(index)) selected.delete(index);
+  else selected.add(index);
+  item.blankIndices = [...selected].sort((a, b) => a - b);
+  refreshTranslation();
+};
+const makeTranslationItems = (pool, count, blanksPerSentence) => {
+  const items = Array.from({ length: count }, (_, index) => {
+    const word = pool[index % pool.length];
+    const tokens = sentenceTokens(word.example_en);
+    const target = tokens.findIndex(token => token.toLowerCase().replace(/[^a-z]/g, '') === word.en_us.toLowerCase().replace(/[^a-z]/g, ''));
+    const indexes = [target >= 0 ? target : 0];
+    for (let offset = 1; indexes.length < Math.min(blanksPerSentence, tokens.length); offset += 1) {
+      const next = (indexes[0] + offset) % tokens.length;
+      if (!indexes.includes(next)) indexes.push(next);
+    }
+    return { id: crypto.randomUUID(), sourceEn: word.example_en, sourceZh: word.example_zh || '', blankIndices: indexes.sort((a, b) => a - b) };
+  });
+  return buildTranslationFill(items);
+};
+
 const generateExam = async () => {
   message.value = '';
+  const counts = questionCounts.value;
+  if ([counts.grammar, counts.directVocab, counts.contextVocab, counts.translation, counts.blanksPerSentence].some(value => !Number.isInteger(Number(value)) || Number(value) < 0) || counts.blanksPerSentence < 1) {
+    message.value = '題數必須是非負整數，每句空格數至少為 1。'; return;
+  }
   const vocabPool = uniqueVocabulary(allVocabulary.value.filter(item => selectedVocabLessons.value.includes(lessonKey(item))));
   const contextPool = shuffle(vocabPool.filter(item => item.example_en?.trim()));
-  if (contextPool.length < preset.value.contextVocab) {
-    message.value = `所選單字範圍只有 ${contextPool.length} 個含英文例句的有效單字，文意字彙需要 ${preset.value.contextVocab} 個。`;
+  if (contextPool.length < counts.contextVocab || (counts.translation > 0 && !contextPool.length)) {
+    message.value = `所選範圍只有 ${contextPool.length} 個含英文例句的單字，不足以產生文意字彙或翻譯填充。`;
     return;
   }
-  const contextItems = contextPool.slice(0, preset.value.contextVocab);
+  const contextItems = contextPool.slice(0, counts.contextVocab);
   const contextIds = new Set(contextItems.map(item => item.id));
   const directPool = shuffle(vocabPool.filter(item => !contextIds.has(item.id)));
-  if (directPool.length < preset.value.directVocab) {
-    message.value = `所選單字範圍不足，至少還需要 ${preset.value.directVocab} 個不重複單字。`;
+  if (directPool.length < counts.directVocab) {
+    message.value = `所選單字範圍不足，至少還需要 ${counts.directVocab} 個不重複單字。`;
     return;
   }
   const grammarPool = shuffle(allGrammar.value.filter(item => selectedGrammarLessons.value.includes(lessonKey(item)) && item.question_text));
-  if (grammarPool.length < preset.value.grammarCount) {
-    message.value = `所選文法範圍只有 ${grammarPool.length} 題，需要 ${preset.value.grammarCount} 題。`;
+  if (grammarPool.length < counts.grammar) {
+    message.value = `所選文法範圍只有 ${grammarPool.length} 題，需要 ${counts.grammar} 題。`;
     return;
   }
 
   isGenerating.value = true;
-  grammarQuestions.value = grammarPool.slice(0, preset.value.grammarCount).map((item, index) => ({
+  grammarQuestions.value = grammarPool.slice(0, counts.grammar).map((item, index) => ({
     id: `grammar-${item.id}`, number: index + 16, stem: item.question_text,
     choices: [item.option_1, item.option_2, item.option_3, item.option_4].map(value => value || ''),
     answer: Math.max(0, Math.min(3, Number(item.answer || 1) - 1))
   }));
   nonChoice.value.vocabulary = [
-    ...directPool.slice(0, preset.value.directVocab).map(item => ({ id: `direct-${item.id}`, prompt: item.zh_tw, answer: item.en_us })),
+    ...directPool.slice(0, counts.directVocab).map(item => ({ id: `direct-${item.id}`, prompt: item.zh_tw, answer: item.en_us })),
     ...contextItems.map(item => ({ id: `context-${item.id}`, prompt: maskedExample(item), answer: item.en_us }))
   ];
+  let nextNumber = 16 + counts.grammar;
+  groups.value.forEach(group => group.questions.forEach(question => { question.number = nextNumber++; }));
+  if (!translationSection.value && counts.translation > 0) nonChoice.value.sections.push({ id: crypto.randomUUID(), type: 'translation', title: '翻譯填充', instructions: '', items: [] });
+  if (translationSection.value) translationSection.value.items = counts.translation
+    ? makeTranslationItems(contextPool, counts.translation, counts.blanksPerSentence) : [];
   allocateScores();
   generated.value = true;
   isGenerating.value = false;
   previewMode.value = 'question';
   await nextTick();
-  message.value = `已產生 ${metadata.value.grade} 年級段考草稿；聽力圖片、閱讀、克漏字與非選擇題仍可繼續編輯。`;
+  message.value = `已產生 ${metadata.value.grade} 年級段考草稿；聽力圖片、閱讀、克漏字與非選擇題仍可繼續編輯。${counts.translation > contextPool.length ? '翻譯填充句數超過例句數，部分句子將重複，請人工調整。' : ''}`;
 };
 
 const shuffleQuestionChoices = question => {
@@ -318,7 +400,7 @@ const exportPdf = async mode => {
 };
 
 onMounted(async () => {
-  refreshDrafts();
+  try { localDraftCount.value = JSON.parse(localStorage.getItem(draftStorageKey) || '[]').length; } catch { localDraftCount.value = 0; }
   resetBlueprint();
   const [vocabResult, grammarResult] = await Promise.all([
     supabase.from('vocabularies').select('id,version,volume,unit,en_us,zh_tw,example_en,example_zh').order('id').limit(10000),
@@ -332,12 +414,12 @@ onMounted(async () => {
 </script>
 
 <template>
-  <AdminExamAccessGate v-if="!accessVerified" @verified="accessVerified = true" />
+  <AdminExamAccessGate v-if="!accessVerified" @verified="unlockExam" />
   <main v-else class="builder-page">
     <header class="page-header"><div><h1>📚 段考出題器</h1><p>依 B4 雙欄格式建立七、八、九年級題目卷及 A4 正確答案。</p></div><NuxtLink to="/admin">← 返回後台</NuxtLink></header>
     <p v-if="message" class="message">{{ message }}</p>
 
-    <section class="panel draft-panel"><h2>草稿暫存</h2><p>草稿保存在這台裝置的瀏覽器；清除瀏覽資料後無法載入。</p><input v-model="draftName" placeholder="草稿名稱，例如 115學年度八年級第一次段考"><button :disabled="!generated" @click="saveDraft">儲存目前草稿</button><select v-model="selectedDraft"><option value="">選擇已存草稿</option><option v-for="draft in draftList" :key="draft.id" :value="draft.id">{{ draft.savedAt }}｜{{ draft.name }}</option></select><button :disabled="!selectedDraft" @click="loadDraft">載入草稿</button></section>
+    <section class="panel draft-panel"><h2>資料庫草稿</h2><p>草稿保存在資料庫，可在其他裝置載入。需先執行草稿資料表 SQL。</p><input v-model="draftName" placeholder="草稿名稱，例如 115學年度八年級第一次段考"><button :disabled="!generated" @click="saveDraft">儲存目前草稿</button><select v-model="selectedDraft"><option value="">建立新草稿／選擇已存草稿</option><option v-for="draft in draftList" :key="draft.id" :value="draft.id">{{ new Date(draft.updated_at).toLocaleDateString('zh-TW') }}｜{{ draft.name }}</option></select><button :disabled="!selectedDraft" @click="loadDraft">載入草稿</button><button v-if="localDraftCount" @click="importLocalDrafts">匯入本機舊草稿（{{ localDraftCount }}）</button></section>
 
     <section class="panel">
       <h2>一、考卷資料與年級格式</h2>
@@ -348,7 +430,7 @@ onMounted(async () => {
         <label>非選擇題比例<input v-model.number="scoring.nonChoicePercent" type="number" min="0" max="100">%</label>
         <span :class="{ invalid: scoringTotal !== 100 }">合計 {{ scoringTotal }}%{{ scoringTotal === 100 ? '' : '（請調整為 100%）' }}</span>
       </div>
-      <p class="preset-note">年級比例僅為參考，可自行修改；目前文法 {{ preset.grammarCount }} 題、閱讀／克漏字 {{ preset.readingCount + preset.clozeCount }} 題。B4 預覽會依內容份量自動流動排版，Word 可再細部調整。</p>
+      <p class="preset-note">年級題數僅為預設值，可在下方修改；閱讀／克漏字目前 {{ preset.readingCount + preset.clozeCount }} 題。B4 預覽會依內容流動排版。</p>
     </section>
 
     <section class="panel">
@@ -358,11 +440,12 @@ onMounted(async () => {
         <div><div class="scope-heading"><h3>單字與例句</h3><span>已選 {{ selectedVocabCount }} 筆</span></div><div class="lesson-grid"><label v-for="lesson in vocabLessons" :key="lesson.key" :class="{ selected: selectedVocabLessons.includes(lesson.key) }"><input v-model="selectedVocabLessons" type="checkbox" :value="lesson.key"><span><b>{{ lesson.version }} {{ lesson.volume }} {{ lesson.unit }}</b><small>{{ lesson.count }} 個單字</small></span></label></div></div>
         <div><div class="scope-heading"><h3>文法遊樂園題庫</h3><span>已選 {{ selectedGrammarCount }} 題</span></div><div class="lesson-grid"><label v-for="lesson in grammarLessons" :key="lesson.key" :class="{ selected: selectedGrammarLessons.includes(lesson.key) }"><input v-model="selectedGrammarLessons" type="checkbox" :value="lesson.key"><span><b>{{ lesson.version }} {{ lesson.volume }} {{ lesson.unit }}</b><small>{{ lesson.count }} 題</small></span></label></div></div>
       </div>
-      <button class="generate-btn" :disabled="isGenerating || !selectedVocabLessons.length || !selectedGrammarLessons.length" @click="generateExam">{{ isGenerating ? '產生中…' : generated ? '🎲 重新抽題' : '🎲 產生段考草稿' }}</button>
+      <div class="count-controls"><label>文法選擇題 <input v-model.number="questionCounts.grammar" type="number" min="0"></label><label>中翻英單字題 <input v-model.number="questionCounts.directVocab" type="number" min="0"></label><label>文意字彙題 <input v-model.number="questionCounts.contextVocab" type="number" min="0"></label><label>翻譯填充句數 <input v-model.number="questionCounts.translation" type="number" min="0"></label><label>每句預設空格數 <input v-model.number="questionCounts.blanksPerSentence" type="number" min="1"></label></div>
+      <button class="generate-btn" :disabled="isGenerating || ((questionCounts.directVocab || questionCounts.contextVocab || questionCounts.translation) && !selectedVocabLessons.length) || (questionCounts.grammar && !selectedGrammarLessons.length)" @click="generateExam">{{ isGenerating ? '產生中…' : generated ? '🎲 重新抽題' : '🎲 產生段考草稿' }}</button>
     </section>
 
     <template v-if="generated">
-      <section class="panel score-panel"><h2>各大題／小題配分</h2><p>可調整大題與每一小題；兩者不相符時會提示。滿分為 100 分。</p><div v-for="section in sections" :key="section.id" class="score-section"><label><strong>{{ section.title }}</strong> 大題 <input v-model.number="sectionPoints[section.id]" type="number" min="0" step="0.01"> 分</label><span :class="{ invalid: pointsOf(section.items) !== Number(sectionPoints[section.id]) }">小題合計 {{ pointsOf(section.items) }} 分</span><div class="score-items"><label v-for="(item,index) in section.items" :key="item.id">第 {{ item.number || index + 1 }} 題 <input v-model.number="item.points" type="number" min="0" step="0.01"> 分</label></div></div><p class="score-summary" :class="{ invalid: scoreDifference !== 0 || invalidSections.length }">大題總分 {{ scoreTotal }}／100 分；{{ scoreDifference > 0 ? `未滿 ${scoreDifference} 分` : scoreDifference < 0 ? `超出 ${-scoreDifference} 分` : '總分 100 分' }}{{ invalidSections.length ? `；${invalidSections.length} 個大題與小題合計不符` : '' }}</p><button @click="allocateScores">依選擇題／非選擇題比例重新平均分配</button></section>
+      <section class="panel score-panel"><h2>大題配分</h2><p>只需輸入各大題總分，每小題平均分數自動計算。</p><div v-for="section in sections" :key="section.id" class="score-section"><label><strong>{{ section.title }}</strong> <input v-model.number="sectionPoints[section.id]" type="number" min="0" step="0.01"> 分</label><span>{{ sectionSize(section) }} {{ section.id === translationSection?.id ? '格' : '題' }}；每{{ section.id === translationSection?.id ? '格' : '題' }}約 {{ perQuestion(section) }} 分</span></div><p class="score-summary" :class="{ invalid: scoreDifference !== 0 || scoreWarnings.length }">大題總分 {{ scoreTotal }}／100 分；{{ scoreDifference > 0 ? `尚缺 ${scoreDifference} 分` : scoreDifference < 0 ? `超出 ${-scoreDifference} 分` : '總分 100 分' }}</p><p v-if="choiceScore !== Number(scoring.choicePercent) || writtenScore !== Number(scoring.nonChoicePercent)" class="score-warning">⚠ 目前選擇題 {{ choiceScore }} 分／非選擇題 {{ writtenScore }} 分，與上方設定的 {{ scoring.choicePercent }}／{{ scoring.nonChoicePercent }} 不一致。</p><p v-for="warning in scoreWarnings" :key="warning" class="score-warning">⚠ {{ warning }}</p><button @click="allocateScores">依選擇題／非選擇題比例重新分配</button></section>
       <section class="panel action-panel"><div><h2>三、預覽與輸出</h2><div class="preview-tabs"><button v-for="mode in [{id:'question',name:'B4 題目卷'},{id:'answer',name:'A4 正確答案'},{id:'blank',name:'A4 空白答案卷'}]" :key="mode.id" :class="{ active: previewMode === mode.id }" @click="previewMode = mode.id">{{ mode.name }}</button></div></div><div class="action-buttons"><button class="makeup" @click="shuffleAllChoices">🔀 產生補考版（交換選項）</button><button v-for="mode in [{id:'question',name:'題目卷'},{id:'answer',name:'正確答案'},{id:'blank',name:'空白答案卷'}]" :key="mode.id" :disabled="Boolean(exporting)" @click="exportWord(mode.id)">{{ mode.name }} Word</button><button v-for="mode in [{id:'question',name:'題目卷'},{id:'answer',name:'正確答案'},{id:'blank',name:'空白答案卷'}]" :key="mode.id+'pdf'" :disabled="Boolean(exporting)" @click="exportPdf(mode.id)">{{ mode.name }} PDF</button></div></section>
 
       <section class="preview-panel"><div class="preview-scroll"><AdminRegularExamSheet v-show="previewMode === 'question'" ref="questionPreview" :data="examData" /><AdminRegularExamSheet v-show="previewMode === 'answer'" ref="answerPreview" :data="examData" answer-mode /><AdminRegularExamSheet v-show="previewMode === 'blank'" ref="blankPreview" :data="examData" blank-mode /></div></section>
@@ -382,13 +465,14 @@ onMounted(async () => {
 
         <div v-else-if="editorTab === 'groups'" class="editor-content"><p>題組會依內容長度自動流入下一欄或下一頁；每一小題不會被拆開。文章／對話會以虛線框區隔。貼上文章後，系統會依上方所選課次自動找出範圍外單字，並從完整單字庫帶入中文。</p><article v-for="group in groups" :key="group.id" class="group-editor"><div class="group-layout-row"><input v-model="group.title" class="group-title"><label><input v-model="group.startNewPage" type="checkbox"> 此題組前強制換頁</label></div><label>文章／對話<textarea v-model="group.passage" class="passage-editor" rows="10" placeholder="貼上閱讀文章或對話後，將自動檢測範圍外單字" @input="scheduleGroupVocabularyDetection(group)"></textarea></label><div class="glossary-heading"><b>單字提示</b><span v-if="group.outOfScopeCount">範圍外 {{ group.outOfScopeCount }} 個<span v-if="group.unknownWordCount">／待補中文 {{ group.unknownWordCount }} 個</span></span><button type="button" @click="detectGroupVocabulary(group)">🔍 重新檢測單字範圍</button></div><textarea v-model="group.glossary" rows="3" placeholder="自動產生後仍可人工增刪或修改中文" @input="editGlossaryManually(group)"></textarea><small v-if="!group.autoGlossary" class="manual-note">目前為人工編輯模式；按「重新檢測」可恢復自動結果。</small><div v-for="question in group.questions" :key="question.id" class="question-editor"><div class="question-top"><b class="editor-question-number">{{ question.number }}.</b><textarea v-model="question.stem" placeholder="貼上完整題目與四個選項，可自動拆分" @paste="handleQuestionPaste($event, question)"></textarea><select v-model.number="question.answer"><option v-for="(label,index) in labels" :key="label" :value="index">答案 {{ label }}</option></select><button @click="shuffleQuestionChoices(question)">交換選項</button></div><div class="choice-inputs"><label v-for="(_,index) in question.choices" :key="index">{{ labels[index] }}<input v-model="question.choices[index]"></label></div></div></article></div>
 
-        <div v-else class="editor-content"><h3>單字與文意字彙</h3><div class="written-grid"><div v-for="(item,index) in nonChoice.vocabulary" :key="item.id"><b>{{ index + 1 }}</b><textarea v-model="item.prompt" placeholder="題目"></textarea><input v-model="item.answer" placeholder="答案"></div></div><article v-for="section in nonChoice.sections" :key="section.id" class="written-editor"><input v-model="section.title" class="group-title"><textarea v-model="section.instructions" placeholder="作答說明或共同題幹"></textarea><div class="written-grid"><div v-for="(item,index) in section.items" :key="item.id"><b>{{ index + 1 }}</b><textarea v-model="item.prompt" placeholder="題目"></textarea><input v-model="item.answer" placeholder="正確答案"></div></div></article></div>
+        <div v-else class="editor-content"><h3>單字與文意字彙</h3><div class="written-grid"><div v-for="(item,index) in nonChoice.vocabulary" :key="item.id"><b>{{ index + 1 }}</b><textarea v-model="item.prompt" placeholder="題目"></textarea><input v-model="item.answer" placeholder="答案"></div></div><article v-for="section in nonChoice.sections" :key="section.id" class="written-editor"><input v-model="section.title" class="group-title"><textarea v-model="section.instructions" placeholder="作答說明或共同題幹"></textarea><template v-if="section.type === 'translation' || section.title === '翻譯填充'"><p>例句與中文可編輯；點擊下方英文單字可切換是否挖空，系統會自動更新格號與答案。</p><div v-for="(item,index) in section.items" :key="item.id" class="translation-editor"><b>第 {{ index + 1 }} 句</b><label>英文例句<textarea v-model="item.sourceEn" @change="refreshTranslation"></textarea></label><label>中文翻譯<input v-model="item.sourceZh" @change="refreshTranslation"></label><div class="token-list"><button v-for="(token,tokenIndex) in sentenceTokens(item.sourceEn)" :key="tokenIndex" type="button" :class="{ selected: item.blankIndices?.includes(tokenIndex) }" @click="chooseBlank(item,tokenIndex)">{{ token }}</button></div><small>目前 {{ item.blankIndices?.length || 0 }} 格；格號：{{ item.answer }}</small></div></template><div v-else class="written-grid"><div v-for="(item,index) in section.items" :key="item.id"><b>{{ index + 1 }}</b><textarea v-model="item.prompt" placeholder="題目"></textarea><input v-model="item.answer" placeholder="正確答案"></div></div></article></div>
       </section>
     </template>
   </main>
 </template>
 
 <style scoped>
+.count-controls{display:flex;flex-wrap:wrap;gap:12px;margin-top:15px}.count-controls label{display:flex;align-items:center;gap:5px;font-weight:700}.count-controls input{width:65px;padding:6px}.score-warning{color:#b91c1c;font-weight:700}.translation-editor{padding:12px;border:1px solid #cbd5e1;border-radius:8px}.translation-editor label{display:grid;gap:4px;margin:8px 0}.translation-editor textarea,.translation-editor input{width:100%;box-sizing:border-box;padding:8px}.token-list{display:flex;flex-wrap:wrap;gap:5px;margin:10px 0}.token-list button{padding:5px 9px;border:1px solid #94a3b8;border-radius:5px;background:#fff;cursor:pointer}.token-list button.selected{border-color:#1d4ed8;background:#dbeafe;color:#1d4ed8;font-weight:800}
 .draft-panel{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.draft-panel h2,.draft-panel p{width:100%;margin:0}.draft-panel input,.draft-panel select{min-width:220px;flex:1;padding:9px}.draft-panel button,.score-panel button{padding:9px;cursor:pointer}.score-section{padding:10px;border-bottom:1px solid #cbd5e1}.score-section>label{display:inline-flex;align-items:center;gap:8px}.score-section input{width:65px;padding:5px}.score-section>span{margin-left:12px}.score-items{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.score-items label{padding:5px;background:#eff6ff}.score-summary{font-weight:800;color:#15803d}.score-panel .invalid{color:#b91c1c}
 .builder-page{min-height:100vh;padding:24px;background:#eef2f7;color:#1e293b;font-family:system-ui,'Noto Sans TC',sans-serif}.page-header,.panel,.preview-panel{max-width:1500px;margin:0 auto 18px}.page-header{display:flex;justify-content:space-between;gap:20px}.page-header h1{margin:0;color:#1d4ed8}.page-header p{margin:5px 0;color:#64748b}.page-header a{height:max-content;padding:10px 15px;border-radius:8px;background:#1e3a8a;color:white;text-decoration:none;font-weight:800}.message{max-width:1470px;margin:0 auto 15px;padding:12px 15px;border-left:5px solid #2563eb;background:#dbeafe}.panel{box-sizing:border-box;padding:18px;border:1px solid #cbd5e1;border-radius:14px;background:#fff;box-shadow:0 3px 14px #0f172a12}.panel h2{margin:0 0 12px;color:#1e3a8a}.grade-picker{display:flex;gap:10px;margin-bottom:14px}.grade-picker button{display:flex;flex-direction:column;min-width:150px;padding:12px;border:2px solid #cbd5e1;border-radius:9px;background:white;font-size:1.1rem;font-weight:900;cursor:pointer}.grade-picker button span{font-size:.8rem;color:#64748b}.grade-picker button.active{border-color:#2563eb;background:#eff6ff;color:#1d4ed8}.form-grid{display:grid;grid-template-columns:2fr repeat(3,1fr) 2.5fr;gap:10px}.form-grid label{display:grid;gap:4px;font-size:.85rem;font-weight:800}.form-grid input,.score-settings input,.question-editor input,.question-editor select,.question-editor textarea,.group-editor textarea,.group-title,.written-editor textarea,.written-grid textarea,.written-grid input,.image-upload input{box-sizing:border-box;width:100%;padding:8px;border:1px solid #94a3b8;border-radius:7px;font:inherit}.score-settings{display:flex;align-items:end;gap:12px;margin-top:13px}.score-settings label{display:grid;grid-template-columns:auto 80px auto;align-items:center;gap:6px;font-weight:800}.score-settings span{padding:8px 10px;border-radius:7px;background:#dcfce7;color:#166534;font-weight:900}.score-settings span.invalid{background:#fee2e2;color:#b91c1c}.preset-note{margin-bottom:0;padding:9px;background:#f1f5f9}.scope-columns{display:grid;grid-template-columns:1fr 1fr;gap:16px}.scope-heading{display:flex;justify-content:space-between;align-items:center}.scope-heading h3{margin:0}.scope-heading span{color:#1d4ed8;font-weight:800}.lesson-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:6px;max-height:270px;overflow:auto;margin-top:8px;padding:3px}.lesson-grid label{display:flex;gap:7px;align-items:center;padding:8px;border:2px solid #cbd5e1;border-radius:8px;cursor:pointer}.lesson-grid label.selected{border-color:#2563eb;background:#eff6ff}.lesson-grid span{display:grid}.lesson-grid small{color:#64748b}.generate-btn{width:100%;margin-top:15px;padding:13px;border:0;border-radius:9px;background:#2563eb;color:white;font-size:1.05rem;font-weight:900;cursor:pointer}.generate-btn:disabled{opacity:.5}.action-panel{display:flex;justify-content:space-between;gap:15px}.preview-tabs,.action-buttons,.editor-tabs{display:flex;gap:8px;flex-wrap:wrap}.preview-tabs button,.action-buttons button,.editor-tabs button,.question-editor button{padding:9px 11px;border:1px solid #64748b;border-radius:7px;background:#fff;font-weight:800;cursor:pointer}.preview-tabs button.active,.editor-tabs button.active{background:#1e3a8a;color:#fff}.action-buttons{justify-content:flex-end}.action-buttons .makeup{background:#f97316;color:white;border-color:#c2410c}.preview-panel{padding:18px;border-radius:14px;background:#475569;overflow:hidden}.preview-scroll{overflow:auto;max-height:850px}.preview-scroll :deep(.regular-exam-page){box-shadow:0 6px 25px #0f172a99}.editor-tabs{margin-bottom:14px}.editor-content{display:grid;gap:10px}.question-editor{padding:12px;border:1px solid #cbd5e1;border-radius:9px;background:#f8fafc}.question-top{display:grid;grid-template-columns:45px 1fr 120px 110px;gap:8px;align-items:start}.question-top textarea{min-height:50px}.choice-inputs{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:8px}.choice-inputs label{display:grid;grid-template-columns:22px 1fr;align-items:center;font-weight:800}.image-editor>label{display:inline-flex;gap:6px;margin:0 8px}.image-options{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:9px}.image-upload{display:grid;gap:6px;padding:9px;border:2px dashed #94a3b8;border-radius:8px;background:white}.image-upload:focus{border-color:#2563eb}.image-upload img{width:100%;height:145px;object-fit:contain;background:#f1f5f9}.image-upload>span{display:grid;place-items:center;height:145px;color:#64748b;background:#f1f5f9}.group-editor,.written-editor{display:grid;gap:9px;padding:14px;border:2px solid #cbd5e1;border-radius:10px}.group-layout-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px}.group-layout-row>label{display:flex;align-items:center;gap:6px;white-space:nowrap;font-weight:800}.group-layout-row input[type=checkbox]{width:auto}.group-title{font-size:1.15rem;font-weight:900;color:#1d4ed8}.written-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.written-grid>div{display:grid;grid-template-columns:35px 1.5fr 1fr;gap:6px;align-items:start;padding:8px;border:1px solid #e2e8f0;border-radius:7px}.written-grid textarea{min-height:58px}@media(max-width:1000px){.form-grid,.scope-columns{grid-template-columns:1fr 1fr}.action-panel,.page-header{flex-direction:column}.question-top{grid-template-columns:40px 1fr}.choice-inputs,.written-grid{grid-template-columns:1fr 1fr}}@media(max-width:650px){.builder-page{padding:10px}.form-grid,.scope-columns,.choice-inputs,.written-grid,.image-options{grid-template-columns:1fr}.grade-picker{display:grid;grid-template-columns:repeat(3,1fr)}.grade-picker button{min-width:0}.score-settings{align-items:stretch;flex-direction:column}.group-layout-row{grid-template-columns:1fr}.written-grid>div{grid-template-columns:30px 1fr}.written-grid input{grid-column:2}}
 .passage-editor{border:2px dashed #64748b!important;background:#fff}.glossary-heading{display:flex;align-items:center;gap:10px}.glossary-heading>span{margin-left:auto;color:#b45309;font-weight:800}.glossary-heading button{padding:7px 10px;border:1px solid #2563eb;border-radius:7px;background:#eff6ff;color:#1d4ed8;font-weight:800;cursor:pointer}.manual-note{color:#b45309}.editor-question-number{display:grid;place-items:center;min-height:42px;border-radius:7px;background:#1e3a8a;color:#fff;font-size:1.08rem}@media(max-width:650px){.glossary-heading{align-items:stretch;flex-direction:column}.glossary-heading>span{margin-left:0}}

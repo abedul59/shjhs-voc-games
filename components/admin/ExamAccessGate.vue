@@ -7,8 +7,8 @@ const verify = () => {
   const today = new Date();
   const expected = `${String(today.getFullYear()).slice(-2)}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
   if (password.value === expected) {
+    emit('verified', password.value);
     password.value = '';
-    emit('verified');
   } else {
     password.value = '';
     error.value = '驗證失敗，請重新輸入。';
