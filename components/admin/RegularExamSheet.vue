@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue';
+import { groupTitle, writtenTitle } from '~/lib/regular-exam-sections';
 
 const props = defineProps({ data: { type: Object, required: true }, answerMode: Boolean, blankMode: Boolean });
 const root = ref(null);
@@ -27,29 +28,14 @@ const answerEntries = section => {
 };
 const answerColumns = computed(() => props.data.metadata.grade === '7' ? 6 : 5);
 const answerPages = computed(() => {
-  const columns = answerColumns.value;
-  const maxRows = props.blankMode ? 10 : 8;
-  const pages = [{ sections: [], usedRows: 0 }];
-  const next = () => pages.push({ sections: [], usedRows: 0 });
-  const source = [
-    { id: 'vocabulary', title: '單字與文意字彙', entries: props.data.nonChoice.vocabulary.map((item, index) => ({ number: index + 1, answer: item.answer })) },
-    ...props.data.nonChoice.sections.map(section => ({ id: section.id, title: section.title, entries: answerEntries(section) }))
+  const sections = [
+    { id: 'vocabulary', title: writtenTitle('單字與文意字彙', props.data.groups.length, 0), entries: props.data.nonChoice.vocabulary.map((item, index) => ({ number: index + 1, answer: item.answer })) },
+    ...props.data.nonChoice.sections.map((section, index) => ({ id: section.id, title: writtenTitle(section.title, props.data.groups.length, index + 1), entries: answerEntries(section) }))
   ];
-  for (const section of source) {
-    let start = 0;
-    while (start < section.entries.length) {
-      let page = pages.at(-1);
-      const capacity = Math.max(0, maxRows - page.usedRows - 1);
-      if (!capacity) { next(); page = pages.at(-1); }
-      const size = Math.min(section.entries.length - start, Math.max(1, maxRows - page.usedRows - 1) * columns);
-      page.sections.push({ ...section, entries: section.entries.slice(start, start + size), continued: start > 0 });
-      page.usedRows += 1 + Math.ceil(size / columns);
-      start += size;
-    }
-  }
-  pages.at(-1).showFooter = true;
-  return pages;
+  const rows = sections.reduce((sum, section) => sum + Math.ceil(section.entries.length / answerColumns.value), 0);
+  return [{ sections, rows, showFooter: true }];
 });
+const answerCellHeight = computed(() => Math.max(5, Math.min(12, Math.floor(144 / Math.max(1, answerPages.value[0].rows)))));
 
 const textLines = (value, width = 48) => String(value || '').split('\n').reduce((total, line) => total + Math.max(1, Math.ceil(line.length / width)), 0);
 const questionSize = question => 2 + textLines(question.stem, 50) + textLines(question.choices.join('　'), 58);
@@ -129,7 +115,7 @@ defineExpose({ getPages: () => [...root.value.querySelectorAll('.regular-exam-pa
         <header class="exam-header small"><h1>{{ data.metadata.schoolName }}　{{ data.metadata.grade }}年級英語科定期評量</h1></header>
         <div class="flow-columns">
           <section v-for="group in page" :key="group.id" class="flow-group">
-            <h2>{{ group.title }}（{{ data.sectionPoints?.[group.id.replace(/-start$|-continued-\d+$/, '')] ?? 0 }} 分）</h2>
+            <h2>{{ groupTitle(group, data.groups.findIndex(item => group.id.startsWith(item.id))) }}（{{ data.sectionPoints?.[group.id.replace(/-start$|-continued-\d+$/, '')] ?? 0 }} 分）</h2>
             <div class="passage">{{ group.passage || '（請在編輯區輸入閱讀、對話或克漏字文章）' }}</div>
             <div v-if="group.images?.some(Boolean)" class="reading-images"><img v-for="(source,index) in group.images.filter(Boolean)" :key="index" :src="source" alt="閱讀測驗圖片"></div>
             <div v-if="group.glossary" class="glossary">{{ group.glossary }}</div>
@@ -144,11 +130,11 @@ defineExpose({ getPages: () => [...root.value.querySelectorAll('.regular-exam-pa
         <h2>第二部分：非選擇題【請在答案卷作答】{{ data.preset.nonChoicePercent }}%</h2>
         <div class="compact-written-flow">
           <section v-if="data.nonChoice.vocabulary.length" class="written-section">
-            <h3>單字與文意字彙（{{ data.sectionPoints?.vocabulary ?? 0 }} 分）</h3>
+            <h3>{{ writtenTitle('單字與文意字彙', data.groups.length, 0) }}（{{ data.sectionPoints?.vocabulary ?? 0 }} 分）</h3>
             <div v-for="(item,index) in data.nonChoice.vocabulary" :key="item.id" class="written-item">{{ index + 1 }}. {{ item.prompt }}</div>
           </section>
-          <section v-for="section in data.nonChoice.sections" :key="section.id" class="written-section">
-            <h3>{{ section.title }}（{{ data.sectionPoints?.[section.id] ?? 0 }} 分）</h3><p v-if="section.instructions">{{ section.instructions }}</p>
+          <section v-for="(section,index) in data.nonChoice.sections" :key="section.id" class="written-section">
+            <h3>{{ writtenTitle(section.title, data.groups.length, index + 1) }}（{{ data.sectionPoints?.[section.id] ?? 0 }} 分）</h3><p v-if="section.instructions">{{ section.instructions }}</p>
             <div v-for="(item,index) in section.items" :key="item.id" class="written-item">{{ index + 1 }}. {{ item.prompt }}</div>
           </section>
         </div>
@@ -158,7 +144,7 @@ defineExpose({ getPages: () => [...root.value.querySelectorAll('.regular-exam-pa
     </template>
 
     <template v-else>
-      <article v-for="(page,pageIndex) in answerPages" :key="pageIndex" class="regular-exam-page a4-page answer-page" :style="{ '--answer-font-size': `${Math.max(8, Math.min(16, Number(data.metadata.answerFontSize) || 10))}pt` }">
+      <article v-for="(page,pageIndex) in answerPages" :key="pageIndex" class="regular-exam-page a4-page answer-page" :style="{ '--answer-font-size': `${Math.max(8, Math.min(16, Number(data.metadata.answerFontSize) || 10))}pt`, '--answer-cell-height': `${answerCellHeight}mm` }">
         <header class="exam-header answer-header">
           <h1>{{ data.metadata.schoolName }}{{ data.metadata.schoolYear }}學年度第{{ data.metadata.semester }}學期{{ data.metadata.grade }}年級第{{ data.metadata.examNumber }}次定期評量　英語科　{{ blankMode ? '答案卷' : '正確答案' }}{{ pageIndex ? '（續）' : '' }}</h1>
           <p v-if="blankMode">{{ data.metadata.grade }}年　　班　座號　　　姓名　　　　　　　　　</p>
@@ -167,7 +153,7 @@ defineExpose({ getPages: () => [...root.value.querySelectorAll('.regular-exam-pa
         <div class="written-answer-flow">
           <section v-for="section in page.sections" :key="section.id + section.entries[0]?.number" class="answer-section"><h3>{{ section.title }}{{ section.continued ? '（續）' : '' }}（{{ data.sectionPoints?.[section.id] || 0 }} 分）</h3><div class="answer-cells" :style="{ '--answer-columns': answerColumns }"><div v-for="(item,index) in section.entries" :key="index" class="answer-cell"><small>{{ item.number }}</small><span>{{ blankMode ? '' : item.answer }}</span></div></div></section>
         </div>
-        <template v-if="!blankMode && page.showFooter"><h2 class="answer-part-title">第一部分：選擇題 {{ data.preset.choicePercent }}%</h2><div class="choice-answer-lines"><div v-for="start in Math.ceil(choiceQuestions.length / 10)" :key="start"><b>{{ (start - 1) * 10 + 1 }}–{{ Math.min(start * 10, choiceQuestions.length) }}</b><span>{{ choiceQuestions.slice((start - 1) * 10, start * 10).map(question => labels[question.answer] || '＿').join('') }}</span></div></div></template>
+        <template v-if="page.showFooter"><h2 class="answer-part-title">第一部分：選擇題 {{ data.preset.choicePercent }}%</h2><div class="choice-answer-lines"><div v-for="start in Math.ceil(choiceQuestions.length / 10)" :key="start"><b>{{ (start - 1) * 10 + 1 }}–{{ Math.min(start * 10, choiceQuestions.length) }}</b><span>{{ choiceQuestions.slice((start - 1) * 10, start * 10).map(question => blankMode ? '＿' : (labels[question.answer] || '＿')).join('') }}</span></div></div></template>
         <div v-if="blankMode && page.showFooter" class="score-boxes"><div>選擇題分數<br><br></div><div>非選擇題分數<br><br></div><div>總分<br><br></div></div>
       </article>
     </template>
@@ -179,4 +165,5 @@ defineExpose({ getPages: () => [...root.value.querySelectorAll('.regular-exam-pa
 .mcq{grid-template-columns:8mm 1fr;gap:1px 0}.mcq .question-number{grid-column:1;grid-row:1/-1;font-weight:700;font-size:1.06em}.mcq .question-stem,.mcq>span:not(.question-stem){grid-column:2}.passage{padding:2mm;border:1px dashed #000}.score-boxes{position:absolute;bottom:12mm;left:9mm;right:9mm;display:grid;grid-template-columns:repeat(3,1fr);gap:3mm;text-align:center}.score-boxes div{border:1px solid #000;padding:2mm;height:23mm}.answer-page:has(.score-boxes) .written-answer-flow{height:210mm}
 .answer-page .written-answer-flow{height:auto;overflow:visible;column-count:initial}.answer-page .answer-section{display:block;margin:0 0 5mm;break-inside:avoid}.answer-section h3{margin-bottom:2mm;font-size:11pt}.answer-cells{display:grid;grid-template-columns:repeat(var(--answer-columns),1fr);border-top:1px solid #000;border-left:1px solid #000}.answer-cell{display:grid;grid-template-rows:auto 1fr;min-height:15mm;padding:1mm 2mm;border-right:1px solid #000;border-bottom:1px solid #000}.answer-cell small{font-size:8pt}.answer-cell span{align-self:center;text-align:center;font-size:var(--answer-font-size);overflow-wrap:anywhere}.choice-answer-lines{display:grid;gap:1.5mm;margin:2mm 0;font-size:var(--answer-font-size)}.choice-answer-lines>div{display:flex;gap:8mm}.answer-page:has(.score-boxes) .written-answer-flow{height:auto}
 .reading-images{display:flex;gap:2mm;margin:2mm 0;break-inside:avoid-column}.reading-images img{width:calc(50% - 1mm);max-height:42mm;object-fit:contain;border:1px solid #aaa}
+.answer-page .answer-section{margin-bottom:2mm}.answer-page .answer-section h3{margin-bottom:1mm;font-size:9.5pt}.answer-page .answer-cell{min-height:var(--answer-cell-height);padding:.5mm 1mm}.answer-page .answer-part-title{margin-top:2mm!important;padding-top:1mm}.answer-page .choice-answer-lines{gap:.6mm;margin:1mm 0}.answer-page .score-boxes{bottom:8mm}.answer-page .score-boxes div{height:16mm;padding:1mm}
 </style>
