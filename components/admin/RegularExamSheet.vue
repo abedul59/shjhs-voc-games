@@ -32,10 +32,27 @@ const answerPages = computed(() => {
     { id: 'vocabulary', title: writtenTitle('單字與文意字彙', props.data.groups.length, 0), entries: props.data.nonChoice.vocabulary.map((item, index) => ({ number: index + 1, answer: item.answer })) },
     ...props.data.nonChoice.sections.map((section, index) => ({ id: section.id, title: writtenTitle(section.title, props.data.groups.length, index + 1), entries: answerEntries(section) }))
   ];
-  const rows = sections.reduce((sum, section) => sum + Math.ceil(section.entries.length / answerColumns.value), 0);
-  return [{ sections, rows, showFooter: true }];
+  const pages = [];
+  let current = { sections: [], rows: 0, showFooter: false };
+  const flush = () => { if (current.sections.length) pages.push(current); current = { sections: [], rows: 0, showFooter: false }; };
+  const maxRows = 12;
+  sections.forEach(section => {
+    let offset = 0;
+    while (offset < section.entries.length) {
+      if (current.rows >= maxRows) flush();
+      const available = (maxRows - current.rows) * answerColumns.value;
+      const entries = section.entries.slice(offset, offset + available);
+      current.sections.push({ ...section, entries, continued: offset > 0 });
+      current.rows += Math.ceil(entries.length / answerColumns.value);
+      offset += entries.length;
+    }
+  });
+  flush();
+  if (!pages.length) pages.push(current);
+  pages.at(-1).showFooter = true;
+  return pages;
 });
-const answerCellHeight = computed(() => Math.max(5, Math.min(12, Math.floor(144 / Math.max(1, answerPages.value[0].rows)))));
+const answerCellHeight = 11;
 
 const textLines = (value, width = 48) => String(value || '').split('\n').reduce((total, line) => total + Math.max(1, Math.ceil(line.length / width)), 0);
 const questionSize = question => 2 + textLines(question.stem, 50) + textLines(question.choices.join('　'), 58);
@@ -153,7 +170,7 @@ defineExpose({ getPages: () => [...root.value.querySelectorAll('.regular-exam-pa
         <div class="written-answer-flow">
           <section v-for="section in page.sections" :key="section.id + section.entries[0]?.number" class="answer-section"><h3>{{ section.title }}{{ section.continued ? '（續）' : '' }}（{{ data.sectionPoints?.[section.id] || 0 }} 分）</h3><div class="answer-cells" :style="{ '--answer-columns': answerColumns }"><div v-for="(item,index) in section.entries" :key="index" class="answer-cell"><small>{{ item.number }}</small><span>{{ blankMode ? '' : item.answer }}</span></div></div></section>
         </div>
-        <template v-if="page.showFooter"><h2 class="answer-part-title">第一部分：選擇題 {{ data.preset.choicePercent }}%</h2><div class="choice-answer-lines"><div v-for="start in Math.ceil(choiceQuestions.length / 10)" :key="start"><b>{{ (start - 1) * 10 + 1 }}–{{ Math.min(start * 10, choiceQuestions.length) }}</b><span>{{ choiceQuestions.slice((start - 1) * 10, start * 10).map(question => blankMode ? '＿' : (labels[question.answer] || '＿')).join('') }}</span></div></div></template>
+        <template v-if="page.showFooter"><h2 class="answer-part-title">第一部分：選擇題 {{ data.preset.choicePercent }}%</h2><div class="choice-answer-lines"><div v-for="question in choiceQuestions" :key="question.id || question.number"><b>{{ question.number }}.</b><span>{{ blankMode ? '＿＿' : (labels[question.answer] || '＿＿') }}</span></div></div></template>
         <div v-if="blankMode && page.showFooter" class="score-boxes"><div>選擇題分數<br><br></div><div>非選擇題分數<br><br></div><div>總分<br><br></div></div>
       </article>
     </template>
@@ -166,4 +183,5 @@ defineExpose({ getPages: () => [...root.value.querySelectorAll('.regular-exam-pa
 .answer-page .written-answer-flow{height:auto;overflow:visible;column-count:initial}.answer-page .answer-section{display:block;margin:0 0 5mm;break-inside:avoid}.answer-section h3{margin-bottom:2mm;font-size:11pt}.answer-cells{display:grid;grid-template-columns:repeat(var(--answer-columns),1fr);border-top:1px solid #000;border-left:1px solid #000}.answer-cell{display:grid;grid-template-rows:auto 1fr;min-height:15mm;padding:1mm 2mm;border-right:1px solid #000;border-bottom:1px solid #000}.answer-cell small{font-size:8pt}.answer-cell span{align-self:center;text-align:center;font-size:var(--answer-font-size);overflow-wrap:anywhere}.choice-answer-lines{display:grid;gap:1.5mm;margin:2mm 0;font-size:var(--answer-font-size)}.choice-answer-lines>div{display:flex;gap:8mm}.answer-page:has(.score-boxes) .written-answer-flow{height:auto}
 .reading-images{display:flex;gap:2mm;margin:2mm 0;break-inside:avoid-column}.reading-images img{width:calc(50% - 1mm);max-height:42mm;object-fit:contain;border:1px solid #aaa}
 .answer-page .answer-section{margin-bottom:2mm}.answer-page .answer-section h3{margin-bottom:1mm;font-size:9.5pt}.answer-page .answer-cell{min-height:var(--answer-cell-height);padding:.5mm 1mm}.answer-page .answer-part-title{margin-top:2mm!important;padding-top:1mm}.answer-page .choice-answer-lines{gap:.6mm;margin:1mm 0}.answer-page .score-boxes{bottom:8mm}.answer-page .score-boxes div{height:16mm;padding:1mm}
+.answer-page .choice-answer-lines{grid-template-columns:repeat(10,minmax(0,1fr));gap:1mm 0}.answer-page .choice-answer-lines>div{display:flex;gap:1mm;white-space:nowrap;font-size:9pt}
 </style>
