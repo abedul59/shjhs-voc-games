@@ -5,7 +5,7 @@ import { detectOutOfScopeVocabulary, formatVocabularyGlossary, listInScopeVocabu
 import { findRegularExamAnswerLeaks } from '~/lib/regular-exam-answer-leaks';
 import { sentenceTokens, buildTranslationFill, chooseTranslationBlanks, splitTranslationText } from '~/lib/regular-exam-translation';
 import { groupTitle, writtenTitle, scoreSlots, sectionOrdinal } from '~/lib/regular-exam-sections';
-import { lessonKey, sortLessons, cumulativeLessonKeys } from '~/lib/regular-exam-scope';
+import { lessonKey, sortLessons, cumulativeLessonKeys, cumulativeLessonKeysForSelection } from '~/lib/regular-exam-scope';
 
 definePageMeta({ middleware: 'auth' });
 
@@ -214,7 +214,7 @@ const applyDraftPayload = draft => {
   cumulativeVocabEnd.value = draft.cumulativeVocabEnd || '';
   selectedGrammarLessons.value = [...(draft.selectedGrammarLessons || [])];
   sectionPoints.value = structuredClone(draft.sectionPoints || {});
-  questionCounts.value = { ...questionCounts.value, ...(draft.questionCounts || {}) };
+  questionCounts.value = { ...questionCounts.value, translationBlankWidth: 4, ...(draft.questionCounts || {}) };
   translationMode.value = draft.translationMode || 'bank';
   translationSourceText.value = draft.translationSourceText || '';
   generated.value = true;
@@ -227,7 +227,7 @@ const metadata = ref({
   fileName: '115學年度第1學期8年級第1次定期評量英語科', answerFontSize: 10
 });
 const scoring = ref({ choicePercent: 66, nonChoicePercent: 34 });
-const questionCounts = ref({ grammar: 10, directVocab: 7, contextVocab: 3, translation: 12, blanksPerSentence: 1 });
+const questionCounts = ref({ grammar: 10, directVocab: 7, contextVocab: 3, translation: 12, blanksPerSentence: 1, translationBlankWidth: 4 });
 const listening = ref({ image: [], basic: [], comprehension: [] });
 const grammarQuestions = ref([]);
 const groups = ref([]);
@@ -250,6 +250,10 @@ const grammarLessons = computed(() => buildLessonCatalog(allGrammar.value));
 const effectiveVocabLessons = computed(() => vocabScopeMode.value === 'cumulative'
   ? cumulativeLessonKeys(vocabLessons.value, cumulativeVocabEnd.value)
   : selectedVocabLessons.value);
+const referenceVocabLessons = computed(() => cumulativeLessonKeysForSelection(vocabLessons.value,
+  vocabScopeMode.value === 'cumulative' ? [cumulativeVocabEnd.value] : selectedVocabLessons.value));
+const missingFirstBook = computed(() => [...new Set(referenceVocabLessons.value.map(key => key.split('|')[0]))]
+  .filter(version => !vocabLessons.value.some(lesson => lesson.version === version && lesson.volume === 'B1')));
 const selectedVocabCount = computed(() => allVocabulary.value.filter(item => effectiveVocabLessons.value.includes(lessonKey(item))).length);
 const selectedGrammarCount = computed(() => allGrammar.value.filter(item => selectedGrammarLessons.value.includes(lessonKey(item))).length);
 const examData = computed(() => ({
@@ -257,10 +261,18 @@ const examData = computed(() => ({
   grammarQuestions: grammarQuestions.value, groups: groups.value, nonChoice: nonChoice.value, sectionPoints: sectionPoints.value
 }));
 const answerLeaks = computed(() => generated.value ? findRegularExamAnswerLeaks(examData.value) : []);
-const inScopeVocabulary = computed(() => listInScopeVocabulary(allVocabulary.value, effectiveVocabLessons.value, lessonKey));
+const inScopeVocabulary = computed(() => listInScopeVocabulary(allVocabulary.value, referenceVocabLessons.value, lessonKey));
 const visibleReferenceVocabulary = computed(() => {
   const query = vocabularyReferenceSearch.value.trim().toLocaleLowerCase();
-  return query ? inScopeVocabulary.value.filter(item => `${item.word} ${item.meaning} ${item.lesson}`.toLocaleLowerCase().includes(query)) : inScopeVocabulary.value;
+  return query ? inScopeVocabulary.value.filter(item => `${item.word} ${item.meaning} ${item.version} ${item.volume} ${item.unit}`.toLocaleLowerCase().includes(query)) : inScopeVocabulary.value;
+});
+const referenceVocabularyGroups = computed(() => {
+  const groups = new Map();
+  visibleReferenceVocabulary.value.forEach(item => {
+    if (!groups.has(item.lessonKey)) groups.set(item.lessonKey, { key: item.lessonKey, version: item.version, volume: item.volume, unit: item.unit, items: [] });
+    groups.get(item.lessonKey).items.push(item);
+  });
+  return [...groups.values()];
 });
 
 const makeChoices = count => Array.from({ length: count }, () => '');
@@ -270,7 +282,7 @@ const makeWrittenItems = count => Array.from({ length: count }, () => ({ id: cry
 
 const resetBlueprint = (spec = null) => {
   const current = preset.value;
-  questionCounts.value = { grammar: current.grammarCount, directVocab: current.directVocab, contextVocab: current.contextVocab, translation: current.writtenSections.find(section => section.title === '翻譯填充')?.count || 0, blanksPerSentence: current.blanksPerSentence || 1, ...(spec?.questionCounts || {}) };
+  questionCounts.value = { grammar: current.grammarCount, directVocab: current.directVocab, contextVocab: current.contextVocab, translation: current.writtenSections.find(section => section.title === '翻譯填充')?.count || 0, blanksPerSentence: current.blanksPerSentence || 1, translationBlankWidth: 4, ...(spec?.questionCounts || {}) };
   listening.value = {
     image: Array.from({ length: 5 }, (_, index) => makeListeningImageQuestion(index + 1)),
     basic: Array.from({ length: 5 }, (_, index) => makeQuestion(index + 6, 3)),
@@ -339,7 +351,7 @@ const handleQuestionPaste = (event, question) => {
 
 const glossaryTimers = new Map();
 const detectGroupVocabulary = group => {
-  const results = detectOutOfScopeVocabulary(group.passage, allVocabulary.value, effectiveVocabLessons.value, lessonKey);
+  const results = detectOutOfScopeVocabulary(group.passage, allVocabulary.value, referenceVocabLessons.value, lessonKey);
   group.glossary = formatVocabularyGlossary(results);
   group.outOfScopeCount = results.filter(item => item.meaning).length;
   group.unknownWordCount = results.filter(item => !item.meaning).length;
@@ -356,7 +368,7 @@ const scheduleGroupVocabularyDetection = group => {
 };
 const editGlossaryManually = group => { group.autoGlossary = false; };
 
-watch(effectiveVocabLessons, () => {
+watch(referenceVocabLessons, () => {
   groups.value.filter(group => group.autoGlossary && group.passage).forEach(detectGroupVocabulary);
 }, { deep: true });
 
@@ -382,8 +394,9 @@ const maskedExample = item => {
 
 const translationSection = computed(() => nonChoice.value.sections.find(section => section.type === 'translation' || section.title === '翻譯填充'));
 const refreshTranslation = () => {
-  if (translationSection.value) translationSection.value.items = buildTranslationFill(translationSection.value.items);
+  if (translationSection.value) translationSection.value.items = buildTranslationFill(translationSection.value.items, questionCounts.value.translationBlankWidth);
 };
+watch(() => questionCounts.value.translationBlankWidth, refreshTranslation);
 const chooseBlank = (item, index) => {
   const selected = new Set(item.blankIndices || []);
   if (selected.has(index)) selected.delete(index);
@@ -401,7 +414,7 @@ const makePastedTranslationItems = (forbidden = new Set()) => {
     seen.add(key);
     return true;
   }).map(item => ({ id: crypto.randomUUID(), ...item, blankIndices: translationMode.value === 'manual' ? [] : chooseTranslationBlanks(item.sourceEn, questionCounts.value.blanksPerSentence, forbidden) }));
-  return buildTranslationFill(items);
+  return buildTranslationFill(items, questionCounts.value.translationBlankWidth);
 };
 const updatePastedTranslation = () => {
   if (!translationSection.value) nonChoice.value.sections.push({ id: crypto.randomUUID(), type: 'translation', title: '翻譯填充', instructions: '', items: [] });
@@ -421,14 +434,14 @@ const makeTranslationItems = (pool, count, blanksPerSentence, forbiddenWords) =>
     const indexes = [target, ...available.filter(token => token !== target)].filter(Boolean).slice(0, blanksPerSentence).map(token => token.tokenIndex);
     return { id: crypto.randomUUID(), sourceEn: word.example_en, sourceZh: word.example_zh || '', blankIndices: indexes.sort((a, b) => a - b) };
   });
-  return buildTranslationFill(items);
+  return buildTranslationFill(items, questionCounts.value.translationBlankWidth);
 };
 
 const generateExam = async () => {
   message.value = '';
   const counts = questionCounts.value;
-  if ([counts.grammar, counts.directVocab, counts.contextVocab, counts.translation, counts.blanksPerSentence].some(value => !Number.isInteger(Number(value)) || Number(value) < 0) || counts.blanksPerSentence < 1) {
-    message.value = '題數必須是非負整數，每句空格數至少為 1。'; return;
+  if ([counts.grammar, counts.directVocab, counts.contextVocab, counts.translation, counts.blanksPerSentence, counts.translationBlankWidth].some(value => !Number.isInteger(Number(value)) || Number(value) < 0) || counts.blanksPerSentence < 1 || counts.translationBlankWidth < 1 || counts.translationBlankWidth > 8) {
+    message.value = '題數必須是非負整數；每句空格數至少為 1，翻譯填空每側底線數需為 1～8。'; return;
   }
   const vocabPool = uniqueVocabulary(allVocabulary.value.filter(item => effectiveVocabLessons.value.includes(lessonKey(item))));
   const contextPool = shuffle(vocabPool.filter(item => item.example_en?.trim()));
@@ -676,11 +689,11 @@ onMounted(async () => {
         <div><div class="scope-heading"><h3>單字與例句</h3><span>已選 {{ selectedVocabCount }} 筆</span></div>
           <div class="vocab-scope-controls"><label><input v-model="vocabScopeMode" type="radio" value="manual">逐課勾選</label><label><input v-model="vocabScopeMode" type="radio" value="cumulative">累積範圍</label>
             <select v-if="vocabScopeMode === 'cumulative'" v-model="cumulativeVocabEnd"><option value="">選擇終點課次</option><option v-for="lesson in vocabLessons" :key="lesson.key" :value="lesson.key">{{ lesson.version }} {{ lesson.volume }} {{ lesson.unit }}</option></select>
-          </div><p v-if="vocabScopeMode === 'cumulative'" class="scope-note">同版本從第一冊第一課累積至指定課；下方可查看納入的課次。</p>
+          </div><p class="scope-note">{{ vocabScopeMode === 'cumulative' ? '出題與閱讀檢測皆從同版本 B1 起累積至指定課。' : '出題依勾選課次；閱讀檢測與參考單字從同版本 B1 起累積至最後選定課。' }}</p>
           <div class="lesson-grid"><label v-for="lesson in vocabLessons" :key="lesson.key" :class="{ selected: effectiveVocabLessons.includes(lesson.key) }"><input v-if="vocabScopeMode === 'manual'" v-model="selectedVocabLessons" type="checkbox" :value="lesson.key"><span><b>{{ lesson.version }} {{ lesson.volume }} {{ lesson.unit }}</b><small>{{ lesson.count }} 個單字</small></span></label></div></div>
         <div><div class="scope-heading"><h3>文法遊樂園題庫</h3><span>已選 {{ selectedGrammarCount }} 題</span></div><div class="lesson-grid"><label v-for="lesson in grammarLessons" :key="lesson.key" :class="{ selected: selectedGrammarLessons.includes(lesson.key) }"><input v-model="selectedGrammarLessons" type="checkbox" :value="lesson.key"><span><b>{{ lesson.version }} {{ lesson.volume }} {{ lesson.unit }}</b><small>{{ lesson.count }} 題</small></span></label></div></div>
       </div>
-      <div class="count-controls"><label>文法選擇題 <input v-model.number="questionCounts.grammar" type="number" min="0"></label><label>中翻英單字題 <input v-model.number="questionCounts.directVocab" type="number" min="0"></label><label>文意字彙題 <input v-model.number="questionCounts.contextVocab" type="number" min="0"></label><label>翻譯填充句數 <input v-model.number="questionCounts.translation" type="number" min="0"></label><label>每句預設空格數 <input v-model.number="questionCounts.blanksPerSentence" type="number" min="1"></label></div>
+      <div class="count-controls"><label>文法選擇題 <input v-model.number="questionCounts.grammar" type="number" min="0"></label><label>中翻英單字題 <input v-model.number="questionCounts.directVocab" type="number" min="0"></label><label>文意字彙題 <input v-model.number="questionCounts.contextVocab" type="number" min="0"></label><label>翻譯填充句數 <input v-model.number="questionCounts.translation" type="number" min="0"></label><label>每句預設空格數 <input v-model.number="questionCounts.blanksPerSentence" type="number" min="1"></label><label>翻譯填空每側底線數 <input v-model.number="questionCounts.translationBlankWidth" type="number" min="1" max="8"></label></div>
       <div class="translation-source"><b>翻譯填充來源</b><label><input v-model="translationMode" type="radio" value="bank">單字例句題庫</label><label><input v-model="translationMode" type="radio" value="auto">貼上文字並自動挖空</label><label><input v-model="translationMode" type="radio" value="manual">貼上文字後親自點字挖空</label><textarea v-if="translationMode !== 'bank'" v-model="translationSourceText" rows="5" placeholder="貼上英文課文或對話；可用 中文｜English 逐行對照"></textarea></div>
       <button class="generate-btn" :disabled="isGenerating || ((questionCounts.directVocab || questionCounts.contextVocab || (translationMode === 'bank' && questionCounts.translation)) && !effectiveVocabLessons.length) || (questionCounts.grammar && !selectedGrammarLessons.length)" @click="generateExam">{{ isGenerating ? '產生中…' : generated ? '🎲 重新抽題' : '🎲 產生段考草稿' }}</button>
     </section>
@@ -725,8 +738,8 @@ onMounted(async () => {
                 <button v-if="group.images?.[index - 1]" type="button" @click="group.images[index - 1] = ''">移除圖片</button>
               </div></div>
             </div>
-            <div class="glossary-heading"><b>單字提示</b><span v-if="group.outOfScopeCount || group.unknownWordCount">範圍外 {{ group.outOfScopeCount }} 個<span v-if="group.unknownWordCount">／題庫外待確認 {{ group.unknownWordCount }} 個</span></span><button type="button" @click="vocabularyReferenceGroup = vocabularyReferenceGroup === group.id ? '' : group.id">{{ vocabularyReferenceGroup === group.id ? '收起' : '查看' }}範圍內全部單字（{{ inScopeVocabulary.length }}）</button><button type="button" @click="detectGroupVocabulary(group)">🔍 重新檢測單字範圍</button></div>
-            <div v-if="vocabularyReferenceGroup === group.id" class="vocabulary-reference"><label>搜尋範圍內單字<input v-model="vocabularyReferenceSearch" placeholder="英文、中文或課次"></label><p>顯示 {{ visibleReferenceVocabulary.length }}／{{ inScopeVocabulary.length }} 筆；依上方所選課次或累積範圍列出。</p><div class="vocabulary-reference-list"><div v-for="item in visibleReferenceVocabulary" :key="`${item.word}-${item.lesson}`"><b>{{ item.word }}</b><span>{{ item.meaning || '（未填中文）' }}</span><small>{{ item.lesson }}</small></div></div></div>
+            <div class="glossary-heading"><b>單字提示</b><span v-if="group.outOfScopeCount || group.unknownWordCount">範圍外 {{ group.outOfScopeCount }} 個<span v-if="group.unknownWordCount">／題庫外待確認 {{ group.unknownWordCount }} 個</span></span><button type="button" @click="vocabularyReferenceGroup = vocabularyReferenceGroup === group.id ? '' : group.id">{{ vocabularyReferenceGroup === group.id ? '收起' : '查看' }} B1 起累積單字（{{ inScopeVocabulary.length }}）</button><button type="button" @click="detectGroupVocabulary(group)">🔍 重新檢測單字範圍</button></div>
+            <div v-if="vocabularyReferenceGroup === group.id" class="vocabulary-reference"><label>搜尋範圍內單字<input v-model="vocabularyReferenceSearch" placeholder="英文、中文、版本、冊或課"></label><p>顯示 {{ visibleReferenceVocabulary.length }}／{{ inScopeVocabulary.length }} 筆；從同版本 B1 起依冊、課排列，直到本次所選的最後一課。</p><p v-if="missingFirstBook.length" class="scope-warning">{{ missingFirstBook.join('、') }} 的 B1 題庫尚未載入，無法列出完整的累積範圍。</p><div class="vocabulary-reference-list"><section v-for="lesson in referenceVocabularyGroups" :key="lesson.key"><h4>{{ lesson.version }} {{ lesson.volume }} {{ lesson.unit }}（{{ lesson.items.length }}）</h4><div class="vocabulary-reference-words"><div v-for="item in lesson.items" :key="item.word"><b>{{ item.word }}</b><span>{{ item.meaning || '（未填中文）' }}</span></div></div></section></div></div>
             <div v-if="group.detectedVocabulary?.length" class="detected-vocabulary"><b>範圍外及題庫外待確認單字／片語：</b><span v-for="item in group.detectedVocabulary" :key="item.normalized">{{ item.word }}{{ item.meaning ? `（${item.meaning}）` : '（題庫外，請人工確認）' }}</span></div>
             <textarea v-model="group.glossary" rows="3" placeholder="自動產生後仍可人工增刪或修改中文" @input="editGlossaryManually(group)"></textarea><small v-if="!group.autoGlossary" class="manual-note">目前為人工編輯模式；按「重新檢測」可恢復自動結果。</small>
             <div v-for="question in group.questions" :key="question.id" class="question-editor"><div class="question-top"><b class="editor-question-number">{{ question.number }}.</b><textarea v-model="question.stem" placeholder="貼上完整題目與四個選項，可自動拆分" @paste="handleQuestionPaste($event, question)"></textarea><select v-model.number="question.answer"><option v-for="(label,index) in labels" :key="label" :value="index">答案 {{ label }}</option></select><button @click="shuffleQuestionChoices(question)">交換選項</button></div><div class="choice-inputs"><label v-for="(_,index) in question.choices" :key="index">{{ labels[index] }}<input v-model="question.choices[index]"></label></div></div>
@@ -739,7 +752,7 @@ onMounted(async () => {
               <div class="translation-source"><b>翻譯填充來源</b><label><input v-model="translationMode" type="radio" value="bank">單字例句題庫</label><label><input v-model="translationMode" type="radio" value="auto">貼上課文／對話，自動挖空</label><label><input v-model="translationMode" type="radio" value="manual">貼上課文／對話，親自點字挖空</label>
                 <template v-if="translationMode !== 'bank'"><textarea v-model="translationSourceText" rows="7" placeholder="每行一句或一段英文；可用 中文｜English 逐行貼上中文與英文"></textarea><button type="button" @click="updatePastedTranslation">從貼上文字建立／重建翻譯題</button></template>
               </div>
-              <p>例句與中文可編輯；點擊英文單字可切換空格，系統會重新編排格號與答案。</p>
+              <p>例句與中文可編輯；點擊英文單字可切換空格，系統會重新編排格號與答案。</p><label class="translation-blank-control">全卷翻譯填空每側底線數（1～8）<input v-model.number="questionCounts.translationBlankWidth" type="number" min="1" max="8"></label>
               <div v-for="(item,index) in section.items" :key="item.id" class="translation-editor"><b>第 {{ index + 1 }} 句</b><label>英文例句<textarea v-model="item.sourceEn" @change="refreshTranslation"></textarea></label><label>中文翻譯<input v-model="item.sourceZh" @change="refreshTranslation"></label><div class="token-list"><button v-for="(token,tokenIndex) in sentenceTokens(item.sourceEn)" :key="tokenIndex" type="button" :class="{ selected: item.blankIndices?.includes(tokenIndex) }" @click="chooseBlank(item,tokenIndex)">{{ token }}</button></div><small>目前 {{ item.blankIndices?.length || 0 }} 格；格號：{{ item.answer }}</small></div>
             </template><div v-else class="written-grid"><div v-for="(item,index) in section.items" :key="item.id"><b>{{ index + 1 }}</b><textarea v-model="item.prompt" placeholder="題目"></textarea><input v-model="item.answer" placeholder="正確答案"></div></div>
           </article>
@@ -756,6 +769,6 @@ onMounted(async () => {
 .passage-editor{border:2px dashed #64748b!important;background:#fff}.glossary-heading{display:flex;align-items:center;gap:10px}.glossary-heading>span{margin-left:auto;color:#b45309;font-weight:800}.glossary-heading button{padding:7px 10px;border:1px solid #2563eb;border-radius:7px;background:#eff6ff;color:#1d4ed8;font-weight:800;cursor:pointer}.manual-note{color:#b45309}.editor-question-number{display:grid;place-items:center;min-height:42px;border-radius:7px;background:#1e3a8a;color:#fff;font-size:1.08rem}@media(max-width:650px){.glossary-heading{align-items:stretch;flex-direction:column}.glossary-heading>span{margin-left:0}}
 .reading-image-slots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:8px}.reading-image-editor> b{color:#1e3a8a}@media(max-width:650px){.reading-image-slots{grid-template-columns:1fr}}
 .vocab-scope-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px}.vocab-scope-controls label{display:flex;align-items:center;gap:4px;font-weight:700}.vocab-scope-controls select{max-width:100%;padding:7px;border:1px solid #94a3b8;border-radius:6px}.scope-note{margin:6px 0;color:#475569;font-size:.85rem}
-.leak-panel{border-color:#86efac;background:#f0fdf4}.leak-panel.has-leaks{border-color:#fca5a5;background:#fff1f2}.leak-panel h2{color:#166534}.leak-panel.has-leaks h2{color:#b91c1c}.leak-panel p{margin:5px 0}.leak-panel ul{max-height:220px;overflow:auto;margin:8px 0;padding-left:22px}.leak-panel li{margin:5px 0}.vocabulary-reference{padding:10px;border:1px solid #93c5fd;border-radius:8px;background:#eff6ff}.vocabulary-reference label{display:flex;align-items:center;gap:8px;font-weight:700}.vocabulary-reference input{width:min(360px,100%);padding:7px;border:1px solid #94a3b8;border-radius:6px}.vocabulary-reference p{margin:6px 0;font-size:.85rem}.vocabulary-reference-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:3px 12px;max-height:300px;overflow:auto}.vocabulary-reference-list>div{display:grid;grid-template-columns:1fr 1fr;gap:4px;border-bottom:1px solid #bfdbfe;padding:4px}.vocabulary-reference-list small{grid-column:1/-1;color:#64748b}.detected-vocabulary{display:flex;gap:6px;flex-wrap:wrap}.detected-vocabulary>b{width:100%}.detected-vocabulary span{padding:3px 6px;border-radius:4px;background:#fef3c7;color:#92400e}
+.leak-panel{border-color:#86efac;background:#f0fdf4}.leak-panel.has-leaks{border-color:#fca5a5;background:#fff1f2}.leak-panel h2{color:#166534}.leak-panel.has-leaks h2{color:#b91c1c}.leak-panel p{margin:5px 0}.leak-panel ul{max-height:220px;overflow:auto;margin:8px 0;padding-left:22px}.leak-panel li{margin:5px 0}.vocabulary-reference{padding:10px;border:1px solid #93c5fd;border-radius:8px;background:#eff6ff}.vocabulary-reference label{display:flex;align-items:center;gap:8px;font-weight:700}.vocabulary-reference input{width:min(360px,100%);padding:7px;border:1px solid #94a3b8;border-radius:6px}.vocabulary-reference p{margin:6px 0;font-size:.85rem}.vocabulary-reference .scope-warning{color:#b91c1c;font-weight:800}.vocabulary-reference-list{max-height:300px;overflow:auto}.vocabulary-reference-list section{margin:8px 0}.vocabulary-reference-list h4{position:sticky;top:0;margin:0;padding:5px 8px;background:#dbeafe;color:#1e3a8a}.vocabulary-reference-words{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:3px 12px}.vocabulary-reference-words>div{display:grid;grid-template-columns:1fr 1fr;gap:4px;border-bottom:1px solid #bfdbfe;padding:4px}.translation-blank-control{display:flex;align-items:center;gap:8px;font-weight:800}.translation-blank-control input{width:70px;padding:6px}.detected-vocabulary{display:flex;gap:6px;flex-wrap:wrap}.detected-vocabulary>b{width:100%}.detected-vocabulary span{padding:3px 6px;border-radius:4px;background:#fef3c7;color:#92400e}
 .preset-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%}.preset-controls label{display:flex;align-items:center;gap:6px}.danger-button{color:#b91c1c!important;border:1px solid #b91c1c!important;background:#fff!important}.score-section{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.score-section>label+span{margin-left:0}.translation-source{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px;background:#eff6ff}.translation-source textarea{width:100%;padding:8px}.translation-source label{display:flex;align-items:center;gap:4px}
 </style>
