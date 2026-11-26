@@ -36,7 +36,7 @@ const answerPages = computed(() => {
   const pages = [];
   let current = { sections: [], usedHeight: 0, showFooter: false };
   const flush = () => { if (current.sections.length) pages.push(current); current = { sections: [], usedHeight: 0, showFooter: false }; };
-  const maxHeight = props.blankMode ? 225 : 180;
+  const maxHeight = props.blankMode ? 195 : 180;
   sections.forEach(section => {
     let offset = 0;
     while (offset < section.entries.length) {
@@ -52,6 +52,7 @@ const answerPages = computed(() => {
   flush();
   if (!pages.length) pages.push(current);
   pages.at(-1).showFooter = !props.blankMode;
+  pages.at(-1).showScoreBoxes = props.blankMode;
   return pages;
 });
 
@@ -172,6 +173,7 @@ defineExpose({ getPages: () => [...root.value.querySelectorAll('.regular-exam-pa
           <section v-for="section in page.sections" :key="section.id + section.entries[0]?.number" class="answer-section"><h3>{{ section.title }}{{ section.continued ? '（續）' : '' }}（{{ data.sectionPoints?.[section.id] || 0 }} 分）</h3><div class="answer-cells" :style="{ '--answer-columns': answerColumns }"><div v-for="(item,index) in section.entries" :key="index" class="answer-cell"><small>{{ item.number }}</small><span>{{ blankMode ? '' : item.answer }}</span></div></div></section>
         </div>
         <template v-if="page.showFooter"><h2 class="answer-part-title">第一部分：選擇題 {{ data.preset.choicePercent }}%</h2><div class="choice-answer-lines"><div v-for="question in choiceQuestions" :key="question.id || question.number"><b>{{ question.number }}.</b><span>{{ labels[question.answer] || '＿＿' }}</span></div></div></template>
+        <div v-if="page.showScoreBoxes" class="score-boxes"><div>非選擇題分數</div><div>選擇題分數</div><div>總分</div></div>
       </article>
     </template>
   </div>
