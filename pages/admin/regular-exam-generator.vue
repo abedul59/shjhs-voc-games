@@ -1,7 +1,8 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { parseRegularExamQuestion } from '~/lib/regular-exam-question-parser';
-import { detectOutOfScopeVocabulary, formatVocabularyGlossary } from '~/lib/regular-exam-vocabulary';
+import { detectOutOfScopeVocabulary, formatVocabularyGlossary, listInScopeVocabulary } from '~/lib/regular-exam-vocabulary';
+import { findRegularExamAnswerLeaks } from '~/lib/regular-exam-answer-leaks';
 import { sentenceTokens, buildTranslationFill, chooseTranslationBlanks, splitTranslationText } from '~/lib/regular-exam-translation';
 import { groupTitle, writtenTitle, scoreSlots, sectionOrdinal } from '~/lib/regular-exam-sections';
 import { lessonKey, sortLessons, cumulativeLessonKeys } from '~/lib/regular-exam-scope';
@@ -33,6 +34,8 @@ const generated = ref(false);
 const message = ref('');
 const previewMode = ref('question');
 const editorTab = ref('listening');
+const vocabularyReferenceGroup = ref('');
+const vocabularyReferenceSearch = ref('');
 const questionPreview = ref(null);
 const answerPreview = ref(null);
 const blankPreview = ref(null);
@@ -253,6 +256,12 @@ const examData = computed(() => ({
   metadata: metadata.value, preset: { ...preset.value, ...scoring.value }, listening: listening.value,
   grammarQuestions: grammarQuestions.value, groups: groups.value, nonChoice: nonChoice.value, sectionPoints: sectionPoints.value
 }));
+const answerLeaks = computed(() => generated.value ? findRegularExamAnswerLeaks(examData.value) : []);
+const inScopeVocabulary = computed(() => listInScopeVocabulary(allVocabulary.value, effectiveVocabLessons.value, lessonKey));
+const visibleReferenceVocabulary = computed(() => {
+  const query = vocabularyReferenceSearch.value.trim().toLocaleLowerCase();
+  return query ? inScopeVocabulary.value.filter(item => `${item.word} ${item.meaning} ${item.lesson}`.toLocaleLowerCase().includes(query)) : inScopeVocabulary.value;
+});
 
 const makeChoices = count => Array.from({ length: count }, () => '');
 const makeQuestion = (number = 0, choiceCount = 4) => ({ id: crypto.randomUUID(), number, stem: '', choices: makeChoices(choiceCount), answer: 0 });
@@ -332,12 +341,13 @@ const glossaryTimers = new Map();
 const detectGroupVocabulary = group => {
   const results = detectOutOfScopeVocabulary(group.passage, allVocabulary.value, effectiveVocabLessons.value, lessonKey);
   group.glossary = formatVocabularyGlossary(results);
-  group.outOfScopeCount = results.length;
-  group.unknownWordCount = results.filter(item => !item.foundInDictionary).length;
+  group.outOfScopeCount = results.filter(item => item.meaning).length;
+  group.unknownWordCount = results.filter(item => !item.meaning).length;
+  group.detectedVocabulary = results;
   group.autoGlossary = true;
   message.value = results.length
-    ? `「${group.title}」偵測到 ${results.length} 個範圍外單字，已填入單字提示${group.unknownWordCount ? `；其中 ${group.unknownWordCount} 個不在單字庫，請補上中文` : ''}。`
-    : `「${group.title}」未偵測到範圍外單字。`;
+    ? `「${group.title}」找到 ${group.outOfScopeCount} 個範圍外單字，已填入單字提示${group.unknownWordCount ? `；另有 ${group.unknownWordCount} 個題庫外單字待人工確認，未自動放入考卷` : ''}。`
+    : `「${group.title}」未找到範圍外單字。`;
 };
 const scheduleGroupVocabularyDetection = group => {
   if (!group.autoGlossary) return;
@@ -586,6 +596,7 @@ const handleGroupImagePaste = async (event, group, index) => {
 };
 
 const exportWord = async mode => {
+  if (answerLeaks.value.length && !window.confirm(`發現 ${answerLeaks.value.length} 處非選擇題答案出現在題目卷中。請先檢查下方「答案洩漏檢查」。仍要輸出嗎？`)) return;
   exporting.value = `${mode}-word`;
   try {
     const { downloadRegularExamWord } = await import('~/lib/regular-exam-export.client');
@@ -594,6 +605,7 @@ const exportWord = async mode => {
   finally { exporting.value = ''; }
 };
 const exportPdf = async mode => {
+  if (answerLeaks.value.length && !window.confirm(`發現 ${answerLeaks.value.length} 處非選擇題答案出現在題目卷中。請先檢查下方「答案洩漏檢查」。仍要輸出嗎？`)) return;
   exporting.value = `${mode}-pdf`;
   const previous = previewMode.value;
   try {
@@ -606,12 +618,23 @@ const exportPdf = async mode => {
   finally { previewMode.value = previous; exporting.value = ''; }
 };
 
+const loadAllQuestionBankRows = async (table, columns) => {
+  const rows = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase.from(table).select(columns).order('id').range(offset, offset + pageSize - 1);
+    if (error) return { data: rows, error };
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) return { data: rows, error: null };
+  }
+};
+
 onMounted(async () => {
   try { localDraftCount.value = JSON.parse(localStorage.getItem(draftStorageKey) || '[]').length; } catch { localDraftCount.value = 0; }
   resetBlueprint();
   const [vocabResult, grammarResult] = await Promise.all([
-    supabase.from('vocabularies').select('id,version,volume,unit,en_us,zh_tw,example_en,example_zh').order('id').limit(10000),
-    supabase.from('grammar_questions').select('id,version,volume,unit,question_text,option_1,option_2,option_3,option_4,answer').order('id').limit(10000)
+    loadAllQuestionBankRows('vocabularies', 'id,version,volume,unit,en_us,zh_tw,example_en,example_zh'),
+    loadAllQuestionBankRows('grammar_questions', 'id,version,volume,unit,question_text,option_1,option_2,option_3,option_4,answer')
   ]);
   if (vocabResult.error || grammarResult.error) message.value = `題庫讀取失敗：${vocabResult.error?.message || grammarResult.error?.message}`;
   allVocabulary.value = vocabResult.data || [];
@@ -674,6 +697,8 @@ onMounted(async () => {
 
       <section class="preview-panel"><div class="preview-scroll"><AdminRegularExamSheet v-show="previewMode === 'question'" ref="questionPreview" :data="examData" /><AdminRegularExamSheet v-show="previewMode === 'answer'" ref="answerPreview" :data="examData" answer-mode /><AdminRegularExamSheet v-show="previewMode === 'blank'" ref="blankPreview" :data="examData" blank-mode /></div></section>
 
+      <section class="panel leak-panel" :class="{ 'has-leaks': answerLeaks.length }"><h2>非選擇題答案洩漏檢查</h2><p v-if="!answerLeaks.length">目前未發現非選擇題的正確答案直接出現在題目卷文字中。</p><template v-else><p>發現 {{ answerLeaks.length }} 處可能洩漏，請逐項核對文章、題幹、選項與單字提示。此檢查只比對文字，圖片及同義改寫仍需人工確認。</p><ul><li v-for="(leak,index) in answerLeaks.slice(0, 50)" :key="`${leak.item}-${leak.location}-${index}`"><b>{{ leak.item }}</b> 的答案「{{ leak.answer }}」出現在 {{ leak.location }}</li></ul><p v-if="answerLeaks.length > 50">另有 {{ answerLeaks.length - 50 }} 處；請先修正以上內容再檢查。</p></template></section>
+
       <section class="panel editor-panel">
         <h2>四、編輯全部考卷內容</h2>
         <div class="editor-tabs"><button v-for="tab in [{id:'listening',name:'🎧 聽力'},{id:'grammar',name:'🎡 文法'},{id:'groups',name:'📖 閱讀／克漏字'},{id:'written',name:'✍️ 非選擇題'}]" :key="tab.id" :class="{ active: editorTab === tab.id }" @click="editorTab = tab.id">{{ tab.name }}</button></div>
@@ -700,7 +725,9 @@ onMounted(async () => {
                 <button v-if="group.images?.[index - 1]" type="button" @click="group.images[index - 1] = ''">移除圖片</button>
               </div></div>
             </div>
-            <div class="glossary-heading"><b>單字提示</b><span v-if="group.outOfScopeCount">範圍外 {{ group.outOfScopeCount }} 個<span v-if="group.unknownWordCount">／待補中文 {{ group.unknownWordCount }} 個</span></span><button type="button" @click="detectGroupVocabulary(group)">🔍 重新檢測單字範圍</button></div>
+            <div class="glossary-heading"><b>單字提示</b><span v-if="group.outOfScopeCount || group.unknownWordCount">範圍外 {{ group.outOfScopeCount }} 個<span v-if="group.unknownWordCount">／題庫外待確認 {{ group.unknownWordCount }} 個</span></span><button type="button" @click="vocabularyReferenceGroup = vocabularyReferenceGroup === group.id ? '' : group.id">{{ vocabularyReferenceGroup === group.id ? '收起' : '查看' }}範圍內全部單字（{{ inScopeVocabulary.length }}）</button><button type="button" @click="detectGroupVocabulary(group)">🔍 重新檢測單字範圍</button></div>
+            <div v-if="vocabularyReferenceGroup === group.id" class="vocabulary-reference"><label>搜尋範圍內單字<input v-model="vocabularyReferenceSearch" placeholder="英文、中文或課次"></label><p>顯示 {{ visibleReferenceVocabulary.length }}／{{ inScopeVocabulary.length }} 筆；依上方所選課次或累積範圍列出。</p><div class="vocabulary-reference-list"><div v-for="item in visibleReferenceVocabulary" :key="`${item.word}-${item.lesson}`"><b>{{ item.word }}</b><span>{{ item.meaning || '（未填中文）' }}</span><small>{{ item.lesson }}</small></div></div></div>
+            <div v-if="group.detectedVocabulary?.length" class="detected-vocabulary"><b>範圍外及題庫外待確認單字／片語：</b><span v-for="item in group.detectedVocabulary" :key="item.normalized">{{ item.word }}{{ item.meaning ? `（${item.meaning}）` : '（題庫外，請人工確認）' }}</span></div>
             <textarea v-model="group.glossary" rows="3" placeholder="自動產生後仍可人工增刪或修改中文" @input="editGlossaryManually(group)"></textarea><small v-if="!group.autoGlossary" class="manual-note">目前為人工編輯模式；按「重新檢測」可恢復自動結果。</small>
             <div v-for="question in group.questions" :key="question.id" class="question-editor"><div class="question-top"><b class="editor-question-number">{{ question.number }}.</b><textarea v-model="question.stem" placeholder="貼上完整題目與四個選項，可自動拆分" @paste="handleQuestionPaste($event, question)"></textarea><select v-model.number="question.answer"><option v-for="(label,index) in labels" :key="label" :value="index">答案 {{ label }}</option></select><button @click="shuffleQuestionChoices(question)">交換選項</button></div><div class="choice-inputs"><label v-for="(_,index) in question.choices" :key="index">{{ labels[index] }}<input v-model="question.choices[index]"></label></div></div>
           </article>
@@ -729,5 +756,6 @@ onMounted(async () => {
 .passage-editor{border:2px dashed #64748b!important;background:#fff}.glossary-heading{display:flex;align-items:center;gap:10px}.glossary-heading>span{margin-left:auto;color:#b45309;font-weight:800}.glossary-heading button{padding:7px 10px;border:1px solid #2563eb;border-radius:7px;background:#eff6ff;color:#1d4ed8;font-weight:800;cursor:pointer}.manual-note{color:#b45309}.editor-question-number{display:grid;place-items:center;min-height:42px;border-radius:7px;background:#1e3a8a;color:#fff;font-size:1.08rem}@media(max-width:650px){.glossary-heading{align-items:stretch;flex-direction:column}.glossary-heading>span{margin-left:0}}
 .reading-image-slots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:8px}.reading-image-editor> b{color:#1e3a8a}@media(max-width:650px){.reading-image-slots{grid-template-columns:1fr}}
 .vocab-scope-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px}.vocab-scope-controls label{display:flex;align-items:center;gap:4px;font-weight:700}.vocab-scope-controls select{max-width:100%;padding:7px;border:1px solid #94a3b8;border-radius:6px}.scope-note{margin:6px 0;color:#475569;font-size:.85rem}
+.leak-panel{border-color:#86efac;background:#f0fdf4}.leak-panel.has-leaks{border-color:#fca5a5;background:#fff1f2}.leak-panel h2{color:#166534}.leak-panel.has-leaks h2{color:#b91c1c}.leak-panel p{margin:5px 0}.leak-panel ul{max-height:220px;overflow:auto;margin:8px 0;padding-left:22px}.leak-panel li{margin:5px 0}.vocabulary-reference{padding:10px;border:1px solid #93c5fd;border-radius:8px;background:#eff6ff}.vocabulary-reference label{display:flex;align-items:center;gap:8px;font-weight:700}.vocabulary-reference input{width:min(360px,100%);padding:7px;border:1px solid #94a3b8;border-radius:6px}.vocabulary-reference p{margin:6px 0;font-size:.85rem}.vocabulary-reference-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:3px 12px;max-height:300px;overflow:auto}.vocabulary-reference-list>div{display:grid;grid-template-columns:1fr 1fr;gap:4px;border-bottom:1px solid #bfdbfe;padding:4px}.vocabulary-reference-list small{grid-column:1/-1;color:#64748b}.detected-vocabulary{display:flex;gap:6px;flex-wrap:wrap}.detected-vocabulary>b{width:100%}.detected-vocabulary span{padding:3px 6px;border-radius:4px;background:#fef3c7;color:#92400e}
 .preset-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%}.preset-controls label{display:flex;align-items:center;gap:6px}.danger-button{color:#b91c1c!important;border:1px solid #b91c1c!important;background:#fff!important}.score-section{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.score-section>label+span{margin-left:0}.translation-source{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px;background:#eff6ff}.translation-source textarea{width:100%;padding:8px}.translation-source label{display:flex;align-items:center;gap:4px}
 </style>
