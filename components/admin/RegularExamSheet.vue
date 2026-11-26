@@ -27,32 +27,33 @@ const answerEntries = section => {
   return section.items.map((item, index) => ({ number: index + 1, answer: item.answer }));
 };
 const answerColumns = computed(() => props.data.metadata.grade === '7' ? 6 : 5);
+const answerCellHeight = 11;
 const answerPages = computed(() => {
   const sections = [
     { id: 'vocabulary', title: writtenTitle('單字與文意字彙', props.data.groups.length, 0), entries: props.data.nonChoice.vocabulary.map((item, index) => ({ number: index + 1, answer: item.answer })) },
     ...props.data.nonChoice.sections.map((section, index) => ({ id: section.id, title: writtenTitle(section.title, props.data.groups.length, index + 1), entries: answerEntries(section) }))
   ];
   const pages = [];
-  let current = { sections: [], rows: 0, showFooter: false };
-  const flush = () => { if (current.sections.length) pages.push(current); current = { sections: [], rows: 0, showFooter: false }; };
-  const maxRows = 12;
+  let current = { sections: [], usedHeight: 0, showFooter: false };
+  const flush = () => { if (current.sections.length) pages.push(current); current = { sections: [], usedHeight: 0, showFooter: false }; };
+  const maxHeight = props.blankMode ? 225 : 180;
   sections.forEach(section => {
     let offset = 0;
     while (offset < section.entries.length) {
-      if (current.rows >= maxRows) flush();
-      const available = (maxRows - current.rows) * answerColumns.value;
+      const availableRows = Math.floor((maxHeight - current.usedHeight - 7) / answerCellHeight);
+      if (availableRows < 1) { flush(); continue; }
+      const available = availableRows * answerColumns.value;
       const entries = section.entries.slice(offset, offset + available);
       current.sections.push({ ...section, entries, continued: offset > 0 });
-      current.rows += Math.ceil(entries.length / answerColumns.value);
+      current.usedHeight += 7 + Math.ceil(entries.length / answerColumns.value) * answerCellHeight;
       offset += entries.length;
     }
   });
   flush();
   if (!pages.length) pages.push(current);
-  pages.at(-1).showFooter = true;
+  pages.at(-1).showFooter = !props.blankMode;
   return pages;
 });
-const answerCellHeight = 11;
 
 const textLines = (value, width = 48) => String(value || '').split('\n').reduce((total, line) => total + Math.max(1, Math.ceil(line.length / width)), 0);
 const questionSize = question => 2 + textLines(question.stem, 50) + textLines(question.choices.join('　'), 58);
@@ -170,8 +171,7 @@ defineExpose({ getPages: () => [...root.value.querySelectorAll('.regular-exam-pa
         <div class="written-answer-flow">
           <section v-for="section in page.sections" :key="section.id + section.entries[0]?.number" class="answer-section"><h3>{{ section.title }}{{ section.continued ? '（續）' : '' }}（{{ data.sectionPoints?.[section.id] || 0 }} 分）</h3><div class="answer-cells" :style="{ '--answer-columns': answerColumns }"><div v-for="(item,index) in section.entries" :key="index" class="answer-cell"><small>{{ item.number }}</small><span>{{ blankMode ? '' : item.answer }}</span></div></div></section>
         </div>
-        <template v-if="page.showFooter"><h2 class="answer-part-title">第一部分：選擇題 {{ data.preset.choicePercent }}%</h2><div class="choice-answer-lines"><div v-for="question in choiceQuestions" :key="question.id || question.number"><b>{{ question.number }}.</b><span>{{ blankMode ? '＿＿' : (labels[question.answer] || '＿＿') }}</span></div></div></template>
-        <div v-if="blankMode && page.showFooter" class="score-boxes"><div>選擇題分數<br><br></div><div>非選擇題分數<br><br></div><div>總分<br><br></div></div>
+        <template v-if="page.showFooter"><h2 class="answer-part-title">第一部分：選擇題 {{ data.preset.choicePercent }}%</h2><div class="choice-answer-lines"><div v-for="question in choiceQuestions" :key="question.id || question.number"><b>{{ question.number }}.</b><span>{{ labels[question.answer] || '＿＿' }}</span></div></div></template>
       </article>
     </template>
   </div>
