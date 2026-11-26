@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { parseRegularExamQuestion } from '~/lib/regular-exam-question-parser';
-import { detectOutOfScopeVocabulary, formatVocabularyGlossary, listInScopeVocabulary } from '~/lib/regular-exam-vocabulary';
+import { detectOutOfScopeVocabulary, formatVocabularyGlossary, listInScopeVocabulary, lookupVocabularyMeaning } from '~/lib/regular-exam-vocabulary';
 import { findRegularExamAnswerLeaks } from '~/lib/regular-exam-answer-leaks';
 import { sentenceTokens, buildTranslationFill, chooseTranslationBlanks, splitTranslationText } from '~/lib/regular-exam-translation';
 import { groupTitle, writtenTitle, scoreSlots, sectionOrdinal } from '~/lib/regular-exam-sections';
@@ -36,6 +36,8 @@ const previewMode = ref('question');
 const editorTab = ref('listening');
 const vocabularyReferenceGroup = ref('');
 const vocabularyReferenceSearch = ref('');
+const manualGlossaryInput = ref({});
+const addingGlossaryWord = ref('');
 const questionPreview = ref(null);
 const answerPreview = ref(null);
 const blankPreview = ref(null);
@@ -352,7 +354,9 @@ const handleQuestionPaste = (event, question) => {
 const glossaryTimers = new Map();
 const detectGroupVocabulary = group => {
   const results = detectOutOfScopeVocabulary(group.passage, allVocabulary.value, referenceVocabLessons.value, lessonKey);
-  group.glossary = formatVocabularyGlossary(results);
+  const manual = group.manualGlossaryEntries || [];
+  const manualKeys = new Set(manual.map(item => item.word.trim().toLocaleLowerCase()));
+  group.glossary = [formatVocabularyGlossary(results.filter(item => !manualKeys.has(item.word.trim().toLocaleLowerCase()))), ...manual.map(item => `${item.word} ${item.meaning}`)].filter(Boolean).join('　');
   group.outOfScopeCount = results.filter(item => item.meaning).length;
   group.unknownWordCount = results.filter(item => !item.meaning).length;
   group.detectedVocabulary = results;
@@ -367,6 +371,30 @@ const scheduleGroupVocabularyDetection = group => {
   glossaryTimers.set(group.id, window.setTimeout(() => detectGroupVocabulary(group), 350));
 };
 const editGlossaryManually = group => { group.autoGlossary = false; };
+const addManualGlossaryWord = async group => {
+  const word = String(manualGlossaryInput.value[group.id] || '').trim();
+  if (!/^[A-Za-z][A-Za-z '\-’]*$/.test(word)) { message.value = '請輸入英文單字或片語。'; return; }
+  const existing = (group.manualGlossaryEntries || []).some(item => item.word.toLocaleLowerCase() === word.toLocaleLowerCase());
+  if (existing) { message.value = `「${word}」已在手動單字提示中。`; return; }
+  addingGlossaryWord.value = group.id;
+  try {
+    let meaning = lookupVocabularyMeaning(word, allVocabulary.value);
+    let translated = false;
+    if (!meaning) {
+      const response = await $fetch('/api/translate', { method: 'POST', body: { text: word } });
+      meaning = String(response.translation || '').trim();
+      translated = true;
+    }
+    if (!meaning) throw new Error('找不到中文釋義');
+    group.manualGlossaryEntries ||= [];
+    group.manualGlossaryEntries.push({ word, meaning });
+    if (group.autoGlossary) detectGroupVocabulary(group);
+    else group.glossary = [group.glossary.trim(), `${word} ${meaning}`].filter(Boolean).join('　');
+    manualGlossaryInput.value[group.id] = '';
+    message.value = `已加入「${word} ${meaning}」${translated ? '（自動翻譯，請核對中文）' : '（來自單字題庫）'}。`;
+  } catch (error) { message.value = `「${word}」中文查詢失敗：${error.message}；請在下方單字提示欄自行填寫。`; }
+  finally { addingGlossaryWord.value = ''; }
+};
 
 watch(referenceVocabLessons, () => {
   groups.value.filter(group => group.autoGlossary && group.passage).forEach(detectGroupVocabulary);
@@ -729,7 +757,7 @@ onMounted(async () => {
           <p>題組會依內容長度自動流入下一欄或下一頁；每一小題不會被拆開。文章／對話會以虛線框區隔。貼上文章後，系統會依上方所選課次自動找出範圍外單字，並從完整單字庫帶入中文。</p>
           <article v-for="group in groups" :key="group.id" class="group-editor">
             <div class="group-layout-row"><input v-model="group.title" class="group-title"><label><input v-model="group.startNewPage" type="checkbox"> 此題組前強制換頁</label></div>
-            <label>文章／對話<textarea v-model="group.passage" class="passage-editor" rows="10" placeholder="貼上閱讀文章或對話後，將自動檢測範圍外單字" @input="scheduleGroupVocabularyDetection(group)"></textarea></label>
+            <label>文章／對話<textarea v-model="group.passage" class="passage-editor" rows="10" placeholder="貼上閱讀文章或對話；段落之間空一行，預覽與匯出會在每段首行縮排" @input="scheduleGroupVocabularyDetection(group)"></textarea></label><small>段落間空一行；同一段內換行會保留。每段第一行在題目卷預覽、Word 與 PDF 中縮排。</small>
             <div class="reading-image-editor">
               <b>閱讀圖片（最多兩張）</b>
               <div class="reading-image-slots"><div v-for="index in 2" :key="index" class="image-upload" tabindex="0" @click="focusImageSlot" @paste="handleGroupImagePaste($event, group, index - 1)">
@@ -741,6 +769,7 @@ onMounted(async () => {
             <div class="glossary-heading"><b>單字提示</b><span v-if="group.outOfScopeCount || group.unknownWordCount">範圍外 {{ group.outOfScopeCount }} 個<span v-if="group.unknownWordCount">／題庫外待確認 {{ group.unknownWordCount }} 個</span></span><button type="button" @click="vocabularyReferenceGroup = vocabularyReferenceGroup === group.id ? '' : group.id">{{ vocabularyReferenceGroup === group.id ? '收起' : '查看' }} B1 起累積單字（{{ inScopeVocabulary.length }}）</button><button type="button" @click="detectGroupVocabulary(group)">🔍 重新檢測單字範圍</button></div>
             <div v-if="vocabularyReferenceGroup === group.id" class="vocabulary-reference"><label>搜尋範圍內單字<input v-model="vocabularyReferenceSearch" placeholder="英文、中文、版本、冊或課"></label><p>顯示 {{ visibleReferenceVocabulary.length }}／{{ inScopeVocabulary.length }} 筆；從同版本 B1 起依冊、課排列，直到本次所選的最後一課。</p><p v-if="missingFirstBook.length" class="scope-warning">{{ missingFirstBook.join('、') }} 的 B1 題庫尚未載入，無法列出完整的累積範圍。</p><div class="vocabulary-reference-list"><section v-for="lesson in referenceVocabularyGroups" :key="lesson.key"><h4>{{ lesson.version }} {{ lesson.volume }} {{ lesson.unit }}（{{ lesson.items.length }}）</h4><div class="vocabulary-reference-words"><div v-for="item in lesson.items" :key="item.word"><b>{{ item.word }}</b><span>{{ item.meaning || '（未填中文）' }}</span></div></div></section></div></div>
             <div v-if="group.detectedVocabulary?.length" class="detected-vocabulary"><b>範圍外及題庫外待確認單字／片語：</b><span v-for="item in group.detectedVocabulary" :key="item.normalized">{{ item.word }}{{ item.meaning ? `（${item.meaning}）` : '（題庫外，請人工確認）' }}</span></div>
+            <div class="manual-glossary-control"><label>手動加入單字提示<input v-model="manualGlossaryInput[group.id]" placeholder="輸入英文單字或片語" @keyup.enter="addManualGlossaryWord(group)"></label><button type="button" :disabled="addingGlossaryWord === group.id" @click="addManualGlossaryWord(group)">{{ addingGlossaryWord === group.id ? '查詢中文中…' : '查中文並加入' }}</button><small>先查單字題庫；查不到時自動翻譯，加入後可在下方修改中文。</small></div>
             <textarea v-model="group.glossary" rows="3" placeholder="自動產生後仍可人工增刪或修改中文" @input="editGlossaryManually(group)"></textarea><small v-if="!group.autoGlossary" class="manual-note">目前為人工編輯模式；按「重新檢測」可恢復自動結果。</small>
             <div v-for="question in group.questions" :key="question.id" class="question-editor"><div class="question-top"><b class="editor-question-number">{{ question.number }}.</b><textarea v-model="question.stem" placeholder="貼上完整題目與四個選項，可自動拆分" @paste="handleQuestionPaste($event, question)"></textarea><select v-model.number="question.answer"><option v-for="(label,index) in labels" :key="label" :value="index">答案 {{ label }}</option></select><button @click="shuffleQuestionChoices(question)">交換選項</button></div><div class="choice-inputs"><label v-for="(_,index) in question.choices" :key="index">{{ labels[index] }}<input v-model="question.choices[index]"></label></div></div>
           </article>
@@ -770,5 +799,6 @@ onMounted(async () => {
 .reading-image-slots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:8px}.reading-image-editor> b{color:#1e3a8a}@media(max-width:650px){.reading-image-slots{grid-template-columns:1fr}}
 .vocab-scope-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px}.vocab-scope-controls label{display:flex;align-items:center;gap:4px;font-weight:700}.vocab-scope-controls select{max-width:100%;padding:7px;border:1px solid #94a3b8;border-radius:6px}.scope-note{margin:6px 0;color:#475569;font-size:.85rem}
 .leak-panel{border-color:#86efac;background:#f0fdf4}.leak-panel.has-leaks{border-color:#fca5a5;background:#fff1f2}.leak-panel h2{color:#166534}.leak-panel.has-leaks h2{color:#b91c1c}.leak-panel p{margin:5px 0}.leak-panel ul{max-height:220px;overflow:auto;margin:8px 0;padding-left:22px}.leak-panel li{margin:5px 0}.vocabulary-reference{padding:10px;border:1px solid #93c5fd;border-radius:8px;background:#eff6ff}.vocabulary-reference label{display:flex;align-items:center;gap:8px;font-weight:700}.vocabulary-reference input{width:min(360px,100%);padding:7px;border:1px solid #94a3b8;border-radius:6px}.vocabulary-reference p{margin:6px 0;font-size:.85rem}.vocabulary-reference .scope-warning{color:#b91c1c;font-weight:800}.vocabulary-reference-list{max-height:300px;overflow:auto}.vocabulary-reference-list section{margin:8px 0}.vocabulary-reference-list h4{position:sticky;top:0;margin:0;padding:5px 8px;background:#dbeafe;color:#1e3a8a}.vocabulary-reference-words{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:3px 12px}.vocabulary-reference-words>div{display:grid;grid-template-columns:1fr 1fr;gap:4px;border-bottom:1px solid #bfdbfe;padding:4px}.translation-blank-control{display:flex;align-items:center;gap:8px;font-weight:800}.translation-blank-control input{width:70px;padding:6px}.detected-vocabulary{display:flex;gap:6px;flex-wrap:wrap}.detected-vocabulary>b{width:100%}.detected-vocabulary span{padding:3px 6px;border-radius:4px;background:#fef3c7;color:#92400e}
+.manual-glossary-control{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc}.manual-glossary-control label{display:flex;align-items:center;gap:8px;font-weight:800}.manual-glossary-control input{min-width:200px;padding:7px;border:1px solid #94a3b8;border-radius:6px}.manual-glossary-control button{padding:8px 11px;border:1px solid #2563eb;border-radius:6px;background:#eff6ff;color:#1d4ed8;font-weight:800;cursor:pointer}.manual-glossary-control button:disabled{opacity:.55}.manual-glossary-control small{width:100%;color:#64748b}
 .preset-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%}.preset-controls label{display:flex;align-items:center;gap:6px}.danger-button{color:#b91c1c!important;border:1px solid #b91c1c!important;background:#fff!important}.score-section{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.score-section>label+span{margin-left:0}.translation-source{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px;background:#eff6ff}.translation-source textarea{width:100%;padding:8px}.translation-source label{display:flex;align-items:center;gap:4px}
 </style>

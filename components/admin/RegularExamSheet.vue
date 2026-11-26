@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { groupTitle, writtenTitle } from '~/lib/regular-exam-sections';
+import { passageParagraphs } from '~/lib/regular-exam-passage';
 
 const props = defineProps({ data: { type: Object, required: true }, answerMode: Boolean, blankMode: Boolean });
 const root = ref(null);
@@ -135,7 +136,7 @@ defineExpose({ getPages: () => [...root.value.querySelectorAll('.regular-exam-pa
         <div class="flow-columns">
           <section v-for="group in page" :key="group.id" class="flow-group">
             <h2>{{ groupTitle(group, data.groups.findIndex(item => group.id.startsWith(item.id))) }}（{{ data.sectionPoints?.[group.id.replace(/-start$|-continued-\d+$/, '')] ?? 0 }} 分）</h2>
-            <div class="passage">{{ group.passage || '（請在編輯區輸入閱讀、對話或克漏字文章）' }}</div>
+            <div class="passage"><p v-for="(paragraph,index) in passageParagraphs(group.passage || '（請在編輯區輸入閱讀、對話或克漏字文章）')" :key="index">{{ paragraph }}</p></div>
             <div v-if="group.images?.some(Boolean)" class="reading-images"><img v-for="(source,index) in group.images.filter(Boolean)" :key="index" :src="source" alt="閱讀測驗圖片"></div>
             <div v-if="group.glossary" class="glossary">{{ group.glossary }}</div>
             <div v-for="question in group.questions" :key="question.number" class="mcq"><b class="question-number">{{ question.number }}.</b><span class="question-stem">{{ question.stem }}</span><span v-for="(choice,index) in question.choices" :key="index">({{ labels[index] }}) {{ choice }}</span></div>
@@ -186,4 +187,5 @@ defineExpose({ getPages: () => [...root.value.querySelectorAll('.regular-exam-pa
 .reading-images{display:flex;gap:2mm;margin:2mm 0;break-inside:avoid-column}.reading-images img{width:calc(50% - 1mm);max-height:42mm;object-fit:contain;border:1px solid #aaa}
 .answer-page .answer-section{margin-bottom:2mm}.answer-page .answer-section h3{margin-bottom:1mm;font-size:9.5pt}.answer-page .answer-cell{min-height:var(--answer-cell-height);padding:.5mm 1mm}.answer-page .answer-part-title{margin-top:2mm!important;padding-top:1mm}.answer-page .choice-answer-lines{gap:.6mm;margin:1mm 0}.answer-page .score-boxes{bottom:8mm}.answer-page .score-boxes div{height:16mm;padding:1mm}
 .answer-page .choice-answer-lines{grid-template-columns:repeat(10,minmax(0,1fr));gap:1mm 0}.answer-page .choice-answer-lines>div{display:flex;gap:1mm;white-space:nowrap;font-size:9pt}
+.passage p{margin:0 0 2.5mm;text-indent:2em;white-space:pre-wrap}.passage p:last-child{margin-bottom:0}
 </style>
