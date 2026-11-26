@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { computed, ref, onMounted, watch } from 'vue';
 import Papa from 'papaparse';
 
 definePageMeta({ middleware: 'auth' });
@@ -13,6 +13,7 @@ const isUploading = ref(false);
 const selectedVersion = ref('翰林');
 const selectedVolume = ref('B4');
 const selectedUnit = ref('U1');
+const isElementaryVersion = computed(() => selectedVersion.value.endsWith('國小'));
 
 // 編輯或新增單字的表單資料 (🌟 已修正為 example_en 與 example_zh)
 const showModal = ref(false);
@@ -45,6 +46,10 @@ const fetchVocabularies = async () => {
 };
 
 // 監聽篩選條件變化，自動重新載入
+watch(selectedVersion, () => {
+  selectedVolume.value = isElementaryVersion.value ? 'E1' : 'B1';
+  selectedUnit.value = 'U1';
+});
 watch([selectedVersion, selectedVolume, selectedUnit], () => {
   fetchVocabularies();
 });
@@ -214,17 +219,15 @@ const handleFileUpload = (event) => {
           <option value="康軒">康軒</option>
           <option value="翰林">翰林</option>
           <option value="南一">南一</option>
+          <option value="康軒國小">康軒國小 Wonder World</option>
+          <option value="翰林國小">翰林國小 Here We Go</option>
         </select>
       </div>
       <div class="filter-group">
         <label>冊數：</label>
         <select v-model="selectedVolume" class="retro-input">
-          <option value="B1">第一冊 (B1)</option>
-          <option value="B2">第二冊 (B2)</option>
-          <option value="B3">第三冊 (B3)</option>
-          <option value="B4">第四冊 (B4)</option>
-          <option value="B5">第五冊 (B5)</option>
-          <option value="B6">第六冊 (B6)</option>
+          <template v-if="isElementaryVersion"><option v-for="i in 10" :key="i" :value="`E${i}`">第 {{ i }} 冊 (E{{ i }})</option></template>
+          <template v-else><option v-for="i in 6" :key="i" :value="`B${i}`">第 {{ i }} 冊 (B{{ i }})</option></template>
         </select>
       </div>
       <div class="filter-group">
@@ -236,6 +239,7 @@ const handleFileUpload = (event) => {
       </div>
     </div>
 
+    <p v-if="isElementaryVersion">國小詞表使用獨立版本與 E1～E10 冊次。CSV 欄位請填 version、volume、unit、en_us、zh_tw；匯入前請核對出版社、冊次與中文釋義。</p>
     <div class="table-container retro-element">
       <p v-if="isLoading" class="loading-msg">⏳ 讀取中...</p>
       <table v-else class="retro-table">
