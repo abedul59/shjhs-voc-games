@@ -4,6 +4,7 @@ import { parseRegularExamQuestion } from '~/lib/regular-exam-question-parser';
 import { detectOutOfScopeVocabulary, formatVocabularyGlossary } from '~/lib/regular-exam-vocabulary';
 import { sentenceTokens, buildTranslationFill, chooseTranslationBlanks, splitTranslationText } from '~/lib/regular-exam-translation';
 import { groupTitle, writtenTitle, scoreSlots, sectionOrdinal } from '~/lib/regular-exam-sections';
+import { lessonKey, sortLessons, cumulativeLessonKeys } from '~/lib/regular-exam-scope';
 
 definePageMeta({ middleware: 'auth' });
 
@@ -22,6 +23,8 @@ const presets = {
 const allVocabulary = ref([]);
 const allGrammar = ref([]);
 const selectedVocabLessons = ref([]);
+const vocabScopeMode = ref('manual');
+const cumulativeVocabEnd = ref('');
 const selectedGrammarLessons = ref([]);
 const isLoading = ref(true);
 const isGenerating = ref(false);
@@ -153,7 +156,7 @@ const refreshDrafts = async () => {
   if (error) { message.value = `草稿資料庫讀取失敗：${error.message}。請先執行段考草稿 SQL。`; return; }
   draftList.value = data || [];
 };
-const draftPayload = () => ({ metadata: metadata.value, scoring: scoring.value, listening: listening.value, grammarQuestions: grammarQuestions.value, groups: groups.value, nonChoice: nonChoice.value, selectedVocabLessons: selectedVocabLessons.value, selectedGrammarLessons: selectedGrammarLessons.value, sectionPoints: sectionPoints.value, questionCounts: questionCounts.value, translationMode: translationMode.value, translationSourceText: translationSourceText.value });
+const draftPayload = () => ({ metadata: metadata.value, scoring: scoring.value, listening: listening.value, grammarQuestions: grammarQuestions.value, groups: groups.value, nonChoice: nonChoice.value, selectedVocabLessons: selectedVocabLessons.value, vocabScopeMode: vocabScopeMode.value, cumulativeVocabEnd: cumulativeVocabEnd.value, selectedGrammarLessons: selectedGrammarLessons.value, sectionPoints: sectionPoints.value, questionCounts: questionCounts.value, translationMode: translationMode.value, translationSourceText: translationSourceText.value });
 const localDraftCount = ref(0);
 const importLocalDrafts = async () => {
   let old = [];
@@ -204,6 +207,8 @@ const applyDraftPayload = draft => {
   groups.value = structuredClone(draft.groups);
   nonChoice.value = structuredClone(draft.nonChoice);
   selectedVocabLessons.value = [...(draft.selectedVocabLessons || [])];
+  vocabScopeMode.value = draft.vocabScopeMode || 'manual';
+  cumulativeVocabEnd.value = draft.cumulativeVocabEnd || '';
   selectedGrammarLessons.value = [...(draft.selectedGrammarLessons || [])];
   sectionPoints.value = structuredClone(draft.sectionPoints || {});
   questionCounts.value = { ...questionCounts.value, ...(draft.questionCounts || {}) };
@@ -227,7 +232,6 @@ const nonChoice = ref({ vocabulary: [], sections: [] });
 
 const preset = computed(() => presets[metadata.value.grade]);
 const scoringTotal = computed(() => Number(scoring.value.choicePercent || 0) + Number(scoring.value.nonChoicePercent || 0));
-const lessonKey = item => `${item.version || ''}|${item.volume || ''}|${item.unit || ''}`;
 const buildLessonCatalog = records => {
   const map = new Map();
   records.forEach(item => {
@@ -236,11 +240,14 @@ const buildLessonCatalog = records => {
     if (!map.has(key)) map.set(key, { key, version: item.version, volume: item.volume || '', unit: item.unit, count: 0 });
     map.get(key).count += 1;
   });
-  return [...map.values()].sort((a, b) => `${a.version}|${a.volume}|${a.unit}`.localeCompare(`${b.version}|${b.volume}|${b.unit}`, 'zh-Hant'));
+  return sortLessons([...map.values()]);
 };
 const vocabLessons = computed(() => buildLessonCatalog(allVocabulary.value));
 const grammarLessons = computed(() => buildLessonCatalog(allGrammar.value));
-const selectedVocabCount = computed(() => allVocabulary.value.filter(item => selectedVocabLessons.value.includes(lessonKey(item))).length);
+const effectiveVocabLessons = computed(() => vocabScopeMode.value === 'cumulative'
+  ? cumulativeLessonKeys(vocabLessons.value, cumulativeVocabEnd.value)
+  : selectedVocabLessons.value);
+const selectedVocabCount = computed(() => allVocabulary.value.filter(item => effectiveVocabLessons.value.includes(lessonKey(item))).length);
 const selectedGrammarCount = computed(() => allGrammar.value.filter(item => selectedGrammarLessons.value.includes(lessonKey(item))).length);
 const examData = computed(() => ({
   metadata: metadata.value, preset: { ...preset.value, ...scoring.value }, listening: listening.value,
@@ -313,7 +320,7 @@ const shuffle = list => {
 
 const handleQuestionPaste = (event, question) => {
   if (!question || question.choices?.some(choice => typeof choice === 'object')) return;
-  const parsed = parseRegularExamQuestion(event.clipboardData?.getData('text/plain'), question.choices.length);
+  const parsed = parseRegularExamQuestion(event.clipboardData?.getData('text/plain'), question.choices.length, question.choices.length === 3);
   if (!parsed) return;
   event.preventDefault();
   question.stem = parsed.stem;
@@ -323,7 +330,7 @@ const handleQuestionPaste = (event, question) => {
 
 const glossaryTimers = new Map();
 const detectGroupVocabulary = group => {
-  const results = detectOutOfScopeVocabulary(group.passage, allVocabulary.value, selectedVocabLessons.value, lessonKey);
+  const results = detectOutOfScopeVocabulary(group.passage, allVocabulary.value, effectiveVocabLessons.value, lessonKey);
   group.glossary = formatVocabularyGlossary(results);
   group.outOfScopeCount = results.length;
   group.unknownWordCount = results.filter(item => !item.foundInDictionary).length;
@@ -339,7 +346,7 @@ const scheduleGroupVocabularyDetection = group => {
 };
 const editGlossaryManually = group => { group.autoGlossary = false; };
 
-watch(selectedVocabLessons, () => {
+watch(effectiveVocabLessons, () => {
   groups.value.filter(group => group.autoGlossary && group.passage).forEach(detectGroupVocabulary);
 }, { deep: true });
 
@@ -413,7 +420,7 @@ const generateExam = async () => {
   if ([counts.grammar, counts.directVocab, counts.contextVocab, counts.translation, counts.blanksPerSentence].some(value => !Number.isInteger(Number(value)) || Number(value) < 0) || counts.blanksPerSentence < 1) {
     message.value = '題數必須是非負整數，每句空格數至少為 1。'; return;
   }
-  const vocabPool = uniqueVocabulary(allVocabulary.value.filter(item => selectedVocabLessons.value.includes(lessonKey(item))));
+  const vocabPool = uniqueVocabulary(allVocabulary.value.filter(item => effectiveVocabLessons.value.includes(lessonKey(item))));
   const contextPool = shuffle(vocabPool.filter(item => item.example_en?.trim()));
   if (contextPool.length < counts.contextVocab || (translationMode.value === 'bank' && counts.translation > 0 && !contextPool.length)) {
     message.value = `所選範圍只有 ${contextPool.length} 個含英文例句的單字，不足以產生文意字彙或翻譯填充。`;
@@ -538,14 +545,30 @@ const resizeScoreSection = (section, event) => {
 
 const readImage = file => new Promise((resolve, reject) => {
   const reader = new FileReader();
-  reader.onload = () => resolve(reader.result);
+  reader.onload = () => {
+    if (file.type === 'image/png' || file.type === 'image/jpeg') { resolve(reader.result); return; }
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+      canvas.getContext('2d').drawImage(image, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    image.onerror = reject;
+    image.src = reader.result;
+  };
   reader.onerror = reject;
   reader.readAsDataURL(file);
 });
 const setChoiceImage = async (choice, file) => { if (file?.type.startsWith('image/')) choice.image = await readImage(file); };
 const handleImageInput = async (event, choice) => { await setChoiceImage(choice, event.target.files?.[0]); event.target.value = ''; };
+const clipboardImage = event => [...(event.clipboardData?.items || [])].find(item => item.type.startsWith('image/'))?.getAsFile()
+  || [...(event.clipboardData?.files || [])].find(file => file.type.startsWith('image/'));
+const focusImageSlot = event => {
+  if (!event.target.closest('input, button, select, textarea')) event.currentTarget.focus();
+};
 const handleImagePaste = async (event, choice) => {
-  const file = [...(event.clipboardData?.items || [])].find(item => item.type.startsWith('image/'))?.getAsFile();
+  const file = clipboardImage(event);
   if (file) { event.preventDefault(); await setChoiceImage(choice, file); }
 };
 const setGroupImage = async (group, index, file) => {
@@ -558,7 +581,7 @@ const handleGroupImageInput = async (event, group, index) => {
   event.target.value = '';
 };
 const handleGroupImagePaste = async (event, group, index) => {
-  const file = [...(event.clipboardData?.items || [])].find(item => item.type.startsWith('image/'))?.getAsFile();
+  const file = clipboardImage(event);
   if (file) { event.preventDefault(); await setGroupImage(group, index, file); }
 };
 
@@ -627,12 +650,16 @@ onMounted(async () => {
       <h2>二、選擇題庫範圍（皆可跨課多選）</h2>
       <div v-if="isLoading">讀取單字與文法題庫中…</div>
       <div v-else class="scope-columns">
-        <div><div class="scope-heading"><h3>單字與例句</h3><span>已選 {{ selectedVocabCount }} 筆</span></div><div class="lesson-grid"><label v-for="lesson in vocabLessons" :key="lesson.key" :class="{ selected: selectedVocabLessons.includes(lesson.key) }"><input v-model="selectedVocabLessons" type="checkbox" :value="lesson.key"><span><b>{{ lesson.version }} {{ lesson.volume }} {{ lesson.unit }}</b><small>{{ lesson.count }} 個單字</small></span></label></div></div>
+        <div><div class="scope-heading"><h3>單字與例句</h3><span>已選 {{ selectedVocabCount }} 筆</span></div>
+          <div class="vocab-scope-controls"><label><input v-model="vocabScopeMode" type="radio" value="manual">逐課勾選</label><label><input v-model="vocabScopeMode" type="radio" value="cumulative">累積範圍</label>
+            <select v-if="vocabScopeMode === 'cumulative'" v-model="cumulativeVocabEnd"><option value="">選擇終點課次</option><option v-for="lesson in vocabLessons" :key="lesson.key" :value="lesson.key">{{ lesson.version }} {{ lesson.volume }} {{ lesson.unit }}</option></select>
+          </div><p v-if="vocabScopeMode === 'cumulative'" class="scope-note">同版本從第一冊第一課累積至指定課；下方可查看納入的課次。</p>
+          <div class="lesson-grid"><label v-for="lesson in vocabLessons" :key="lesson.key" :class="{ selected: effectiveVocabLessons.includes(lesson.key) }"><input v-if="vocabScopeMode === 'manual'" v-model="selectedVocabLessons" type="checkbox" :value="lesson.key"><span><b>{{ lesson.version }} {{ lesson.volume }} {{ lesson.unit }}</b><small>{{ lesson.count }} 個單字</small></span></label></div></div>
         <div><div class="scope-heading"><h3>文法遊樂園題庫</h3><span>已選 {{ selectedGrammarCount }} 題</span></div><div class="lesson-grid"><label v-for="lesson in grammarLessons" :key="lesson.key" :class="{ selected: selectedGrammarLessons.includes(lesson.key) }"><input v-model="selectedGrammarLessons" type="checkbox" :value="lesson.key"><span><b>{{ lesson.version }} {{ lesson.volume }} {{ lesson.unit }}</b><small>{{ lesson.count }} 題</small></span></label></div></div>
       </div>
       <div class="count-controls"><label>文法選擇題 <input v-model.number="questionCounts.grammar" type="number" min="0"></label><label>中翻英單字題 <input v-model.number="questionCounts.directVocab" type="number" min="0"></label><label>文意字彙題 <input v-model.number="questionCounts.contextVocab" type="number" min="0"></label><label>翻譯填充句數 <input v-model.number="questionCounts.translation" type="number" min="0"></label><label>每句預設空格數 <input v-model.number="questionCounts.blanksPerSentence" type="number" min="1"></label></div>
       <div class="translation-source"><b>翻譯填充來源</b><label><input v-model="translationMode" type="radio" value="bank">單字例句題庫</label><label><input v-model="translationMode" type="radio" value="auto">貼上文字並自動挖空</label><label><input v-model="translationMode" type="radio" value="manual">貼上文字後親自點字挖空</label><textarea v-if="translationMode !== 'bank'" v-model="translationSourceText" rows="5" placeholder="貼上英文課文或對話；可用 中文｜English 逐行對照"></textarea></div>
-      <button class="generate-btn" :disabled="isGenerating || ((questionCounts.directVocab || questionCounts.contextVocab || (translationMode === 'bank' && questionCounts.translation)) && !selectedVocabLessons.length) || (questionCounts.grammar && !selectedGrammarLessons.length)" @click="generateExam">{{ isGenerating ? '產生中…' : generated ? '🎲 重新抽題' : '🎲 產生段考草稿' }}</button>
+      <button class="generate-btn" :disabled="isGenerating || ((questionCounts.directVocab || questionCounts.contextVocab || (translationMode === 'bank' && questionCounts.translation)) && !effectiveVocabLessons.length) || (questionCounts.grammar && !selectedGrammarLessons.length)" @click="generateExam">{{ isGenerating ? '產生中…' : generated ? '🎲 重新抽題' : '🎲 產生段考草稿' }}</button>
     </section>
 
     <section class="panel score-panel">
@@ -653,7 +680,7 @@ onMounted(async () => {
 
         <div v-if="editorTab === 'listening'" class="editor-content">
           <h3>辨識句意圖片題（可貼上剪貼簿圖片或選擇檔案）</h3>
-          <div v-for="question in listening.image" :key="question.id" class="question-editor image-editor"><b>第 {{ question.number }} 題</b><label>正確答案<select v-model.number="question.answer"><option v-for="(label,index) in labels.slice(0,3)" :key="label" :value="index">{{ label }}</option></select></label><button @click="shuffleQuestionChoices(question)">交換本題選項</button><div class="image-options"><div v-for="(choice,index) in question.choices" :key="index" class="image-upload" tabindex="0" @paste="handleImagePaste($event,choice)"><b>({{ labels[index] }})</b><input v-model="choice.text" placeholder="選項文字"><img v-if="choice.image" :src="choice.image" alt="選項圖片"><span v-else>點此後貼上圖片</span><input type="file" accept="image/*" @change="handleImageInput($event,choice)"><button v-if="choice.image" @click="choice.image = ''">移除圖片</button></div></div></div>
+          <div v-for="question in listening.image" :key="question.id" class="question-editor image-editor"><b>第 {{ question.number }} 題</b><label>正確答案<select v-model.number="question.answer"><option v-for="(label,index) in labels.slice(0,3)" :key="label" :value="index">{{ label }}</option></select></label><button @click="shuffleQuestionChoices(question)">交換本題選項</button><div class="image-options"><div v-for="(choice,index) in question.choices" :key="index" class="image-upload" tabindex="0" @click="focusImageSlot" @paste="handleImagePaste($event,choice)"><b>({{ labels[index] }})</b><input v-model="choice.text" placeholder="選項文字"><img v-if="choice.image" :src="choice.image" alt="選項圖片"><span v-else>點此後按 Ctrl+V 貼上圖片</span><input type="file" accept="image/*" @change="handleImageInput($event,choice)"><button v-if="choice.image" @click="choice.image = ''">移除圖片</button></div></div></div>
           <h3>基本問答</h3><div v-for="question in listening.basic" :key="question.id" class="question-editor"><div class="question-top"><b>{{ question.number }}.</b><input v-model="question.stem" placeholder="可貼上題目及 A～C 選項，自動拆分" @paste="handleQuestionPaste($event, question)"><select v-model.number="question.answer"><option v-for="(label,index) in labels.slice(0,3)" :key="label" :value="index">答案 {{ label }}</option></select><button @click="shuffleQuestionChoices(question)">交換選項</button></div><div class="choice-inputs"><label v-for="(_,index) in question.choices" :key="index">{{ labels[index] }}<input v-model="question.choices[index]"></label></div></div>
           <h3>言談理解</h3><div v-for="question in listening.comprehension" :key="question.id" class="question-editor"><div class="question-top"><b>{{ question.number }}.</b><input v-model="question.stem" placeholder="可貼上題目及 A～C 選項，自動拆分" @paste="handleQuestionPaste($event, question)"><select v-model.number="question.answer"><option v-for="(label,index) in labels.slice(0,3)" :key="label" :value="index">答案 {{ label }}</option></select><button @click="shuffleQuestionChoices(question)">交換選項</button></div><div class="choice-inputs"><label v-for="(_,index) in question.choices" :key="index">{{ labels[index] }}<input v-model="question.choices[index]"></label></div></div>
         </div>
@@ -667,8 +694,8 @@ onMounted(async () => {
             <label>文章／對話<textarea v-model="group.passage" class="passage-editor" rows="10" placeholder="貼上閱讀文章或對話後，將自動檢測範圍外單字" @input="scheduleGroupVocabularyDetection(group)"></textarea></label>
             <div class="reading-image-editor">
               <b>閱讀圖片（最多兩張）</b>
-              <div class="reading-image-slots"><div v-for="index in 2" :key="index" class="image-upload" tabindex="0" @paste="handleGroupImagePaste($event, group, index - 1)">
-                <b>圖片 {{ index }}</b><img v-if="group.images?.[index - 1]" :src="group.images[index - 1]" alt="閱讀圖片預覽"><span v-else>點此後直接貼上圖片</span>
+              <div class="reading-image-slots"><div v-for="index in 2" :key="index" class="image-upload" tabindex="0" @click="focusImageSlot" @paste="handleGroupImagePaste($event, group, index - 1)">
+                <b>圖片 {{ index }}</b><img v-if="group.images?.[index - 1]" :src="group.images[index - 1]" alt="閱讀圖片預覽"><span v-else>點此後按 Ctrl+V 貼上圖片</span>
                 <input type="file" accept="image/*" @change="handleGroupImageInput($event, group, index - 1)">
                 <button v-if="group.images?.[index - 1]" type="button" @click="group.images[index - 1] = ''">移除圖片</button>
               </div></div>
@@ -701,5 +728,6 @@ onMounted(async () => {
 .builder-page{min-height:100vh;padding:24px;background:#eef2f7;color:#1e293b;font-family:system-ui,'Noto Sans TC',sans-serif}.page-header,.panel,.preview-panel{max-width:1500px;margin:0 auto 18px}.page-header{display:flex;justify-content:space-between;gap:20px}.page-header h1{margin:0;color:#1d4ed8}.page-header p{margin:5px 0;color:#64748b}.page-header a{height:max-content;padding:10px 15px;border-radius:8px;background:#1e3a8a;color:white;text-decoration:none;font-weight:800}.message{max-width:1470px;margin:0 auto 15px;padding:12px 15px;border-left:5px solid #2563eb;background:#dbeafe}.panel{box-sizing:border-box;padding:18px;border:1px solid #cbd5e1;border-radius:14px;background:#fff;box-shadow:0 3px 14px #0f172a12}.panel h2{margin:0 0 12px;color:#1e3a8a}.grade-picker{display:flex;gap:10px;margin-bottom:14px}.grade-picker button{display:flex;flex-direction:column;min-width:150px;padding:12px;border:2px solid #cbd5e1;border-radius:9px;background:white;font-size:1.1rem;font-weight:900;cursor:pointer}.grade-picker button span{font-size:.8rem;color:#64748b}.grade-picker button.active{border-color:#2563eb;background:#eff6ff;color:#1d4ed8}.form-grid{display:grid;grid-template-columns:2fr repeat(3,1fr) 2.5fr;gap:10px}.form-grid label{display:grid;gap:4px;font-size:.85rem;font-weight:800}.form-grid input,.score-settings input,.question-editor input,.question-editor select,.question-editor textarea,.group-editor textarea,.group-title,.written-editor textarea,.written-grid textarea,.written-grid input,.image-upload input{box-sizing:border-box;width:100%;padding:8px;border:1px solid #94a3b8;border-radius:7px;font:inherit}.score-settings{display:flex;align-items:end;gap:12px;margin-top:13px}.score-settings label{display:grid;grid-template-columns:auto 80px auto;align-items:center;gap:6px;font-weight:800}.score-settings span{padding:8px 10px;border-radius:7px;background:#dcfce7;color:#166534;font-weight:900}.score-settings span.invalid{background:#fee2e2;color:#b91c1c}.preset-note{margin-bottom:0;padding:9px;background:#f1f5f9}.scope-columns{display:grid;grid-template-columns:1fr 1fr;gap:16px}.scope-heading{display:flex;justify-content:space-between;align-items:center}.scope-heading h3{margin:0}.scope-heading span{color:#1d4ed8;font-weight:800}.lesson-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:6px;max-height:270px;overflow:auto;margin-top:8px;padding:3px}.lesson-grid label{display:flex;gap:7px;align-items:center;padding:8px;border:2px solid #cbd5e1;border-radius:8px;cursor:pointer}.lesson-grid label.selected{border-color:#2563eb;background:#eff6ff}.lesson-grid span{display:grid}.lesson-grid small{color:#64748b}.generate-btn{width:100%;margin-top:15px;padding:13px;border:0;border-radius:9px;background:#2563eb;color:white;font-size:1.05rem;font-weight:900;cursor:pointer}.generate-btn:disabled{opacity:.5}.action-panel{display:flex;justify-content:space-between;gap:15px}.preview-tabs,.action-buttons,.editor-tabs{display:flex;gap:8px;flex-wrap:wrap}.preview-tabs button,.action-buttons button,.editor-tabs button,.question-editor button{padding:9px 11px;border:1px solid #64748b;border-radius:7px;background:#fff;font-weight:800;cursor:pointer}.preview-tabs button.active,.editor-tabs button.active{background:#1e3a8a;color:#fff}.action-buttons{justify-content:flex-end}.action-buttons .makeup{background:#f97316;color:white;border-color:#c2410c}.preview-panel{padding:18px;border-radius:14px;background:#475569;overflow:hidden}.preview-scroll{overflow:auto;max-height:850px}.preview-scroll :deep(.regular-exam-page){box-shadow:0 6px 25px #0f172a99}.editor-tabs{margin-bottom:14px}.editor-content{display:grid;gap:10px}.question-editor{padding:12px;border:1px solid #cbd5e1;border-radius:9px;background:#f8fafc}.question-top{display:grid;grid-template-columns:45px 1fr 120px 110px;gap:8px;align-items:start}.question-top textarea{min-height:50px}.choice-inputs{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:8px}.choice-inputs label{display:grid;grid-template-columns:22px 1fr;align-items:center;font-weight:800}.image-editor>label{display:inline-flex;gap:6px;margin:0 8px}.image-options{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:9px}.image-upload{display:grid;gap:6px;padding:9px;border:2px dashed #94a3b8;border-radius:8px;background:white}.image-upload:focus{border-color:#2563eb}.image-upload img{width:100%;height:145px;object-fit:contain;background:#f1f5f9}.image-upload>span{display:grid;place-items:center;height:145px;color:#64748b;background:#f1f5f9}.group-editor,.written-editor{display:grid;gap:9px;padding:14px;border:2px solid #cbd5e1;border-radius:10px}.group-layout-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px}.group-layout-row>label{display:flex;align-items:center;gap:6px;white-space:nowrap;font-weight:800}.group-layout-row input[type=checkbox]{width:auto}.group-title{font-size:1.15rem;font-weight:900;color:#1d4ed8}.written-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.written-grid>div{display:grid;grid-template-columns:35px 1.5fr 1fr;gap:6px;align-items:start;padding:8px;border:1px solid #e2e8f0;border-radius:7px}.written-grid textarea{min-height:58px}@media(max-width:1000px){.form-grid,.scope-columns{grid-template-columns:1fr 1fr}.action-panel,.page-header{flex-direction:column}.question-top{grid-template-columns:40px 1fr}.choice-inputs,.written-grid{grid-template-columns:1fr 1fr}}@media(max-width:650px){.builder-page{padding:10px}.form-grid,.scope-columns,.choice-inputs,.written-grid,.image-options{grid-template-columns:1fr}.grade-picker{display:grid;grid-template-columns:repeat(3,1fr)}.grade-picker button{min-width:0}.score-settings{align-items:stretch;flex-direction:column}.group-layout-row{grid-template-columns:1fr}.written-grid>div{grid-template-columns:30px 1fr}.written-grid input{grid-column:2}}
 .passage-editor{border:2px dashed #64748b!important;background:#fff}.glossary-heading{display:flex;align-items:center;gap:10px}.glossary-heading>span{margin-left:auto;color:#b45309;font-weight:800}.glossary-heading button{padding:7px 10px;border:1px solid #2563eb;border-radius:7px;background:#eff6ff;color:#1d4ed8;font-weight:800;cursor:pointer}.manual-note{color:#b45309}.editor-question-number{display:grid;place-items:center;min-height:42px;border-radius:7px;background:#1e3a8a;color:#fff;font-size:1.08rem}@media(max-width:650px){.glossary-heading{align-items:stretch;flex-direction:column}.glossary-heading>span{margin-left:0}}
 .reading-image-slots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:8px}.reading-image-editor> b{color:#1e3a8a}@media(max-width:650px){.reading-image-slots{grid-template-columns:1fr}}
+.vocab-scope-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px}.vocab-scope-controls label{display:flex;align-items:center;gap:4px;font-weight:700}.vocab-scope-controls select{max-width:100%;padding:7px;border:1px solid #94a3b8;border-radius:6px}.scope-note{margin:6px 0;color:#475569;font-size:.85rem}
 .preset-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%}.preset-controls label{display:flex;align-items:center;gap:6px}.danger-button{color:#b91c1c!important;border:1px solid #b91c1c!important;background:#fff!important}.score-section{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.score-section>label+span{margin-left:0}.translation-source{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px;background:#eff6ff}.translation-source textarea{width:100%;padding:8px}.translation-source label{display:flex;align-items:center;gap:4px}
 </style>
