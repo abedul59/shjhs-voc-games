@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import Papa from 'papaparse';
-import { csvRowsToSection, exportSectionData, normalizeImportedItems, parseDocumentQuestions, pdfTextToPlain, sectionCsvRows } from '../lib/regular-exam-import.js';
+import { applyChoiceAnswerKey, csvRowsToSection, exportSectionData, extractChoiceAnswerKey, normalizeImportedItems, parseDocumentQuestions, pdfTextToPlain, sectionCsvRows } from '../lib/regular-exam-import.js';
 
 test('reading groups survive CSV and JSON round trips with passages and answers', () => {
   const original = [{ type: 'reading', title: '閱讀測驗', passage: 'First paragraph.\n\nSecond, paragraph.', glossary: 'word 中文', questions: [
@@ -42,5 +42,40 @@ test('incomplete multiple-choice rows are rejected', () => {
 
 test('PDF fragments preserve words and line boundaries', () => {
   const item = (str, x, y, width, hasEOL = false) => ({ str, transform: [1, 0, 0, 1, x, y], width, height: 10, hasEOL });
-  assert.equal(pdfTextToPlain([item('Who', 0, 20, 18), item('is', 24, 20, 8), item('here?', 35, 20, 24, true), item('(A)', 0, 8, 15)]), 'Who is here?\n(A)');
+  assert.equal(pdfTextToPlain([item('(A)', 0, 8, 15), item('Who', 0, 20, 18), item('is', 24, 20, 8), item('here?', 35, 20, 24, true)]), 'Who is here?\n(A)');
+});
+
+test('answer bubbles and option-only cloze questions parse without guessing answers', () => {
+  const text = '三、克漏字選擇\nA short passage.\n（ ）21. (A) red (B) blue (C) green (D) black\n（ ）22. (A) one (B) two (C) three (D) four';
+  const [group] = parseDocumentQuestions(text, 'cloze');
+  assert.deepEqual(group.questions.map(question => question.sourceNumber), [21, 22]);
+  assert.deepEqual(group.questions.map(question => question.answer), [-1, -1]);
+});
+
+test('long passages between question runs create separate groups', () => {
+  const secondPassage = 'This is a second passage about a school and its students.\nThe students are reading books and having a good time together.\nTheir teacher is kind and helpful every day.';
+  const text = `四、閱讀測驗\nFirst passage.\n（ ）36. Who? (A) Ann (B) Ben (C) Cal (D) Dan\n（ ）37. Where? (A) Home (B) Park (C) School (D) Shop\n${secondPassage}\n（ ）38. Why? (A) One (B) Two (C) Three (D) Four`;
+  const groups = parseDocumentQuestions(text, 'reading');
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups.map(group => group.questions.length), [2, 1]);
+  assert.match(groups[1].passage, /second passage/);
+  assert.equal(groups[0].questions[1].choices[3], 'Shop');
+});
+
+test('compressed and separate answer sheets match source question numbers', () => {
+  const answers = extractChoiceAnswerKey('段考答案\n1-5 ABCDA 6-10 BCDAB');
+  assert.equal(answers[1], 'A');
+  assert.equal(answers[10], 'B');
+  const separate = extractChoiceAnswerKey('答案\n21. (C) 22. A 23 B');
+  const [group] = parseDocumentQuestions('三、克漏字\nPassage.\n（ ）21. (A) red (B) blue (C) green (D) black\n（ ）22. (A) one (B) two (C) three (D) four', 'cloze');
+  assert.equal(applyChoiceAnswerKey([group], 'cloze', separate), 2);
+  assert.deepEqual(group.questions.map(question => question.answer), [2, 0]);
+});
+
+test('numbered side notes do not interrupt reading questions', () => {
+  const text = '四、閱讀測驗\nA passage.\n38. Who? (A) Ann (B) Ben\n注意:\n(C) Cal (D) Dan\n1.手寫答案請用原子筆\n39. Where? (A) Home\n2.手寫答案請寫在答案卷\n(B) Park (C) School (D) Shop';
+  const [group] = parseDocumentQuestions(text, 'reading');
+  assert.deepEqual(group.questions.map(question => question.sourceNumber), [38, 39]);
+  assert.equal(group.questions[0].choices[3], 'Dan');
+  assert.equal(group.questions[1].choices[0], 'Home');
 });
