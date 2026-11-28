@@ -19,6 +19,9 @@ test('dialogue and article passages receive distinct layout with article title a
   assert.equal(article.mode, 'article');
   assert.equal(article.title, 'Carrie’s Report');
   assert.ok(article.blocks.length >= 2);
+  const table = passageLayout('Schedule\nTime\tActivity\n08:00\tBreakfast\n09:00\tHomework\n10:00\tReading');
+  assert.equal(table.mode, 'table');
+  assert.match(table.blocks[0], /08:00\tBreakfast\n09:00\tHomework/);
 });
 
 test('group headings remove import artifacts and number cloze before reading', () => {

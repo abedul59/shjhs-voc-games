@@ -196,4 +196,5 @@ defineExpose({ getPages: () => [...root.value.querySelectorAll('.regular-exam-pa
 .answer-page .choice-answer-lines{grid-template-columns:repeat(10,minmax(0,1fr));gap:1mm 0}.answer-page .choice-answer-lines>div{display:flex;gap:1mm;white-space:nowrap;font-size:9pt}
 .passage p{margin:0 0 2.5mm;text-indent:2em;white-space:pre-wrap}.passage p:last-child{margin-bottom:0}
 .passage .passage-title{margin:0 0 3mm;text-align:center;font-size:14pt;font-weight:700;line-height:1.3}.passage-dialogue p.dialogue-turn{margin-bottom:1.5mm;padding-left:5em;text-indent:-5em;text-align:left}.passage-dialogue p.dialogue-turn strong{font-weight:700}
+.passage-table p{text-indent:0;font-family:'Times New Roman',monospace;white-space:pre-wrap;text-align:left}
 </style>
