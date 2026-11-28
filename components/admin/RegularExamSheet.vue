@@ -1,12 +1,11 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { groupTitle, writtenTitle } from '~/lib/regular-exam-sections';
-import { formatClozePassage, passageLayout } from '~/lib/regular-exam-passage';
+import { paginateExamGroups } from '~/lib/regular-exam-flow';
 
 const props = defineProps({ data: { type: Object, required: true }, answerMode: Boolean, blankMode: Boolean });
 const root = ref(null);
 const labels = ['A', 'B', 'C', 'D'];
-const FLOW_PAGE_CAPACITY = 112;
 
 const choiceQuestions = computed(() => [
   ...props.data.listening.image,
@@ -31,8 +30,8 @@ const answerColumns = computed(() => props.data.metadata.grade === '7' ? 6 : 5);
 const answerCellHeight = 11;
 const answerPages = computed(() => {
   const sections = [
-    { id: 'vocabulary', title: writtenTitle('單字與文意字彙', props.data.groups.length, 0), entries: props.data.nonChoice.vocabulary.map((item, index) => ({ number: index + 1, answer: item.answer })) },
-    ...props.data.nonChoice.sections.map((section, index) => ({ id: section.id, title: writtenTitle(section.title, props.data.groups.length, index + 1), entries: answerEntries(section) }))
+    { id: 'vocabulary', title: writtenTitle('單字與文意字彙', props.data.groups, 0), entries: props.data.nonChoice.vocabulary.map((item, index) => ({ number: index + 1, answer: item.answer })) },
+    ...props.data.nonChoice.sections.map((section, index) => ({ id: section.id, title: writtenTitle(section.title, props.data.groups, index + 1), entries: answerEntries(section) }))
   ];
   const pages = [];
   let current = { sections: [], usedHeight: 0, showFooter: false };
@@ -57,46 +56,7 @@ const answerPages = computed(() => {
   return pages;
 });
 
-const textLines = (value, width = 48) => String(value || '').split('\n').reduce((total, line) => total + Math.max(1, Math.ceil(line.length / width)), 0);
-const questionSize = question => 2 + textLines(question.stem, 50) + textLines(question.choices.join('　'), 58) + (question.choiceImages?.filter(Boolean).length || 0) * 12;
-const groupIntroSize = group => 4
-  + textLines(group.passage || '（請在編輯區輸入閱讀、對話或克漏字文章）', 46)
-  + (group.images?.filter(Boolean).length || 0) * 12
-  + (group.glossary ? textLines(group.glossary, 50) + 2 : 0);
-const displayedPassage = group => {
-  const original = props.data.groups.find(item => group.id.startsWith(item.id)) || group;
-  const passage = group.passage || '（請在編輯區輸入閱讀、對話或克漏字文章）';
-  return passageLayout(group.type === 'cloze' ? formatClozePassage(passage, original.questions) : passage);
-};
-
-const flowPages = computed(() => {
-  const pages = [[]];
-  let used = 0;
-  const nextPage = () => { if (pages.at(-1).length) pages.push([]); used = 0; };
-  props.data.groups.forEach(group => {
-    const introSize = groupIntroSize(group);
-    const firstQuestionSize = group.questions.length ? questionSize(group.questions[0]) : 0;
-    if (pages.at(-1).length && (group.startNewPage || used + introSize + firstQuestionSize > FLOW_PAGE_CAPACITY)) nextPage();
-    let segment = { ...group, id: `${group.id}-start`, questions: [] };
-    pages.at(-1).push(segment);
-    used += introSize;
-    group.questions.forEach(question => {
-      const size = questionSize(question);
-      if (used + size > FLOW_PAGE_CAPACITY) {
-        nextPage();
-        segment = { ...group, id: `${group.id}-continued-${pages.length}`, title: `${group.title}（續）`, passage: '', images: [], glossary: '', questions: [] };
-        pages.at(-1).push(segment);
-        used = 3;
-      }
-      segment.questions.push(question);
-      used += size;
-    });
-    if (!group.questions.length && used > FLOW_PAGE_CAPACITY) {
-      used = FLOW_PAGE_CAPACITY;
-    }
-  });
-  return pages.filter(page => page.length).length ? pages.filter(page => page.length) : [[]];
-});
+const flowPages = computed(() => paginateExamGroups(props.data.groups, props.data.questionCounts?.translationBlankWidth));
 
 const questionPageCount = computed(() => flowPages.value.length + 2);
 defineExpose({ getPages: () => [...root.value.querySelectorAll('.regular-exam-page')] });
@@ -140,9 +100,8 @@ defineExpose({ getPages: () => [...root.value.querySelectorAll('.regular-exam-pa
         <header class="exam-header small"><h1>{{ data.metadata.schoolName }}　{{ data.metadata.grade }}年級英語科定期評量</h1></header>
         <div class="flow-columns">
           <section v-for="group in page" :key="group.id" class="flow-group">
-            <h2>{{ groupTitle(group, data.groups.findIndex(item => group.id.startsWith(item.id)), data.groups) }}（{{ data.sectionPoints?.[group.id.replace(/-start$|-continued-\d+$/, '')] ?? 0 }} 分）</h2>
-            <div v-if="group.passage" class="passage" :class="`passage-${displayedPassage(group).mode}`"><h3 v-if="displayedPassage(group).title" class="passage-title">{{ displayedPassage(group).title }}</h3><template v-if="displayedPassage(group).mode === 'dialogue'"><p v-for="(turn,index) in displayedPassage(group).blocks" :key="index" class="dialogue-turn"><strong v-if="turn.speaker">{{ turn.speaker }}:</strong> {{ turn.text }}</p></template><template v-else><p v-for="(paragraph,index) in displayedPassage(group).blocks" :key="index">{{ paragraph }}</p></template></div>
-            <div v-else class="passage">（請在編輯區輸入閱讀、對話或克漏字文章）</div>
+            <h2>{{ groupTitle(group, group.groupIndex, data.groups) }}{{ group.continued ? '（續）' : `（${data.sectionPoints?.[group.originalId] ?? 0} 分）` }}</h2>
+            <div v-if="group.layout.blocks.length || group.layout.title" class="passage" :class="`passage-${group.layout.mode}`"><h3 v-if="group.layout.title" class="passage-title">{{ group.layout.title }}</h3><template v-if="group.layout.mode === 'dialogue'"><p v-for="(turn,index) in group.layout.blocks" :key="index" class="dialogue-turn"><strong v-if="turn.speaker">{{ turn.speaker }}:</strong> {{ turn.text }}</p></template><template v-else><p v-for="(paragraph,index) in group.layout.blocks" :key="index">{{ paragraph }}</p></template></div>
             <div v-if="group.images?.some(Boolean)" class="reading-images"><img v-for="(source,index) in group.images.filter(Boolean)" :key="index" :src="source" alt="閱讀測驗圖片"></div>
             <div v-if="group.glossary" class="glossary">{{ group.glossary }}</div>
             <div v-for="question in group.questions" :key="question.number" class="mcq"><b class="question-number">{{ question.number }}.</b><span class="question-stem">{{ question.stem }}</span><span v-for="(choice,index) in question.choices" :key="index" class="mcq-choice">({{ labels[index] }}) {{ choice }}<img v-if="question.choiceImages?.[index]" :src="question.choiceImages[index]" :alt="`選項 ${labels[index]} 圖片`" class="mcq-choice-image"></span></div>
@@ -156,11 +115,11 @@ defineExpose({ getPages: () => [...root.value.querySelectorAll('.regular-exam-pa
         <h2>第二部分：非選擇題【請在答案卷作答】{{ data.preset.nonChoicePercent }}%</h2>
         <div class="compact-written-flow">
           <section v-if="data.nonChoice.vocabulary.length" class="written-section">
-            <h3>{{ writtenTitle('單字與文意字彙', data.groups.length, 0) }}（{{ data.sectionPoints?.vocabulary ?? 0 }} 分）</h3>
+            <h3>{{ writtenTitle('單字與文意字彙', data.groups, 0) }}（{{ data.sectionPoints?.vocabulary ?? 0 }} 分）</h3>
             <div v-for="(item,index) in data.nonChoice.vocabulary" :key="item.id" class="written-item">{{ index + 1 }}. {{ item.prompt }}</div>
           </section>
           <section v-for="(section,index) in data.nonChoice.sections" :key="section.id" class="written-section">
-            <h3>{{ writtenTitle(section.title, data.groups.length, index + 1) }}（{{ data.sectionPoints?.[section.id] ?? 0 }} 分）</h3><p v-if="section.instructions">{{ section.instructions }}</p>
+            <h3>{{ writtenTitle(section.title, data.groups, index + 1) }}（{{ data.sectionPoints?.[section.id] ?? 0 }} 分）</h3><p v-if="section.instructions">{{ section.instructions }}</p>
             <div v-for="(item,index) in section.items" :key="item.id" class="written-item">{{ index + 1 }}. {{ item.prompt }}</div>
           </section>
         </div>
