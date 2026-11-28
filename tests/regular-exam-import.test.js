@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import Papa from 'papaparse';
-import { applyChoiceAnswerKey, csvRowsToSection, exportSectionData, extractChoiceAnswerKey, normalizeImportedItems, parseDocumentQuestions, pdfTextToPlain, sectionCsvRows } from '../lib/regular-exam-import.js';
+import { applyChoiceAnswerKey, csvRowsToSection, exportSectionData, extractChoiceAnswerKey, joinReadingScreenshotText, normalizeImportedItems, parseDocumentQuestions, parseReadingScreenshotText, pdfTextToPlain, sectionCsvRows } from '../lib/regular-exam-import.js';
 
 test('reading groups survive CSV and JSON round trips with passages and answers', () => {
   const original = [{ type: 'reading', title: '閱讀測驗', passage: 'First paragraph.\n\nSecond, paragraph.', glossary: 'word 中文', questions: [
@@ -110,4 +110,14 @@ test('reading image choices survive CSV and JSON round trips', () => {
     assert.deepEqual(imported[0].questions[0].choices, ['', 'A train', '', 'A boat']);
     assert.equal(imported[0].questions[0].answer, 2);
   }
+});
+
+test('separate reading screenshots join passage parts before question options', () => {
+  const text = joinReadingScreenshotText(
+    ['1. The first paragraph introduces Amy.', '2. The second paragraph describes her trip.', '3. The final paragraph explains what she learned.'],
+    ['36. Where did Amy go?\n(A) Home (B) School (C) Park (D) Library', '37. What did she learn?\n(A) One (B) Two (C) Three (D) Four']
+  );
+  const [group] = parseReadingScreenshotText(text);
+  assert.match(group.passage, /first paragraph[\s\S]*second paragraph[\s\S]*final paragraph/);
+  assert.deepEqual(group.questions.map(question => question.sourceNumber), [36, 37]);
 });
