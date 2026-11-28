@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { parseRegularExamQuestion } from '~/lib/regular-exam-question-parser';
 import Papa from 'papaparse';
-import { applyChoiceAnswerKey, csvRowsToSection, exportSectionData, extractChoiceAnswerKey, normalizeImportedItems, parseDocumentQuestions, pdfTextToPlain, sectionCsvRows } from '~/lib/regular-exam-import';
+import { applyChoiceAnswerKey, csvRowsToSection, exportSectionData, extractChoiceAnswerKey, joinReadingScreenshotText, normalizeImportedItems, parseDocumentQuestions, parseReadingScreenshotText, pdfTextToPlain, sectionCsvRows } from '~/lib/regular-exam-import';
 import { detectOutOfScopeVocabulary, formatVocabularyGlossary, listInScopeVocabulary, lookupVocabularyMeaning } from '~/lib/regular-exam-vocabulary';
 import { findRegularExamAnswerLeaks } from '~/lib/regular-exam-answer-leaks';
 import { sentenceTokens, buildTranslationFill, chooseTranslationBlanks, splitTranslationText } from '~/lib/regular-exam-translation';
@@ -46,7 +46,9 @@ const importPreview = ref(null);
 const importedText = ref('');
 const importingFile = ref(false);
 const questionImportFiles = ref([]);
+const passageImportFiles = ref([]);
 const answerImportFiles = ref([]);
+const screenshotPasteRole = ref('questions');
 const questionPreview = ref(null);
 const answerPreview = ref(null);
 const blankPreview = ref(null);
@@ -287,7 +289,7 @@ const referenceVocabularyGroups = computed(() => {
 });
 
 const makeChoices = count => Array.from({ length: count }, () => '');
-const makeQuestion = (number = 0, choiceCount = 4) => ({ id: crypto.randomUUID(), number, stem: '', choices: makeChoices(choiceCount), answer: 0 });
+const makeQuestion = (number = 0, choiceCount = 4) => ({ id: crypto.randomUUID(), number, stem: '', choices: makeChoices(choiceCount), choiceImages: Array(choiceCount).fill(''), answer: 0 });
 const makeListeningImageQuestion = number => ({ id: crypto.randomUUID(), number, stem: '', choices: Array.from({ length: 3 }, () => ({ text: '', image: '' })), answer: 0 });
 const makeWrittenItems = count => Array.from({ length: count }, () => ({ id: crypto.randomUUID(), prompt: '', answer: '' }));
 
@@ -548,10 +550,11 @@ const generateExam = async () => {
 
 const shuffleQuestionChoices = question => {
   const hasAnswer = Number.isInteger(question.answer) && question.answer >= 0 && question.answer < question.choices.length;
-  const pairs = question.choices.map((choice, index) => ({ choice, index, correct: index === question.answer }));
+  const pairs = question.choices.map((choice, index) => ({ choice, image: question.choiceImages?.[index] || '', index, correct: index === question.answer }));
   let shuffled = shuffle(pairs);
   if (pairs.length > 1 && shuffled.every((item, index) => item.index === index)) shuffled = [...pairs.slice(1), pairs[0]];
   question.choices = shuffled.map(item => item.choice);
+  if (question.choiceImages) question.choiceImages = shuffled.map(item => item.image);
   question.answer = hasAnswer ? shuffled.findIndex(item => item.correct) : -1;
 };
 
@@ -609,16 +612,43 @@ const extractPdfText = async file => {
 const selectImportFiles = (event, role) => {
   const files = Array.from(event.target.files || []);
   if (role === 'questions') questionImportFiles.value = files;
+  else if (role === 'passage') passageImportFiles.value = [...passageImportFiles.value, ...files];
   else answerImportFiles.value = files;
   event.target.value = '';
 };
 
-const pasteImportScreenshot = event => {
-  const images = Array.from(event.clipboardData?.items || []).filter(item => item.type.startsWith('image/')).map(item => item.getAsFile()).filter(Boolean);
+const movePassageImportFile = (index, direction) => {
+  const target = index + direction;
+  if (target < 0 || target >= passageImportFiles.value.length) return;
+  const files = [...passageImportFiles.value];
+  [files[index], files[target]] = [files[target], files[index]];
+  passageImportFiles.value = files;
+};
+
+const addImportScreenshots = async images => {
   if (!images.length) return;
-  event.preventDefault();
-  questionImportFiles.value = [...questionImportFiles.value, ...images.map((file, index) => new File([file], `截圖-${Date.now()}-${index + 1}.png`, { type: file.type }))];
-  message.value = `已加入 ${images.length} 張截圖，請按「解析所選檔案」。`;
+  const named = images.map((file, index) => new File([file], `${screenshotPasteRole.value === 'passage' ? '主文' : '題目'}截圖-${Date.now()}-${index + 1}.${file.type === 'image/jpeg' ? 'jpg' : 'png'}`, { type: file.type }));
+  if (screenshotPasteRole.value === 'passage' && interchangeCategory.value === 'reading') passageImportFiles.value = [...passageImportFiles.value, ...named];
+  else questionImportFiles.value = [...questionImportFiles.value, ...named];
+  if (!questionImportFiles.value.length) { message.value = `已加入 ${passageImportFiles.value.length} 張主文截圖；接著貼上題目與選項。`; return; }
+  if (importingFile.value) { message.value = `已加入 ${images.length} 張截圖；目前解析完成後請再按「解析所選檔案」。`; return; }
+  await importQuestionFiles();
+};
+const pasteImportScreenshot = async event => {
+  const images = Array.from(event.clipboardData?.items || []).filter(item => item.type.startsWith('image/')).map(item => item.getAsFile()).filter(Boolean);
+  if (!images.length) images.push(...Array.from(event.clipboardData?.files || []).filter(file => file.type.startsWith('image/')));
+  if (images.length) { event.preventDefault(); await addImportScreenshots(images); }
+};
+const pasteImportScreenshotButton = async () => {
+  try {
+    const entries = await navigator.clipboard.read();
+    const images = await Promise.all(entries.map(async entry => {
+      const type = entry.types.find(value => value.startsWith('image/'));
+      return type ? await entry.getType(type) : null;
+    }));
+    if (!images.some(Boolean)) { message.value = '剪貼簿沒有圖片；可先截圖，再按「貼上並解析」。'; return; }
+    await addImportScreenshots(images.filter(Boolean));
+  } catch { message.value = '瀏覽器未允許讀取剪貼簿；請點選貼上區後按 Ctrl+V。'; }
 };
 
 let ocrWorker;
@@ -646,18 +676,20 @@ const readImportDocument = async file => {
 
 const importQuestionFiles = async () => {
   if (!questionImportFiles.value.length) { message.value = '請先選擇至少一份題目檔。'; return; }
-  const allFiles = [...questionImportFiles.value, ...answerImportFiles.value];
-  if (allFiles.length > 10 || allFiles.some(file => file.size > 20 * 1024 * 1024)) { message.value = '一次最多 10 個檔案，且每個檔案不得超過 20 MB。'; return; }
+  const allFiles = [...passageImportFiles.value, ...questionImportFiles.value, ...answerImportFiles.value];
+  if (allFiles.length > 15 || allFiles.some(file => file.size > 20 * 1024 * 1024)) { message.value = '一次最多 15 個檔案，且每個檔案不得超過 20 MB。'; return; }
   importPreview.value = null;
   importedText.value = '';
   importingFile.value = true;
   try {
     const category = interchangeCategory.value;
+    if (passageImportFiles.value.length && category !== 'reading') throw new Error('主文截圖僅用於閱讀測驗；請切換題型或移除主文截圖。');
     const items = [];
     const structuredItems = [];
     const answers = {};
     const conflicts = [];
     const unparsed = [];
+    const passageTexts = [];
     const questionTexts = [];
     const addAnswers = found => Object.entries(found).forEach(([number, answer]) => {
       const letter = String(answer ?? '').normalize('NFKC').replace(/[()]/g, '').trim().toUpperCase();
@@ -669,6 +701,12 @@ const importQuestionFiles = async () => {
       const extension = file.name.split('.').pop()?.toLowerCase();
       const content = await readImportDocument(file);
       const isAnswerFile = answerImportFiles.value.includes(file);
+      const isPassageFile = passageImportFiles.value.includes(file);
+      if (isPassageFile) {
+        if (!content.trim()) throw new Error(`「${file.name}」沒有辨識出主文文字；請檢查截圖清晰度。`);
+        passageTexts.push(content);
+        continue;
+      }
       if (extension === 'json') {
         const data = JSON.parse(content);
         if (isAnswerFile || data.answers) {
@@ -695,12 +733,17 @@ const importQuestionFiles = async () => {
         addAnswers(extractChoiceAnswerKey(content));
         if (!isAnswerFile) {
           questionTexts.push(content);
+          if (category === 'reading' && passageImportFiles.value.length) continue;
           try { items.push(...parseDocumentQuestions(content, category)); }
           catch { unparsed.push(file.name); }
         }
       }
     }
-    importedText.value = questionTexts.join('\n\n');
+    importedText.value = category === 'reading' && passageTexts.length ? joinReadingScreenshotText(passageTexts, questionTexts) : questionTexts.join('\n\n');
+    if (category === 'reading' && passageTexts.length && questionTexts.length) {
+      try { items.push(...parseReadingScreenshotText(importedText.value)); }
+      catch { unparsed.push('主文與題目／選項截圖'); }
+    }
     const appliedAnswers = applyChoiceAnswerKey(items, category, answers);
     importPreview.value = { category, items, structuredItems, fileName: allFiles.map(file => file.name).join('、'), answers, appliedAnswers, answerCount: Object.keys(answers).length, conflicts, unparsed };
     message.value = items.length
@@ -716,7 +759,7 @@ const importQuestionFiles = async () => {
 const reparseImportedText = () => {
   if (!importPreview.value || !importedText.value) return;
   try {
-    importPreview.value.items = [...(importPreview.value.structuredItems || []), ...parseDocumentQuestions(importedText.value, importPreview.value.category)];
+    importPreview.value.items = [...(importPreview.value.structuredItems || []), ...(importPreview.value.category === 'reading' && importedText.value.includes('【題目與選項截圖】') ? parseReadingScreenshotText(importedText.value) : parseDocumentQuestions(importedText.value, importPreview.value.category))];
     importPreview.value.appliedAnswers = applyChoiceAnswerKey(importPreview.value.items, importPreview.value.category, importPreview.value.answers);
     message.value = '已重新解析文字，請核對題目與答案。';
   } catch (error) { message.value = `重新解析失敗：${error.message}`; }
@@ -734,7 +777,7 @@ const applyImportedQuestions = () => {
   if (!preview?.items.length) return;
   const questionCount = importedQuestionCount.value;
   const unanswered = missingImportedAnswers.value;
-  const questions = data => data.map(question => ({ ...question, id: crypto.randomUUID(), number: 0, choices: [...question.choices] }));
+  const questions = data => data.map(question => ({ ...question, id: crypto.randomUUID(), number: 0, choices: [...question.choices], choiceImages: [...(question.choiceImages || Array(question.choices.length).fill(''))] }));
   if (preview.category === 'grammar') {
     const additions = questions(preview.items);
     grammarQuestions.value = importMode.value === 'replace' ? additions : [...grammarQuestions.value, ...additions];
@@ -763,6 +806,10 @@ const applyImportedQuestions = () => {
   generated.value = true;
   editorTab.value = preview.category === 'grammar' ? 'grammar' : 'groups';
   importPreview.value = null;
+  importedText.value = '';
+  passageImportFiles.value = [];
+  questionImportFiles.value = [];
+  answerImportFiles.value = [];
   message.value = `已${importMode.value === 'replace' ? '覆蓋' : '追加'} ${questionCount} 題；請核對 ${unanswered} 題未設定答案的題目及配分。`;
 };
 const renumberGroups = () => {
@@ -836,6 +883,19 @@ const focusImageSlot = event => {
 const handleImagePaste = async (event, choice) => {
   const file = clipboardImage(event);
   if (file) { event.preventDefault(); await setChoiceImage(choice, file); }
+};
+const setQuestionChoiceImage = async (question, index, file) => {
+  if (!file?.type.startsWith('image/')) return;
+  if (!question.choiceImages) question.choiceImages = Array(question.choices.length).fill('');
+  question.choiceImages[index] = await readImage(file);
+};
+const handleQuestionChoiceImageInput = async (event, question, index) => {
+  await setQuestionChoiceImage(question, index, event.target.files?.[0]);
+  event.target.value = '';
+};
+const handleQuestionChoiceImagePaste = async (event, question, index) => {
+  const file = clipboardImage(event);
+  if (file) { event.preventDefault(); await setQuestionChoiceImage(question, index, file); }
 };
 const setGroupImage = async (group, index, file) => {
   if (!file?.type.startsWith('image/')) return;
@@ -951,12 +1011,14 @@ onMounted(async () => {
     <section class="panel interchange-panel">
       <h2>題目匯入／匯出</h2>
       <p>文法以單題、克漏字和閱讀以題組處理。CSV／JSON 可往返編輯；PDF／Word（.docx）會擷取文字；截圖會先辨識英文與中文，再嘗試拆分題目。題目中的圖片可在匯入後貼上。</p>
-      <div class="interchange-controls" tabindex="0" @paste="pasteImportScreenshot"><label>題型<select v-model="interchangeCategory"><option value="grammar">文法選擇（單題）</option><option value="cloze">克漏字選擇（題組）</option><option value="reading">閱讀測驗（題組）</option></select></label><button type="button" @click="downloadSection('csv')">匯出 CSV</button><button type="button" @click="downloadSection('json')">匯出 JSON</button><label>匯入方式<select v-model="importMode"><option value="replace">覆蓋此題型</option><option value="append">追加到此題型</option></select></label><label class="file-import">題目檔或截圖（可多選，{{ questionImportFiles.length }} 份）<input type="file" multiple accept=".csv,.json,.pdf,.docx,image/png,image/jpeg,image/webp" :disabled="importingFile" @change="selectImportFiles($event,'questions')"></label><label class="file-import">解答檔或截圖（可多選，{{ answerImportFiles.length }} 份）<input type="file" multiple accept=".csv,.json,.pdf,.docx,image/png,image/jpeg,image/webp" :disabled="importingFile" @change="selectImportFiles($event,'answers')"></label><button type="button" :disabled="importingFile || !questionImportFiles.length" @click="importQuestionFiles">{{ importingFile ? '辨識與解析中…' : '解析所選檔案' }}</button></div>
-      <p class="scope-note">可點選上方區域後按 Ctrl+V 貼上截圖。截圖請包含完整題目、文章及 A～D 選項；每次選一種題型。解答依原題號配對；請核對辨識文字和預覽。</p>
+      <div class="interchange-controls"><label>題型<select v-model="interchangeCategory"><option value="grammar">文法選擇（單題）</option><option value="cloze">克漏字選擇（題組）</option><option value="reading">閱讀測驗（題組）</option></select></label><button type="button" @click="downloadSection('csv')">匯出 CSV</button><button type="button" @click="downloadSection('json')">匯出 JSON</button><label>匯入方式<select v-model="importMode"><option value="replace">覆蓋此題型</option><option value="append">追加到此題型</option></select></label><label v-if="interchangeCategory === 'reading'" class="file-import">主文截圖（可多選，{{ passageImportFiles.length }} 份）<input type="file" multiple accept="image/png,image/jpeg,image/webp" :disabled="importingFile" @change="selectImportFiles($event,'passage')"></label><label class="file-import">題目／選項檔或截圖（可多選，{{ questionImportFiles.length }} 份）<input type="file" multiple accept=".csv,.json,.pdf,.docx,image/png,image/jpeg,image/webp" :disabled="importingFile" @change="selectImportFiles($event,'questions')"></label><label class="file-import">解答檔或截圖（可多選，{{ answerImportFiles.length }} 份）<input type="file" multiple accept=".csv,.json,.pdf,.docx,image/png,image/jpeg,image/webp" :disabled="importingFile" @change="selectImportFiles($event,'answers')"></label><button type="button" :disabled="importingFile || !questionImportFiles.length" @click="importQuestionFiles">{{ importingFile ? '辨識與解析中…' : '解析所選檔案' }}</button></div>
+      <div class="screenshot-paste-zone" tabindex="0" @click="focusImageSlot" @paste="pasteImportScreenshot"><b>貼上截圖</b><label v-if="interchangeCategory === 'reading'">這張是<select v-model="screenshotPasteRole"><option value="passage">主文（可依序貼 2–3 張）</option><option value="questions">題目與選項</option></select></label><span>點此後按 Ctrl+V；貼上題目後自動解析</span><button type="button" :disabled="importingFile" @click="pasteImportScreenshotButton">從剪貼簿貼上</button></div>
+      <div v-if="interchangeCategory === 'reading' && passageImportFiles.length" class="passage-import-order"><b>主文拼接順序</b><div v-for="(file,index) in passageImportFiles" :key="index"><span>{{ index + 1 }}. {{ file.name }}</span><button type="button" :disabled="index === 0 || importingFile" @click="movePassageImportFile(index,-1)">上移</button><button type="button" :disabled="index === passageImportFiles.length - 1 || importingFile" @click="movePassageImportFile(index,1)">下移</button><button type="button" :disabled="importingFile" @click="passageImportFiles.splice(index,1)">移除</button></div></div>
+      <p class="scope-note">閱讀主文可分 2–3 張依序貼上，再貼題目與選項截圖；系統依上方順序合併為同一題組。圖片選項可在套用後逐一貼上。重新解析文字時請保留「【題目與選項截圖】」分隔標記。</p><div v-if="questionImportFiles.length || answerImportFiles.length" class="interchange-controls"><button v-if="questionImportFiles.length" type="button" :disabled="importingFile" @click="questionImportFiles = []">清空題目截圖／檔案</button><button v-if="answerImportFiles.length" type="button" :disabled="importingFile" @click="answerImportFiles = []">清空解答檔案</button></div>
       <div v-if="importPreview" class="import-preview"><h3>匯入預覽：{{ importPreview.fileName }}</h3><p>辨識 {{ importPreview.items.length }} {{ importPreview.category === 'grammar' ? '題' : '組' }}、共 {{ importedQuestionCount }} 題；解答表辨識 {{ importPreview.answerCount }} 筆、套用 {{ importPreview.appliedAnswers }} 題，{{ missingImportedAnswers }} 題答案未設定。</p><p v-if="importPreview.unparsed.length" class="scope-warning">未辨識題目：{{ importPreview.unparsed.join('、') }}。請檢查下方擷取文字。</p><p v-if="importPreview.conflicts.length" class="scope-warning">解答檔有互相矛盾的題號：{{ importPreview.conflicts.join('、') }}；請人工核對。</p>
         <template v-if="importedText"><label>擷取文字（可修改題號、文章及 A～D 選項後重新解析）<textarea v-model="importedText" rows="10"></textarea></label><button type="button" @click="reparseImportedText">重新解析文字</button></template>
-        <div class="import-preview-list"><template v-if="importPreview.category === 'grammar'"><p v-for="(question,index) in importPreview.items" :key="index"><b>{{ question.sourceNumber || index + 1 }}. {{ question.stem }}</b>　A {{ question.choices[0] }}／B {{ question.choices[1] }}／C {{ question.choices[2] }}／D {{ question.choices[3] }}　答案：{{ labels[question.answer] || '未設定' }}</p></template><article v-else v-for="(group,index) in importPreview.items" :key="index"><h4>{{ group.title }}（{{ group.questions.length }} 題）</h4><p>{{ group.passage || '（未辨識出文章，套用後可手動貼上）' }}</p><p v-for="(question,qIndex) in group.questions" :key="qIndex"><b>{{ question.sourceNumber || qIndex + 1 }}. {{ question.stem }}</b>　A {{ question.choices[0] }}／B {{ question.choices[1] }}／C {{ question.choices[2] }}／D {{ question.choices[3] }}　答案：{{ labels[question.answer] || '未設定' }}</p></article></div>
-        <button type="button" :disabled="!importedQuestionCount" @click="applyImportedQuestions">確認{{ importMode === 'replace' ? '覆蓋' : '追加' }} {{ importedQuestionCount }} 題</button><button type="button" @click="importPreview = null; importedText = ''">取消</button>
+        <div class="import-preview-list"><template v-if="importPreview.category === 'grammar'"><p v-for="(question,index) in importPreview.items" :key="index"><b>{{ question.sourceNumber || index + 1 }}. {{ question.stem }}</b>　A {{ question.choices[0] }}／B {{ question.choices[1] }}／C {{ question.choices[2] }}／D {{ question.choices[3] }}　答案：{{ labels[question.answer] || '未設定' }}</p></template><article v-else v-for="(group,index) in importPreview.items" :key="index"><h4>{{ group.title }}（{{ group.questions.length }} 題）</h4><p>{{ group.passage || '（未辨識出文章，套用後可手動貼上）' }}</p><p v-for="(question,qIndex) in group.questions" :key="qIndex"><b>{{ question.sourceNumber || qIndex + 1 }}. {{ question.stem }}</b><span v-for="(choice,choiceIndex) in question.choices" :key="choiceIndex" class="import-choice">（{{ labels[choiceIndex] }}）{{ choice }}<img v-if="question.choiceImages?.[choiceIndex]" :src="question.choiceImages[choiceIndex]" :alt="`選項 ${labels[choiceIndex]} 圖片`"></span>　答案：{{ labels[question.answer] || '未設定' }}</p></article></div>
+        <button type="button" :disabled="!importedQuestionCount" @click="applyImportedQuestions">確認{{ importMode === 'replace' ? '覆蓋' : '追加' }} {{ importedQuestionCount }} 題</button><button type="button" @click="importPreview = null; importedText = ''; passageImportFiles = []; questionImportFiles = []; answerImportFiles = []">取消</button>
       </div>
     </section>
     <template v-if="generated">
@@ -997,7 +1059,7 @@ onMounted(async () => {
             <div v-if="group.detectedVocabulary?.length" class="detected-vocabulary"><b>範圍外及題庫外待確認單字／片語：</b><span v-for="item in group.detectedVocabulary" :key="item.normalized">{{ item.word }}{{ item.meaning ? `（${item.meaning}）` : '（題庫外，請人工確認）' }}</span></div>
             <div class="manual-glossary-control"><label>手動加入單字提示<input v-model="manualGlossaryInput[group.id]" placeholder="輸入英文單字或片語" @keyup.enter="addManualGlossaryWord(group)"></label><button type="button" :disabled="addingGlossaryWord === group.id" @click="addManualGlossaryWord(group)">{{ addingGlossaryWord === group.id ? '查詢中文中…' : '查中文並加入' }}</button><small>先查單字題庫；查不到時自動翻譯，加入後可在下方修改中文。</small></div>
             <textarea v-model="group.glossary" rows="3" placeholder="自動產生後仍可人工增刪或修改中文" @input="editGlossaryManually(group)"></textarea><small v-if="!group.autoGlossary" class="manual-note">目前為人工編輯模式；按「重新檢測」可恢復自動結果。</small>
-            <div v-for="question in group.questions" :key="question.id" class="question-editor"><div class="question-top"><b class="editor-question-number">{{ question.number }}.</b><textarea v-model="question.stem" placeholder="貼上完整題目與四個選項，可自動拆分" @paste="handleQuestionPaste($event, question)"></textarea><select v-model.number="question.answer"><option :value="-1">答案未設定</option><option v-for="(label,index) in labels" :key="label" :value="index">答案 {{ label }}</option></select><button @click="shuffleQuestionChoices(question)">交換選項</button></div><div class="choice-inputs"><label v-for="(_,index) in question.choices" :key="index">{{ labels[index] }}<input v-model="question.choices[index]"></label></div></div>
+            <div v-for="question in group.questions" :key="question.id" class="question-editor"><div class="question-top"><b class="editor-question-number">{{ question.number }}.</b><textarea v-model="question.stem" placeholder="貼上完整題目與四個選項，可自動拆分" @paste="handleQuestionPaste($event, question)"></textarea><select v-model.number="question.answer"><option :value="-1">答案未設定</option><option v-for="(label,index) in labels" :key="label" :value="index">答案 {{ label }}</option></select><button @click="shuffleQuestionChoices(question)">交換選項</button></div><div class="choice-inputs"><label v-for="(_,index) in question.choices" :key="index">{{ labels[index] }}<input v-model="question.choices[index]" placeholder="選項文字（可留空，改用圖片）"></label></div><div v-if="group.type === 'reading'" class="choice-image-slots"><div v-for="(_,index) in question.choices" :key="index" class="image-upload" tabindex="0" @click="focusImageSlot" @paste="handleQuestionChoiceImagePaste($event, question, index)"><b>選項 {{ labels[index] }} 圖片</b><img v-if="question.choiceImages?.[index]" :src="question.choiceImages[index]" :alt="`選項 ${labels[index]} 圖片`"><span v-else>點此按 Ctrl+V 貼上圖片</span><input type="file" accept="image/*" @change="handleQuestionChoiceImageInput($event, question, index)"><button v-if="question.choiceImages?.[index]" type="button" @click="question.choiceImages[index] = ''">移除圖片</button></div></div></div>
           </article>
         </div>
 
@@ -1023,6 +1085,9 @@ onMounted(async () => {
 .builder-page{min-height:100vh;padding:24px;background:#eef2f7;color:#1e293b;font-family:system-ui,'Noto Sans TC',sans-serif}.page-header,.panel,.preview-panel{max-width:1500px;margin:0 auto 18px}.page-header{display:flex;justify-content:space-between;gap:20px}.page-header h1{margin:0;color:#1d4ed8}.page-header p{margin:5px 0;color:#64748b}.page-header a{height:max-content;padding:10px 15px;border-radius:8px;background:#1e3a8a;color:white;text-decoration:none;font-weight:800}.message{max-width:1470px;margin:0 auto 15px;padding:12px 15px;border-left:5px solid #2563eb;background:#dbeafe}.panel{box-sizing:border-box;padding:18px;border:1px solid #cbd5e1;border-radius:14px;background:#fff;box-shadow:0 3px 14px #0f172a12}.panel h2{margin:0 0 12px;color:#1e3a8a}.grade-picker{display:flex;gap:10px;margin-bottom:14px}.grade-picker button{display:flex;flex-direction:column;min-width:150px;padding:12px;border:2px solid #cbd5e1;border-radius:9px;background:white;font-size:1.1rem;font-weight:900;cursor:pointer}.grade-picker button span{font-size:.8rem;color:#64748b}.grade-picker button.active{border-color:#2563eb;background:#eff6ff;color:#1d4ed8}.form-grid{display:grid;grid-template-columns:2fr repeat(3,1fr) 2.5fr;gap:10px}.form-grid label{display:grid;gap:4px;font-size:.85rem;font-weight:800}.form-grid input,.score-settings input,.question-editor input,.question-editor select,.question-editor textarea,.group-editor textarea,.group-title,.written-editor textarea,.written-grid textarea,.written-grid input,.image-upload input{box-sizing:border-box;width:100%;padding:8px;border:1px solid #94a3b8;border-radius:7px;font:inherit}.score-settings{display:flex;align-items:end;gap:12px;margin-top:13px}.score-settings label{display:grid;grid-template-columns:auto 80px auto;align-items:center;gap:6px;font-weight:800}.score-settings span{padding:8px 10px;border-radius:7px;background:#dcfce7;color:#166534;font-weight:900}.score-settings span.invalid{background:#fee2e2;color:#b91c1c}.preset-note{margin-bottom:0;padding:9px;background:#f1f5f9}.scope-columns{display:grid;grid-template-columns:1fr 1fr;gap:16px}.scope-heading{display:flex;justify-content:space-between;align-items:center}.scope-heading h3{margin:0}.scope-heading span{color:#1d4ed8;font-weight:800}.lesson-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:6px;max-height:270px;overflow:auto;margin-top:8px;padding:3px}.lesson-grid label{display:flex;gap:7px;align-items:center;padding:8px;border:2px solid #cbd5e1;border-radius:8px;cursor:pointer}.lesson-grid label.selected{border-color:#2563eb;background:#eff6ff}.lesson-grid span{display:grid}.lesson-grid small{color:#64748b}.generate-btn{width:100%;margin-top:15px;padding:13px;border:0;border-radius:9px;background:#2563eb;color:white;font-size:1.05rem;font-weight:900;cursor:pointer}.generate-btn:disabled{opacity:.5}.action-panel{display:flex;justify-content:space-between;gap:15px}.preview-tabs,.action-buttons,.editor-tabs{display:flex;gap:8px;flex-wrap:wrap}.preview-tabs button,.action-buttons button,.editor-tabs button,.question-editor button{padding:9px 11px;border:1px solid #64748b;border-radius:7px;background:#fff;font-weight:800;cursor:pointer}.preview-tabs button.active,.editor-tabs button.active{background:#1e3a8a;color:#fff}.action-buttons{justify-content:flex-end}.action-buttons .makeup{background:#f97316;color:white;border-color:#c2410c}.preview-panel{padding:18px;border-radius:14px;background:#475569;overflow:hidden}.preview-scroll{overflow:auto;max-height:850px}.preview-scroll :deep(.regular-exam-page){box-shadow:0 6px 25px #0f172a99}.editor-tabs{margin-bottom:14px}.editor-content{display:grid;gap:10px}.question-editor{padding:12px;border:1px solid #cbd5e1;border-radius:9px;background:#f8fafc}.question-top{display:grid;grid-template-columns:45px 1fr 120px 110px;gap:8px;align-items:start}.question-top textarea{min-height:50px}.choice-inputs{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:8px}.choice-inputs label{display:grid;grid-template-columns:22px 1fr;align-items:center;font-weight:800}.image-editor>label{display:inline-flex;gap:6px;margin:0 8px}.image-options{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:9px}.image-upload{display:grid;gap:6px;padding:9px;border:2px dashed #94a3b8;border-radius:8px;background:white}.image-upload:focus{border-color:#2563eb}.image-upload img{width:100%;height:145px;object-fit:contain;background:#f1f5f9}.image-upload>span{display:grid;place-items:center;height:145px;color:#64748b;background:#f1f5f9}.group-editor,.written-editor{display:grid;gap:9px;padding:14px;border:2px solid #cbd5e1;border-radius:10px}.group-layout-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px}.group-layout-row>label{display:flex;align-items:center;gap:6px;white-space:nowrap;font-weight:800}.group-layout-row input[type=checkbox]{width:auto}.group-title{font-size:1.15rem;font-weight:900;color:#1d4ed8}.written-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.written-grid>div{display:grid;grid-template-columns:35px 1.5fr 1fr;gap:6px;align-items:start;padding:8px;border:1px solid #e2e8f0;border-radius:7px}.written-grid textarea{min-height:58px}@media(max-width:1000px){.form-grid,.scope-columns{grid-template-columns:1fr 1fr}.action-panel,.page-header{flex-direction:column}.question-top{grid-template-columns:40px 1fr}.choice-inputs,.written-grid{grid-template-columns:1fr 1fr}}@media(max-width:650px){.builder-page{padding:10px}.form-grid,.scope-columns,.choice-inputs,.written-grid,.image-options{grid-template-columns:1fr}.grade-picker{display:grid;grid-template-columns:repeat(3,1fr)}.grade-picker button{min-width:0}.score-settings{align-items:stretch;flex-direction:column}.group-layout-row{grid-template-columns:1fr}.written-grid>div{grid-template-columns:30px 1fr}.written-grid input{grid-column:2}}
 .passage-editor{border:2px dashed #64748b!important;background:#fff}.glossary-heading{display:flex;align-items:center;gap:10px}.glossary-heading>span{margin-left:auto;color:#b45309;font-weight:800}.glossary-heading button{padding:7px 10px;border:1px solid #2563eb;border-radius:7px;background:#eff6ff;color:#1d4ed8;font-weight:800;cursor:pointer}.manual-note{color:#b45309}.editor-question-number{display:grid;place-items:center;min-height:42px;border-radius:7px;background:#1e3a8a;color:#fff;font-size:1.08rem}@media(max-width:650px){.glossary-heading{align-items:stretch;flex-direction:column}.glossary-heading>span{margin-left:0}}
 .reading-image-slots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:8px}.reading-image-editor> b{color:#1e3a8a}@media(max-width:650px){.reading-image-slots{grid-template-columns:1fr}}
+.choice-image-slots{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:9px}.choice-image-slots .image-upload img,.choice-image-slots .image-upload>span{height:100px}.screenshot-paste-zone{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:10px 0;padding:14px;border:2px dashed #3b82f6;border-radius:9px;background:#eff6ff}.screenshot-paste-zone:focus{outline:3px solid #1d4ed8}.screenshot-paste-zone span{color:#475569}.screenshot-paste-zone button{margin-left:auto}@media(max-width:650px){.choice-image-slots{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.import-choice{display:inline-flex;align-items:center;gap:4px;margin:3px 8px 3px 0}.import-choice img{max-width:100px;max-height:70px;object-fit:contain}
+.passage-import-order{display:grid;gap:6px;margin:8px 0;padding:10px;border:1px solid #bfdbfe;border-radius:8px}.passage-import-order>div{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.passage-import-order span{flex:1;min-width:160px}
 .vocab-scope-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px}.vocab-scope-controls label{display:flex;align-items:center;gap:4px;font-weight:700}.vocab-scope-controls select{max-width:100%;padding:7px;border:1px solid #94a3b8;border-radius:6px}.scope-note{margin:6px 0;color:#475569;font-size:.85rem}
 .leak-panel{border-color:#86efac;background:#f0fdf4}.leak-panel.has-leaks{border-color:#fca5a5;background:#fff1f2}.leak-panel h2{color:#166534}.leak-panel.has-leaks h2{color:#b91c1c}.leak-panel p{margin:5px 0}.leak-panel ul{max-height:220px;overflow:auto;margin:8px 0;padding-left:22px}.leak-panel li{margin:5px 0}.vocabulary-reference{padding:10px;border:1px solid #93c5fd;border-radius:8px;background:#eff6ff}.vocabulary-reference label{display:flex;align-items:center;gap:8px;font-weight:700}.vocabulary-reference input{width:min(360px,100%);padding:7px;border:1px solid #94a3b8;border-radius:6px}.vocabulary-reference p{margin:6px 0;font-size:.85rem}.vocabulary-reference .scope-warning{color:#b91c1c;font-weight:800}.vocabulary-reference-list{max-height:300px;overflow:auto}.vocabulary-reference-list section{margin:8px 0}.vocabulary-reference-list h4{position:sticky;top:0;margin:0;padding:5px 8px;background:#dbeafe;color:#1e3a8a}.vocabulary-reference-words{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:3px 12px}.vocabulary-reference-words>div{display:grid;grid-template-columns:1fr 1fr;gap:4px;border-bottom:1px solid #bfdbfe;padding:4px}.translation-blank-control{display:flex;align-items:center;gap:8px;font-weight:800}.translation-blank-control input{width:70px;padding:6px}.detected-vocabulary{display:flex;gap:6px;flex-wrap:wrap}.detected-vocabulary>b{width:100%}.detected-vocabulary span{padding:3px 6px;border-radius:4px;background:#fef3c7;color:#92400e}
 .manual-glossary-control{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc}.manual-glossary-control label{display:flex;align-items:center;gap:8px;font-weight:800}.manual-glossary-control input{min-width:200px;padding:7px;border:1px solid #94a3b8;border-radius:6px}.manual-glossary-control button{padding:8px 11px;border:1px solid #2563eb;border-radius:6px;background:#eff6ff;color:#1d4ed8;font-weight:800;cursor:pointer}.manual-glossary-control button:disabled{opacity:.55}.manual-glossary-control small{width:100%;color:#64748b}
