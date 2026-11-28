@@ -89,8 +89,12 @@ test('two-column exam pages and generic sections keep question types separate', 
   const choices = '(A) One (B) Two (C) Three (D) Four';
   const text = `一、單題：每題 2 分\n16. Grammar? ${choices}\n二、題組：每題 2 分\nA story about Sam.\n30. Who is Sam? ${choices}\n31. Where is Sam? ${choices}\nJohn is good at 32. ______ and 33. ______.\nHe practices every day because he wants to be a professional player in the future.\nHis friends watch him play and cheer for him after school.\n32. ${choices}\n33. ${choices}\n【第三部分】非選擇題\n1. Written answer`;
   assert.deepEqual(parseDocumentQuestions(text, 'grammar').map(question => question.sourceNumber), [16]);
-  assert.deepEqual(parseDocumentQuestions(text, 'reading').flatMap(group => group.questions.map(question => question.sourceNumber)), [30, 31]);
-  assert.deepEqual(parseDocumentQuestions(text, 'cloze').flatMap(group => group.questions.map(question => question.sourceNumber)), [32, 33]);
+  const reading = parseDocumentQuestions(text, 'reading');
+  const cloze = parseDocumentQuestions(text, 'cloze');
+  assert.deepEqual(reading.flatMap(group => group.questions.map(question => question.sourceNumber)), [30, 31]);
+  assert.deepEqual(cloze.flatMap(group => group.questions.map(question => question.sourceNumber)), [32, 33]);
+  assert.equal(reading[0].title, '閱讀測驗（題組 1）');
+  assert.equal(cloze[0].title, '克漏字選擇（題組 1）');
 });
 
 test('answer sheet rows align numbers with letters', () => {

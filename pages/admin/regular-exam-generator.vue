@@ -6,7 +6,7 @@ import { applyChoiceAnswerKey, csvRowsToSection, exportSectionData, extractChoic
 import { detectOutOfScopeVocabulary, formatVocabularyGlossary, listInScopeVocabulary, lookupVocabularyMeaning } from '~/lib/regular-exam-vocabulary';
 import { findRegularExamAnswerLeaks } from '~/lib/regular-exam-answer-leaks';
 import { sentenceTokens, buildTranslationFill, chooseTranslationBlanks, splitTranslationText } from '~/lib/regular-exam-translation';
-import { groupTitle, writtenTitle, scoreSlots, sectionOrdinal } from '~/lib/regular-exam-sections';
+import { groupTitle, orderExamGroups, writtenTitle, scoreSlots, sectionOrdinal } from '~/lib/regular-exam-sections';
 import { lessonKey, sortLessons, cumulativeLessonKeys, cumulativeLessonKeysForSelection } from '~/lib/regular-exam-scope';
 
 definePageMeta({ middleware: 'auth' });
@@ -74,7 +74,7 @@ const sections = computed(() => [
   { id: 'basic', title: '二、基本問答', items: listening.value.basic },
   { id: 'comprehension', title: '三、言談理解', items: listening.value.comprehension },
   { id: 'grammar', title: '四、文法選擇', items: grammarQuestions.value },
-  ...groups.value.map((group, index) => ({ id: group.id, title: groupTitle(group, index), items: group.questions })),
+  ...groups.value.map((group, index) => ({ id: group.id, title: groupTitle(group, index, groups.value), items: group.questions })),
   { id: 'vocabulary', title: writtenTitle('單字與文意字彙', groups.value.length, 0), items: nonChoice.value.vocabulary },
   ...nonChoice.value.sections.map((section, index) => ({ id: section.id, title: writtenTitle(section.title, groups.value.length, index + 1), items: section.items }))
 ]);
@@ -221,6 +221,8 @@ const applyDraftPayload = draft => {
   listening.value = structuredClone(draft.listening);
   grammarQuestions.value = structuredClone(draft.grammarQuestions);
   groups.value = structuredClone(draft.groups);
+  groups.value = orderExamGroups(groups.value);
+  renumberGroups();
   nonChoice.value = structuredClone(draft.nonChoice);
   selectedVocabLessons.value = [...(draft.selectedVocabLessons || [])];
   vocabScopeMode.value = draft.vocabScopeMode || 'manual';
@@ -802,6 +804,7 @@ const applyImportedQuestions = () => {
     } else groups.value.push(...additions);
     additions.filter(group => group.passage && group.autoGlossary).forEach(detectGroupVocabulary);
   }
+  groups.value = orderExamGroups(groups.value);
   renumberGroups();
   generated.value = true;
   editorTab.value = preview.category === 'grammar' ? 'grammar' : 'groups';
