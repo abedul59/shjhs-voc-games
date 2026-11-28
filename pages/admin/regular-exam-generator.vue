@@ -600,7 +600,7 @@ const extractPdfText = async file => {
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
     const page = await pdf.getPage(pageNumber);
     const content = await page.getTextContent();
-    pages.push(pdfTextToPlain(content.items));
+    pages.push(pdfTextToPlain(content.items, page.view[2] - page.view[0]));
   }
   await task.destroy();
   return pages.join('\n\n');
@@ -613,16 +613,35 @@ const selectImportFiles = (event, role) => {
   event.target.value = '';
 };
 
+const pasteImportScreenshot = event => {
+  const images = Array.from(event.clipboardData?.items || []).filter(item => item.type.startsWith('image/')).map(item => item.getAsFile()).filter(Boolean);
+  if (!images.length) return;
+  event.preventDefault();
+  questionImportFiles.value = [...questionImportFiles.value, ...images.map((file, index) => new File([file], `截圖-${Date.now()}-${index + 1}.png`, { type: file.type }))];
+  message.value = `已加入 ${images.length} 張截圖，請按「解析所選檔案」。`;
+};
+
+let ocrWorker;
+const extractImageText = async file => {
+  if (!ocrWorker) {
+    const { createWorker } = await import('tesseract.js');
+    ocrWorker = await createWorker(['eng', 'chi_tra'], 1, { langPath: '/ocr', corePath: '/ocr/core', workerPath: '/ocr/worker.min.js', gzip: false });
+  }
+  const result = await ocrWorker.recognize(file);
+  return result.data.text;
+};
+
 const readImportDocument = async file => {
   const extension = file.name.split('.').pop()?.toLowerCase();
   if (extension === 'pdf') return extractPdfText(file);
+  if (file.type.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp'].includes(extension)) return extractImageText(file);
   if (extension === 'docx') {
     const mammoth = await import('mammoth/mammoth.browser.js');
     const result = await (mammoth.default || mammoth).extractRawText({ arrayBuffer: await file.arrayBuffer() });
     return result.value;
   }
   if (extension === 'csv' || extension === 'json') return file.text();
-  throw new Error(`「${file.name}」格式不支援；請使用 CSV、JSON、PDF 或 DOCX。`);
+  throw new Error(`「${file.name}」格式不支援；請使用 CSV、JSON、PDF、DOCX 或圖片。`);
 };
 
 const importQuestionFiles = async () => {
@@ -688,7 +707,10 @@ const importQuestionFiles = async () => {
       ? `已解析 ${items.length} ${category === 'grammar' ? '題' : '組'}，並從解答取得 ${appliedAnswers} 題答案；請核對預覽再套用。`
       : '已讀取檔案，但未辨識出完整題目；請在下方整理題號與 A～D 選項後重新解析。';
   } catch (error) { message.value = `匯入失敗：${error.message}`; }
-  finally { importingFile.value = false; }
+  finally {
+    if (ocrWorker) { await ocrWorker.terminate(); ocrWorker = null; }
+    importingFile.value = false;
+  }
 };
 
 const reparseImportedText = () => {
@@ -928,9 +950,9 @@ onMounted(async () => {
     </section>
     <section class="panel interchange-panel">
       <h2>題目匯入／匯出</h2>
-      <p>文法以單題、克漏字和閱讀以題組處理。CSV／JSON 可往返編輯；PDF／Word（.docx）會擷取文字並嘗試拆分題目。圖片請在匯入後另外貼上。</p>
-      <div class="interchange-controls"><label>題型<select v-model="interchangeCategory"><option value="grammar">文法選擇（單題）</option><option value="cloze">克漏字選擇（題組）</option><option value="reading">閱讀測驗（題組）</option></select></label><button type="button" @click="downloadSection('csv')">匯出 CSV</button><button type="button" @click="downloadSection('json')">匯出 JSON</button><label>匯入方式<select v-model="importMode"><option value="replace">覆蓋此題型</option><option value="append">追加到此題型</option></select></label><label class="file-import">題目檔（可多選，{{ questionImportFiles.length }} 份）<input type="file" multiple accept=".csv,.json,.pdf,.docx" :disabled="importingFile" @change="selectImportFiles($event,'questions')"></label><label class="file-import">解答檔（可多選，{{ answerImportFiles.length }} 份）<input type="file" multiple accept=".csv,.json,.pdf,.docx" :disabled="importingFile" @change="selectImportFiles($event,'answers')"></label><button type="button" :disabled="importingFile || !questionImportFiles.length" @click="importQuestionFiles">{{ importingFile ? '讀取中…' : '解析所選檔案' }}</button></div>
-      <p class="scope-note">解答可與題目同檔，或另選解答檔；系統依原題號配對 A～D。沒有明確答案會標為「未設定」。跨校版面可修正擷取文字再重新解析；掃描版 PDF 須先做 OCR。</p>
+      <p>文法以單題、克漏字和閱讀以題組處理。CSV／JSON 可往返編輯；PDF／Word（.docx）會擷取文字；截圖會先辨識英文與中文，再嘗試拆分題目。題目中的圖片可在匯入後貼上。</p>
+      <div class="interchange-controls" tabindex="0" @paste="pasteImportScreenshot"><label>題型<select v-model="interchangeCategory"><option value="grammar">文法選擇（單題）</option><option value="cloze">克漏字選擇（題組）</option><option value="reading">閱讀測驗（題組）</option></select></label><button type="button" @click="downloadSection('csv')">匯出 CSV</button><button type="button" @click="downloadSection('json')">匯出 JSON</button><label>匯入方式<select v-model="importMode"><option value="replace">覆蓋此題型</option><option value="append">追加到此題型</option></select></label><label class="file-import">題目檔或截圖（可多選，{{ questionImportFiles.length }} 份）<input type="file" multiple accept=".csv,.json,.pdf,.docx,image/png,image/jpeg,image/webp" :disabled="importingFile" @change="selectImportFiles($event,'questions')"></label><label class="file-import">解答檔或截圖（可多選，{{ answerImportFiles.length }} 份）<input type="file" multiple accept=".csv,.json,.pdf,.docx,image/png,image/jpeg,image/webp" :disabled="importingFile" @change="selectImportFiles($event,'answers')"></label><button type="button" :disabled="importingFile || !questionImportFiles.length" @click="importQuestionFiles">{{ importingFile ? '辨識與解析中…' : '解析所選檔案' }}</button></div>
+      <p class="scope-note">可點選上方區域後按 Ctrl+V 貼上截圖。截圖請包含完整題目、文章及 A～D 選項；每次選一種題型。解答依原題號配對；請核對辨識文字和預覽。</p>
       <div v-if="importPreview" class="import-preview"><h3>匯入預覽：{{ importPreview.fileName }}</h3><p>辨識 {{ importPreview.items.length }} {{ importPreview.category === 'grammar' ? '題' : '組' }}、共 {{ importedQuestionCount }} 題；解答表辨識 {{ importPreview.answerCount }} 筆、套用 {{ importPreview.appliedAnswers }} 題，{{ missingImportedAnswers }} 題答案未設定。</p><p v-if="importPreview.unparsed.length" class="scope-warning">未辨識題目：{{ importPreview.unparsed.join('、') }}。請檢查下方擷取文字。</p><p v-if="importPreview.conflicts.length" class="scope-warning">解答檔有互相矛盾的題號：{{ importPreview.conflicts.join('、') }}；請人工核對。</p>
         <template v-if="importedText"><label>擷取文字（可修改題號、文章及 A～D 選項後重新解析）<textarea v-model="importedText" rows="10"></textarea></label><button type="button" @click="reparseImportedText">重新解析文字</button></template>
         <div class="import-preview-list"><template v-if="importPreview.category === 'grammar'"><p v-for="(question,index) in importPreview.items" :key="index"><b>{{ question.sourceNumber || index + 1 }}. {{ question.stem }}</b>　A {{ question.choices[0] }}／B {{ question.choices[1] }}／C {{ question.choices[2] }}／D {{ question.choices[3] }}　答案：{{ labels[question.answer] || '未設定' }}</p></template><article v-else v-for="(group,index) in importPreview.items" :key="index"><h4>{{ group.title }}（{{ group.questions.length }} 題）</h4><p>{{ group.passage || '（未辨識出文章，套用後可手動貼上）' }}</p><p v-for="(question,qIndex) in group.questions" :key="qIndex"><b>{{ question.sourceNumber || qIndex + 1 }}. {{ question.stem }}</b>　A {{ question.choices[0] }}／B {{ question.choices[1] }}／C {{ question.choices[2] }}／D {{ question.choices[3] }}　答案：{{ labels[question.answer] || '未設定' }}</p></article></div>

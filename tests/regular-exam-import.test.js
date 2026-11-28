@@ -79,3 +79,21 @@ test('numbered side notes do not interrupt reading questions', () => {
   assert.equal(group.questions[0].choices[3], 'Dan');
   assert.equal(group.questions[1].choices[0], 'Home');
 });
+
+test('two-column exam pages and generic sections keep question types separate', () => {
+  const item = (str, x, y) => ({ str, transform: [1, 0, 0, 1, x, y], width: 180, height: 10 });
+  const left = Array.from({ length: 3 }, (_, index) => [item(`${16 + index}. Grammar?`, 20, 700 - index * 60), item('(A) One (B) Two (C) Three (D) Four', 20, 680 - index * 60)]).flat();
+  const right = Array.from({ length: 3 }, (_, index) => [item(`${19 + index}. Grammar?`, 350, 700 - index * 60), item('(A) One (B) Two (C) Three (D) Four', 350, 680 - index * 60)]).flat();
+  const plain = pdfTextToPlain([...left, ...right, ...Array.from({ length: 5 }, (_, index) => item('Passage text', 20, 460 - index * 15)), ...Array.from({ length: 5 }, (_, index) => item('Passage text', 350, 460 - index * 15))], 650);
+  assert.deepEqual([...plain.matchAll(/(?:^|\n)(\d+)\./g)].map(match => Number(match[1])), [16, 17, 18, 19, 20, 21]);
+  const choices = '(A) One (B) Two (C) Three (D) Four';
+  const text = `一、單題：每題 2 分\n16. Grammar? ${choices}\n二、題組：每題 2 分\nA story about Sam.\n30. Who is Sam? ${choices}\n31. Where is Sam? ${choices}\nJohn is good at 32. ______ and 33. ______.\nHe practices every day because he wants to be a professional player in the future.\nHis friends watch him play and cheer for him after school.\n32. ${choices}\n33. ${choices}\n【第三部分】非選擇題\n1. Written answer`;
+  assert.deepEqual(parseDocumentQuestions(text, 'grammar').map(question => question.sourceNumber), [16]);
+  assert.deepEqual(parseDocumentQuestions(text, 'reading').flatMap(group => group.questions.map(question => question.sourceNumber)), [30, 31]);
+  assert.deepEqual(parseDocumentQuestions(text, 'cloze').flatMap(group => group.questions.map(question => question.sourceNumber)), [32, 33]);
+});
+
+test('answer sheet rows align numbers with letters', () => {
+  const answers = extractChoiceAnswerKey('16.\t17.\t18.\t19.\t20.\nD\tD\tC\tB\tB\n21. 22. 23.\nA B C');
+  assert.deepEqual([16, 17, 18, 19, 20, 21, 22, 23].map(number => answers[number]), ['D', 'D', 'C', 'B', 'B', 'A', 'B', 'C']);
+});
