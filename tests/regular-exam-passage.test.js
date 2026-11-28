@@ -7,6 +7,7 @@ test('cloze blanks show current consecutive question numbers inside the blank', 
   const passage = 'John: He is good at 41. tennis.\nMindy: Do you want 42. a bike?\nJohn: I can tell 43. stories.';
   const questions = [41, 42, 43].map((sourceNumber, index) => ({ sourceNumber, number: 30 + index }));
   assert.equal(formatClozePassage(passage, questions), 'John: He is good at _______30._______ tennis.\nMindy: Do you want _______31._______ a bike?\nJohn: I can tell _______32._______ stories.');
+  assert.equal(formatClozePassage('I am\t21\tin class.', [{ sourceNumber: 21, number: 30 }]), 'I am\t_______30._______\tin class.');
 });
 
 test('dialogue and article passages receive distinct layout with article title and paragraphs', () => {
