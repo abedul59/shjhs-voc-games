@@ -1,6 +1,8 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { parseRegularExamQuestion } from '~/lib/regular-exam-question-parser';
+import Papa from 'papaparse';
+import { csvRowsToSection, exportSectionData, normalizeImportedItems, parseDocumentQuestions, pdfTextToPlain, sectionCsvRows } from '~/lib/regular-exam-import';
 import { detectOutOfScopeVocabulary, formatVocabularyGlossary, listInScopeVocabulary, lookupVocabularyMeaning } from '~/lib/regular-exam-vocabulary';
 import { findRegularExamAnswerLeaks } from '~/lib/regular-exam-answer-leaks';
 import { sentenceTokens, buildTranslationFill, chooseTranslationBlanks, splitTranslationText } from '~/lib/regular-exam-translation';
@@ -38,6 +40,11 @@ const vocabularyReferenceGroup = ref('');
 const vocabularyReferenceSearch = ref('');
 const manualGlossaryInput = ref({});
 const addingGlossaryWord = ref('');
+const interchangeCategory = ref('grammar');
+const importMode = ref('replace');
+const importPreview = ref(null);
+const importedText = ref('');
+const importingFile = ref(false);
 const questionPreview = ref(null);
 const answerPreview = ref(null);
 const blankPreview = ref(null);
@@ -538,17 +545,154 @@ const generateExam = async () => {
 };
 
 const shuffleQuestionChoices = question => {
-  const pairs = question.choices.map((choice, index) => ({ choice, correct: index === question.answer }));
-  const shuffled = shuffle(pairs);
+  const hasAnswer = Number.isInteger(question.answer) && question.answer >= 0 && question.answer < question.choices.length;
+  const pairs = question.choices.map((choice, index) => ({ choice, index, correct: index === question.answer }));
+  let shuffled = shuffle(pairs);
+  if (pairs.length > 1 && shuffled.every((item, index) => item.index === index)) shuffled = [...pairs.slice(1), pairs[0]];
   question.choices = shuffled.map(item => item.choice);
-  question.answer = Math.max(0, shuffled.findIndex(item => item.correct));
+  question.answer = hasAnswer ? shuffled.findIndex(item => item.correct) : -1;
+};
+
+const exchangeEveryChoice = () => {
+  const questions = [...listening.value.image, ...listening.value.basic, ...listening.value.comprehension, ...grammarQuestions.value, ...groups.value.flatMap(group => group.questions)];
+  questions.filter(question => question.choices?.length > 1).forEach(shuffleQuestionChoices);
+  message.value = `已統一交換 ${questions.length} 題的選項，已設定的正確答案代號同步更新；未設定答案的匯入題仍維持未設定。`;
 };
 
 const shuffleAllChoices = () => {
-  [...listening.value.image, ...listening.value.basic, ...listening.value.comprehension, ...grammarQuestions.value, ...groups.value.flatMap(group => group.questions)].forEach(shuffleQuestionChoices);
+  exchangeEveryChoice();
   variantNumber.value += 1;
   metadata.value.fileName = metadata.value.fileName.replace(/_補考版\d+$/, '') + `_補考版${variantNumber.value}`;
   message.value = `已產生補考版 ${variantNumber.value}：所有題幹保持不變，選項順序與正確答案代號已同步更新。`;
+};
+const clearGroupGlossary = group => {
+  group.glossary = '';
+  group.manualGlossaryEntries = [];
+  group.detectedVocabulary = [];
+  group.outOfScopeCount = 0;
+  group.unknownWordCount = 0;
+  group.autoGlossary = false;
+  message.value = `已清除「${group.title}」的單字提示；需要時可按「重新檢測」。`;
+};
+
+const downloadSection = format => {
+  const data = exportSectionData(interchangeCategory.value, grammarQuestions.value, groups.value);
+  if (!data.items.length) { message.value = '這個類別目前沒有題目可匯出。'; return; }
+  const content = format === 'csv' ? `\uFEFF${Papa.unparse(sectionCsvRows(data))}` : JSON.stringify(data, null, 2);
+  const blob = new Blob([content], { type: format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `段考${{ grammar: '文法選擇', cloze: '克漏字選擇', reading: '閱讀測驗' }[data.category]}.${format}`;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+const extractPdfText = async file => {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const worker = await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url');
+  pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+  const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()), useSystemFonts: true });
+  const pdf = await task.promise;
+  const pages = [];
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+    pages.push(pdfTextToPlain(content.items));
+  }
+  await task.destroy();
+  return pages.join('\n\n');
+};
+
+const importQuestionFile = async event => {
+  const file = event.target.files?.[0];
+  event.target.value = '';
+  if (!file) return;
+  importPreview.value = null;
+  importedText.value = '';
+  if (file.size > 20 * 1024 * 1024) { message.value = '檔案超過 20 MB，請先拆成較小的題組檔案。'; return; }
+  importingFile.value = true;
+  try {
+    const category = interchangeCategory.value;
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    let items;
+    if (extension === 'json') {
+      const data = JSON.parse(await file.text());
+      if (data.category && data.category !== category) throw new Error(`檔案類型是 ${data.category}，請先切換匯入類型。`);
+      items = normalizeImportedItems(data, category);
+    } else if (extension === 'csv') {
+      const parsed = Papa.parse(await file.text(), { header: true, skipEmptyLines: true });
+      if (parsed.errors.length) throw new Error(parsed.errors[0].message);
+      items = csvRowsToSection(parsed.data, category);
+    } else if (extension === 'pdf' || extension === 'docx') {
+      if (extension === 'pdf') importedText.value = await extractPdfText(file);
+      else {
+        const mammoth = await import('mammoth/mammoth.browser.js');
+        const result = await (mammoth.default || mammoth).extractRawText({ arrayBuffer: await file.arrayBuffer() });
+        importedText.value = result.value;
+      }
+      if (!importedText.value.trim()) throw new Error('檔案沒有可選取的文字；掃描版 PDF 請先做 OCR 再匯入。');
+      try { items = parseDocumentQuestions(importedText.value, category); }
+      catch { items = []; }
+    } else throw new Error('請使用 CSV、JSON、PDF 或 DOCX；舊式 .doc 請先另存為 .docx。');
+    importPreview.value = { category, items, fileName: file.name, source: extension };
+    message.value = items.length
+      ? `已解析「${file.name}」；請先核對下方題目與答案，再套用。`
+      : `已讀取「${file.name}」的文字，但未辨識出完整題目；請在下方整理題號與 A～D 選項後重新解析。`;
+  } catch (error) { message.value = `匯入失敗：${error.message}`; }
+  finally { importingFile.value = false; }
+};
+
+const reparseImportedText = () => {
+  if (!importPreview.value || !importedText.value) return;
+  try {
+    importPreview.value.items = parseDocumentQuestions(importedText.value, importPreview.value.category);
+    message.value = '已重新解析文字，請核對題目與答案。';
+  } catch (error) { message.value = `重新解析失敗：${error.message}`; }
+};
+
+const importedQuestionCount = computed(() => importPreview.value?.category === 'grammar'
+  ? importPreview.value.items.length
+  : importPreview.value?.items.reduce((sum, group) => sum + group.questions.length, 0) || 0);
+const missingImportedAnswers = computed(() => importPreview.value?.category === 'grammar'
+  ? importPreview.value.items.filter(question => question.answer < 0).length
+  : importPreview.value?.items.flatMap(group => group.questions).filter(question => question.answer < 0).length || 0);
+
+const applyImportedQuestions = () => {
+  const preview = importPreview.value;
+  if (!preview?.items.length) return;
+  const questionCount = importedQuestionCount.value;
+  const unanswered = missingImportedAnswers.value;
+  const questions = data => data.map(question => ({ ...question, id: crypto.randomUUID(), number: 0, choices: [...question.choices] }));
+  if (preview.category === 'grammar') {
+    const additions = questions(preview.items);
+    grammarQuestions.value = importMode.value === 'replace' ? additions : [...grammarQuestions.value, ...additions];
+    grammarQuestions.value.forEach((question, index) => { question.number = index + 16; });
+    questionCounts.value.grammar = grammarQuestions.value.length;
+  } else {
+    const oldGroups = groups.value.filter(group => group.type === preview.category);
+    const oldPoints = oldGroups.map(group => Number(sectionPoints.value[group.id]) || 0);
+    const additions = preview.items.map((item, index) => {
+      const id = importMode.value === 'replace' ? oldGroups[index]?.id || crypto.randomUUID() : crypto.randomUUID();
+      if (!(id in sectionPoints.value)) sectionPoints.value[id] = 0;
+      return { id, type: preview.category, title: item.title, passage: item.passage, glossary: item.glossary,
+        images: ['', ''], autoGlossary: !item.glossary, manualGlossaryEntries: [], outOfScopeCount: 0,
+        unknownWordCount: 0, startNewPage: false, questions: questions(item.questions) };
+    });
+    if (importMode.value === 'replace') {
+      const firstIndex = groups.value.findIndex(group => group.type === preview.category);
+      groups.value = groups.value.filter(group => group.type !== preview.category);
+      groups.value.splice(firstIndex < 0 ? groups.value.length : firstIndex, 0, ...additions);
+      oldGroups.forEach(group => { if (!additions.some(item => item.id === group.id)) delete sectionPoints.value[group.id]; });
+      if (additions.length) sectionPoints.value[additions[0].id] += oldPoints.slice(additions.length).reduce((sum, points) => sum + points, 0);
+    } else groups.value.push(...additions);
+    additions.filter(group => group.passage && group.autoGlossary).forEach(detectGroupVocabulary);
+  }
+  renumberGroups();
+  generated.value = true;
+  editorTab.value = preview.category === 'grammar' ? 'grammar' : 'groups';
+  importPreview.value = null;
+  message.value = `已${importMode.value === 'replace' ? '覆蓋' : '追加'} ${questionCount} 題；請核對 ${unanswered} 題未設定答案的題目及配分。`;
 };
 const renumberGroups = () => {
   let number = 16 + grammarQuestions.value.length;
@@ -733,8 +877,19 @@ onMounted(async () => {
         <button @click="addReadingGroup">＋ 新增閱讀題組</button><button @click="addWrittenSection">＋ 新增非選擇大題</button>
         <p class="score-summary" :class="{ invalid: scoreDifference !== 0 || scoreWarnings.length }">大題總分 {{ scoreTotal }}／100 分；{{ scoreDifference > 0 ? `尚缺 ${scoreDifference} 分` : scoreDifference < 0 ? `超出 ${-scoreDifference} 分` : '總分 100 分' }}</p><p v-if="choiceScore !== Number(scoring.choicePercent) || writtenScore !== Number(scoring.nonChoicePercent)" class="score-warning">⚠ 目前選擇題 {{ choiceScore }} 分／非選擇題 {{ writtenScore }} 分，與上方設定的 {{ scoring.choicePercent }}／{{ scoring.nonChoicePercent }} 不一致。</p><p v-for="warning in scoreWarnings" :key="warning" class="score-warning">⚠ {{ warning }}</p><button @click="allocateScores">依選擇題／非選擇題比例重新分配</button>
     </section>
+    <section class="panel interchange-panel">
+      <h2>題目匯入／匯出</h2>
+      <p>文法以單題、克漏字和閱讀以題組處理。CSV／JSON 可往返編輯；PDF／Word（.docx）會擷取文字並嘗試拆分題目。圖片請在匯入後另外貼上。</p>
+      <div class="interchange-controls"><label>題型<select v-model="interchangeCategory"><option value="grammar">文法選擇（單題）</option><option value="cloze">克漏字選擇（題組）</option><option value="reading">閱讀測驗（題組）</option></select></label><button type="button" @click="downloadSection('csv')">匯出 CSV</button><button type="button" @click="downloadSection('json')">匯出 JSON</button><label>匯入方式<select v-model="importMode"><option value="replace">覆蓋此題型</option><option value="append">追加到此題型</option></select></label><label class="file-import">{{ importingFile ? '讀取中…' : '選擇 CSV／JSON／PDF／Word 檔案' }}<input type="file" accept=".csv,.json,.pdf,.docx" :disabled="importingFile" @change="importQuestionFile"></label></div>
+      <p class="scope-note">匯入的答案只認 A～D；PDF／Word 若沒有明確答案，會標為「未設定」。跨校版面可能需先修正擷取文字再重新解析；掃描版 PDF 須先做 OCR。</p>
+      <div v-if="importPreview" class="import-preview"><h3>匯入預覽：{{ importPreview.fileName }}</h3><p>辨識 {{ importPreview.items.length }} {{ importPreview.category === 'grammar' ? '題' : '組' }}、共 {{ importedQuestionCount }} 題；{{ missingImportedAnswers }} 題答案未設定。</p>
+        <template v-if="importedText"><label>擷取文字（可修改題號、文章及 A～D 選項後重新解析）<textarea v-model="importedText" rows="10"></textarea></label><button type="button" @click="reparseImportedText">重新解析文字</button></template>
+        <div class="import-preview-list"><template v-if="importPreview.category === 'grammar'"><p v-for="(question,index) in importPreview.items" :key="index"><b>{{ index + 1 }}. {{ question.stem }}</b>　A {{ question.choices[0] }}／B {{ question.choices[1] }}／C {{ question.choices[2] }}／D {{ question.choices[3] }}　答案：{{ labels[question.answer] || '未設定' }}</p></template><article v-else v-for="(group,index) in importPreview.items" :key="index"><h4>{{ group.title }}（{{ group.questions.length }} 題）</h4><p>{{ group.passage || '（未辨識出文章，套用後可手動貼上）' }}</p><p v-for="(question,qIndex) in group.questions" :key="qIndex"><b>{{ qIndex + 1 }}. {{ question.stem }}</b>　A {{ question.choices[0] }}／B {{ question.choices[1] }}／C {{ question.choices[2] }}／D {{ question.choices[3] }}　答案：{{ labels[question.answer] || '未設定' }}</p></article></div>
+        <button type="button" :disabled="!importedQuestionCount" @click="applyImportedQuestions">確認{{ importMode === 'replace' ? '覆蓋' : '追加' }} {{ importedQuestionCount }} 題</button><button type="button" @click="importPreview = null; importedText = ''">取消</button>
+      </div>
+    </section>
     <template v-if="generated">
-      <section class="panel action-panel"><div><h2>三、預覽與輸出</h2><div class="preview-tabs"><button v-for="mode in [{id:'question',name:'B4 題目卷'},{id:'answer',name:'A4 正確答案'},{id:'blank',name:'A4 空白答案卷'}]" :key="mode.id" :class="{ active: previewMode === mode.id }" @click="previewMode = mode.id">{{ mode.name }}</button></div></div><div class="action-buttons"><button class="makeup" @click="shuffleAllChoices">🔀 產生補考版（交換選項）</button><button v-for="mode in [{id:'question',name:'題目卷'},{id:'answer',name:'正確答案'},{id:'blank',name:'空白答案卷'}]" :key="mode.id" :disabled="Boolean(exporting)" @click="exportWord(mode.id)">{{ mode.name }} Word</button><button v-for="mode in [{id:'question',name:'題目卷'},{id:'answer',name:'正確答案'},{id:'blank',name:'空白答案卷'}]" :key="mode.id+'pdf'" :disabled="Boolean(exporting)" @click="exportPdf(mode.id)">{{ mode.name }} PDF</button></div></section>
+      <section class="panel action-panel"><div><h2>三、預覽與輸出</h2><div class="preview-tabs"><button v-for="mode in [{id:'question',name:'B4 題目卷'},{id:'answer',name:'A4 正確答案'},{id:'blank',name:'A4 空白答案卷'}]" :key="mode.id" :class="{ active: previewMode === mode.id }" @click="previewMode = mode.id">{{ mode.name }}</button></div></div><div class="action-buttons"><button @click="exchangeEveryChoice">🔀 全部選擇題交換選項</button><button class="makeup" @click="shuffleAllChoices">產生補考版</button><button v-for="mode in [{id:'question',name:'題目卷'},{id:'answer',name:'正確答案'},{id:'blank',name:'空白答案卷'}]" :key="mode.id" :disabled="Boolean(exporting)" @click="exportWord(mode.id)">{{ mode.name }} Word</button><button v-for="mode in [{id:'question',name:'題目卷'},{id:'answer',name:'正確答案'},{id:'blank',name:'空白答案卷'}]" :key="mode.id+'pdf'" :disabled="Boolean(exporting)" @click="exportPdf(mode.id)">{{ mode.name }} PDF</button></div></section>
 
       <section class="preview-panel"><div class="preview-scroll"><AdminRegularExamSheet v-show="previewMode === 'question'" ref="questionPreview" :data="examData" /><AdminRegularExamSheet v-show="previewMode === 'answer'" ref="answerPreview" :data="examData" answer-mode /><AdminRegularExamSheet v-show="previewMode === 'blank'" ref="blankPreview" :data="examData" blank-mode /></div></section>
 
@@ -751,7 +906,7 @@ onMounted(async () => {
           <h3>言談理解</h3><div v-for="question in listening.comprehension" :key="question.id" class="question-editor"><div class="question-top"><b>{{ question.number }}.</b><input v-model="question.stem" placeholder="可貼上題目及 A～C 選項，自動拆分" @paste="handleQuestionPaste($event, question)"><select v-model.number="question.answer"><option v-for="(label,index) in labels.slice(0,3)" :key="label" :value="index">答案 {{ label }}</option></select><button @click="shuffleQuestionChoices(question)">交換選項</button></div><div class="choice-inputs"><label v-for="(_,index) in question.choices" :key="index">{{ labels[index] }}<input v-model="question.choices[index]"></label></div></div>
         </div>
 
-        <div v-else-if="editorTab === 'grammar'" class="editor-content"><p>以下題目來自文法遊樂園，可逐題修改或交換選項。將「題幹＋A、B、C、D 四個選項」整段貼入題幹欄，系統會自動拆分。</p><div v-for="question in grammarQuestions" :key="question.id" class="question-editor"><div class="question-top"><b>{{ question.number }}.</b><textarea v-model="question.stem" placeholder="貼上完整題目與四個選項，可自動拆分" @paste="handleQuestionPaste($event, question)"></textarea><select v-model.number="question.answer"><option v-for="(label,index) in labels" :key="label" :value="index">答案 {{ label }}</option></select><button @click="shuffleQuestionChoices(question)">交換選項</button></div><div class="choice-inputs"><label v-for="(_,index) in question.choices" :key="index">{{ labels[index] }}<input v-model="question.choices[index]"></label></div></div></div>
+        <div v-else-if="editorTab === 'grammar'" class="editor-content"><p>以下題目來自文法遊樂園，可逐題修改或交換選項。將「題幹＋A、B、C、D 四個選項」整段貼入題幹欄，系統會自動拆分。</p><div v-for="question in grammarQuestions" :key="question.id" class="question-editor"><div class="question-top"><b>{{ question.number }}.</b><textarea v-model="question.stem" placeholder="貼上完整題目與四個選項，可自動拆分" @paste="handleQuestionPaste($event, question)"></textarea><select v-model.number="question.answer"><option :value="-1">答案未設定</option><option v-for="(label,index) in labels" :key="label" :value="index">答案 {{ label }}</option></select><button @click="shuffleQuestionChoices(question)">交換選項</button></div><div class="choice-inputs"><label v-for="(_,index) in question.choices" :key="index">{{ labels[index] }}<input v-model="question.choices[index]"></label></div></div></div>
 
         <div v-else-if="editorTab === 'groups'" class="editor-content">
           <p>題組會依內容長度自動流入下一欄或下一頁；每一小題不會被拆開。文章／對話會以虛線框區隔。貼上文章後，系統會依上方所選課次自動找出範圍外單字，並從完整單字庫帶入中文。</p>
@@ -766,12 +921,12 @@ onMounted(async () => {
                 <button v-if="group.images?.[index - 1]" type="button" @click="group.images[index - 1] = ''">移除圖片</button>
               </div></div>
             </div>
-            <div class="glossary-heading"><b>單字提示</b><span v-if="group.outOfScopeCount || group.unknownWordCount">範圍外 {{ group.outOfScopeCount }} 個<span v-if="group.unknownWordCount">／題庫外待確認 {{ group.unknownWordCount }} 個</span></span><button type="button" @click="vocabularyReferenceGroup = vocabularyReferenceGroup === group.id ? '' : group.id">{{ vocabularyReferenceGroup === group.id ? '收起' : '查看' }} B1 起累積單字（{{ inScopeVocabulary.length }}）</button><button type="button" @click="detectGroupVocabulary(group)">🔍 重新檢測單字範圍</button></div>
+            <div class="glossary-heading"><b>單字提示</b><span v-if="group.outOfScopeCount || group.unknownWordCount">範圍外 {{ group.outOfScopeCount }} 個<span v-if="group.unknownWordCount">／題庫外待確認 {{ group.unknownWordCount }} 個</span></span><button type="button" @click="vocabularyReferenceGroup = vocabularyReferenceGroup === group.id ? '' : group.id">{{ vocabularyReferenceGroup === group.id ? '收起' : '查看' }} B1 起累積單字（{{ inScopeVocabulary.length }}）</button><button type="button" @click="detectGroupVocabulary(group)">🔍 重新檢測單字範圍</button><button v-if="group.glossary || group.detectedVocabulary?.length" type="button" @click="clearGroupGlossary(group)">清除全部單字提示</button></div>
             <div v-if="vocabularyReferenceGroup === group.id" class="vocabulary-reference"><label>搜尋範圍內單字<input v-model="vocabularyReferenceSearch" placeholder="英文、中文、版本、冊或課"></label><p>顯示 {{ visibleReferenceVocabulary.length }}／{{ inScopeVocabulary.length }} 筆；從同版本 B1 起依冊、課排列，直到本次所選的最後一課。</p><p v-if="missingFirstBook.length" class="scope-warning">{{ missingFirstBook.join('、') }} 的 B1 題庫尚未載入，無法列出完整的累積範圍。</p><div class="vocabulary-reference-list"><section v-for="lesson in referenceVocabularyGroups" :key="lesson.key"><h4>{{ lesson.version }} {{ lesson.volume }} {{ lesson.unit }}（{{ lesson.items.length }}）</h4><div class="vocabulary-reference-words"><div v-for="item in lesson.items" :key="item.word"><b>{{ item.word }}</b><span>{{ item.meaning || '（未填中文）' }}</span></div></div></section></div></div>
             <div v-if="group.detectedVocabulary?.length" class="detected-vocabulary"><b>範圍外及題庫外待確認單字／片語：</b><span v-for="item in group.detectedVocabulary" :key="item.normalized">{{ item.word }}{{ item.meaning ? `（${item.meaning}）` : '（題庫外，請人工確認）' }}</span></div>
             <div class="manual-glossary-control"><label>手動加入單字提示<input v-model="manualGlossaryInput[group.id]" placeholder="輸入英文單字或片語" @keyup.enter="addManualGlossaryWord(group)"></label><button type="button" :disabled="addingGlossaryWord === group.id" @click="addManualGlossaryWord(group)">{{ addingGlossaryWord === group.id ? '查詢中文中…' : '查中文並加入' }}</button><small>先查單字題庫；查不到時自動翻譯，加入後可在下方修改中文。</small></div>
             <textarea v-model="group.glossary" rows="3" placeholder="自動產生後仍可人工增刪或修改中文" @input="editGlossaryManually(group)"></textarea><small v-if="!group.autoGlossary" class="manual-note">目前為人工編輯模式；按「重新檢測」可恢復自動結果。</small>
-            <div v-for="question in group.questions" :key="question.id" class="question-editor"><div class="question-top"><b class="editor-question-number">{{ question.number }}.</b><textarea v-model="question.stem" placeholder="貼上完整題目與四個選項，可自動拆分" @paste="handleQuestionPaste($event, question)"></textarea><select v-model.number="question.answer"><option v-for="(label,index) in labels" :key="label" :value="index">答案 {{ label }}</option></select><button @click="shuffleQuestionChoices(question)">交換選項</button></div><div class="choice-inputs"><label v-for="(_,index) in question.choices" :key="index">{{ labels[index] }}<input v-model="question.choices[index]"></label></div></div>
+            <div v-for="question in group.questions" :key="question.id" class="question-editor"><div class="question-top"><b class="editor-question-number">{{ question.number }}.</b><textarea v-model="question.stem" placeholder="貼上完整題目與四個選項，可自動拆分" @paste="handleQuestionPaste($event, question)"></textarea><select v-model.number="question.answer"><option :value="-1">答案未設定</option><option v-for="(label,index) in labels" :key="label" :value="index">答案 {{ label }}</option></select><button @click="shuffleQuestionChoices(question)">交換選項</button></div><div class="choice-inputs"><label v-for="(_,index) in question.choices" :key="index">{{ labels[index] }}<input v-model="question.choices[index]"></label></div></div>
           </article>
         </div>
 
@@ -800,5 +955,6 @@ onMounted(async () => {
 .vocab-scope-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px}.vocab-scope-controls label{display:flex;align-items:center;gap:4px;font-weight:700}.vocab-scope-controls select{max-width:100%;padding:7px;border:1px solid #94a3b8;border-radius:6px}.scope-note{margin:6px 0;color:#475569;font-size:.85rem}
 .leak-panel{border-color:#86efac;background:#f0fdf4}.leak-panel.has-leaks{border-color:#fca5a5;background:#fff1f2}.leak-panel h2{color:#166534}.leak-panel.has-leaks h2{color:#b91c1c}.leak-panel p{margin:5px 0}.leak-panel ul{max-height:220px;overflow:auto;margin:8px 0;padding-left:22px}.leak-panel li{margin:5px 0}.vocabulary-reference{padding:10px;border:1px solid #93c5fd;border-radius:8px;background:#eff6ff}.vocabulary-reference label{display:flex;align-items:center;gap:8px;font-weight:700}.vocabulary-reference input{width:min(360px,100%);padding:7px;border:1px solid #94a3b8;border-radius:6px}.vocabulary-reference p{margin:6px 0;font-size:.85rem}.vocabulary-reference .scope-warning{color:#b91c1c;font-weight:800}.vocabulary-reference-list{max-height:300px;overflow:auto}.vocabulary-reference-list section{margin:8px 0}.vocabulary-reference-list h4{position:sticky;top:0;margin:0;padding:5px 8px;background:#dbeafe;color:#1e3a8a}.vocabulary-reference-words{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:3px 12px}.vocabulary-reference-words>div{display:grid;grid-template-columns:1fr 1fr;gap:4px;border-bottom:1px solid #bfdbfe;padding:4px}.translation-blank-control{display:flex;align-items:center;gap:8px;font-weight:800}.translation-blank-control input{width:70px;padding:6px}.detected-vocabulary{display:flex;gap:6px;flex-wrap:wrap}.detected-vocabulary>b{width:100%}.detected-vocabulary span{padding:3px 6px;border-radius:4px;background:#fef3c7;color:#92400e}
 .manual-glossary-control{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc}.manual-glossary-control label{display:flex;align-items:center;gap:8px;font-weight:800}.manual-glossary-control input{min-width:200px;padding:7px;border:1px solid #94a3b8;border-radius:6px}.manual-glossary-control button{padding:8px 11px;border:1px solid #2563eb;border-radius:6px;background:#eff6ff;color:#1d4ed8;font-weight:800;cursor:pointer}.manual-glossary-control button:disabled{opacity:.55}.manual-glossary-control small{width:100%;color:#64748b}
+.interchange-controls{display:flex;align-items:end;gap:8px;flex-wrap:wrap}.interchange-controls label{display:grid;gap:4px;font-weight:800}.interchange-controls select,.interchange-controls button,.interchange-controls .file-import,.import-preview button{padding:8px 11px;border:1px solid #64748b;border-radius:7px;background:#fff;font:inherit;font-weight:800;cursor:pointer}.interchange-controls .file-import{background:#eff6ff;color:#1d4ed8}.file-import input{display:none}.import-preview{margin-top:12px;padding:12px;border:1px solid #93c5fd;border-radius:8px;background:#eff6ff}.import-preview textarea{box-sizing:border-box;width:100%;padding:8px;font:inherit}.import-preview-list{max-height:250px;overflow:auto;margin:10px 0;padding:8px;background:#fff}.import-preview-list article{padding:7px;border-bottom:1px solid #cbd5e1}.import-preview-list article>p:first-of-type{white-space:pre-wrap}.import-preview button{margin-right:7px}
 .preset-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%}.preset-controls label{display:flex;align-items:center;gap:6px}.danger-button{color:#b91c1c!important;border:1px solid #b91c1c!important;background:#fff!important}.score-section{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.score-section>label+span{margin-left:0}.translation-source{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px;background:#eff6ff}.translation-source textarea{width:100%;padding:8px}.translation-source label{display:flex;align-items:center;gap:4px}
 </style>
