@@ -97,3 +97,17 @@ test('answer sheet rows align numbers with letters', () => {
   const answers = extractChoiceAnswerKey('16.\t17.\t18.\t19.\t20.\nD\tD\tC\tB\tB\n21. 22. 23.\nA B C');
   assert.deepEqual([16, 17, 18, 19, 20, 21, 22, 23].map(number => answers[number]), ['D', 'D', 'C', 'B', 'B', 'A', 'B', 'C']);
 });
+
+test('reading image choices survive CSV and JSON round trips', () => {
+  const image = 'data:image/png;base64,aGVsbG8=';
+  const original = [{ type: 'reading', title: '閱讀測驗', passage: 'Choose a picture.', questions: [
+    { stem: 'Which picture?', choices: ['', 'A train', '', 'A boat'], choiceImages: [image, '', image, ''], answer: 2 }
+  ] }];
+  const exported = exportSectionData('reading', [], original);
+  const csv = Papa.unparse(sectionCsvRows(exported));
+  for (const imported of [normalizeImportedItems(exported, 'reading'), csvRowsToSection(Papa.parse(csv, { header: true }).data, 'reading')]) {
+    assert.deepEqual(imported[0].questions[0].choiceImages, [image, '', image, '']);
+    assert.deepEqual(imported[0].questions[0].choices, ['', 'A train', '', 'A boat']);
+    assert.equal(imported[0].questions[0].answer, 2);
+  }
+});

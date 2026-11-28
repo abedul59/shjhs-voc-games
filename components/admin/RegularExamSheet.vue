@@ -58,7 +58,7 @@ const answerPages = computed(() => {
 });
 
 const textLines = (value, width = 48) => String(value || '').split('\n').reduce((total, line) => total + Math.max(1, Math.ceil(line.length / width)), 0);
-const questionSize = question => 2 + textLines(question.stem, 50) + textLines(question.choices.join('　'), 58);
+const questionSize = question => 2 + textLines(question.stem, 50) + textLines(question.choices.join('　'), 58) + (question.choiceImages?.filter(Boolean).length || 0) * 12;
 const groupIntroSize = group => 4
   + textLines(group.passage || '（請在編輯區輸入閱讀、對話或克漏字文章）', 46)
   + (group.images?.filter(Boolean).length || 0) * 12
@@ -139,7 +139,7 @@ defineExpose({ getPages: () => [...root.value.querySelectorAll('.regular-exam-pa
             <div class="passage"><p v-for="(paragraph,index) in passageParagraphs(group.passage || '（請在編輯區輸入閱讀、對話或克漏字文章）')" :key="index">{{ paragraph }}</p></div>
             <div v-if="group.images?.some(Boolean)" class="reading-images"><img v-for="(source,index) in group.images.filter(Boolean)" :key="index" :src="source" alt="閱讀測驗圖片"></div>
             <div v-if="group.glossary" class="glossary">{{ group.glossary }}</div>
-            <div v-for="question in group.questions" :key="question.number" class="mcq"><b class="question-number">{{ question.number }}.</b><span class="question-stem">{{ question.stem }}</span><span v-for="(choice,index) in question.choices" :key="index">({{ labels[index] }}) {{ choice }}</span></div>
+            <div v-for="question in group.questions" :key="question.number" class="mcq"><b class="question-number">{{ question.number }}.</b><span class="question-stem">{{ question.stem }}</span><span v-for="(choice,index) in question.choices" :key="index" class="mcq-choice">({{ labels[index] }}) {{ choice }}<img v-if="question.choiceImages?.[index]" :src="question.choiceImages[index]" :alt="`選項 ${labels[index]} 圖片`" class="mcq-choice-image"></span></div>
           </section>
         </div>
         <footer>第 {{ pageIndex + 2 }} 頁／共 {{ questionPageCount }} 頁</footer>
@@ -185,6 +185,7 @@ defineExpose({ getPages: () => [...root.value.querySelectorAll('.regular-exam-pa
 .mcq{grid-template-columns:8mm 1fr;gap:1px 0}.mcq .question-number{grid-column:1;grid-row:1/-1;font-weight:700;font-size:1.06em}.mcq .question-stem,.mcq>span:not(.question-stem){grid-column:2}.passage{padding:2mm;border:1px dashed #000}.score-boxes{position:absolute;bottom:12mm;left:9mm;right:9mm;display:grid;grid-template-columns:repeat(3,1fr);gap:3mm;text-align:center}.score-boxes div{border:1px solid #000;padding:2mm;height:23mm}.answer-page:has(.score-boxes) .written-answer-flow{height:210mm}
 .answer-page .written-answer-flow{height:auto;overflow:visible;column-count:initial}.answer-page .answer-section{display:block;margin:0 0 5mm;break-inside:avoid}.answer-section h3{margin-bottom:2mm;font-size:11pt}.answer-cells{display:grid;grid-template-columns:repeat(var(--answer-columns),1fr);border-top:1px solid #000;border-left:1px solid #000}.answer-cell{display:grid;grid-template-rows:auto 1fr;min-height:15mm;padding:1mm 2mm;border-right:1px solid #000;border-bottom:1px solid #000}.answer-cell small{font-size:8pt}.answer-cell span{align-self:center;text-align:center;font-size:var(--answer-font-size);overflow-wrap:anywhere}.choice-answer-lines{display:grid;gap:1.5mm;margin:2mm 0;font-size:var(--answer-font-size)}.choice-answer-lines>div{display:flex;gap:8mm}.answer-page:has(.score-boxes) .written-answer-flow{height:auto}
 .reading-images{display:flex;gap:2mm;margin:2mm 0;break-inside:avoid-column}.reading-images img{width:calc(50% - 1mm);max-height:42mm;object-fit:contain;border:1px solid #aaa}
+.mcq-choice-image{display:block;max-width:90%;max-height:30mm;margin:1mm 0 1mm 5mm;object-fit:contain;break-inside:avoid}
 .answer-page .answer-section{margin-bottom:2mm}.answer-page .answer-section h3{margin-bottom:1mm;font-size:9.5pt}.answer-page .answer-cell{min-height:var(--answer-cell-height);padding:.5mm 1mm}.answer-page .answer-part-title{margin-top:2mm!important;padding-top:1mm}.answer-page .choice-answer-lines{gap:.6mm;margin:1mm 0}.answer-page .score-boxes{bottom:8mm}.answer-page .score-boxes div{height:16mm;padding:1mm}
 .answer-page .choice-answer-lines{grid-template-columns:repeat(10,minmax(0,1fr));gap:1mm 0}.answer-page .choice-answer-lines>div{display:flex;gap:1mm;white-space:nowrap;font-size:9pt}
 .passage p{margin:0 0 2.5mm;text-indent:2em;white-space:pre-wrap}.passage p:last-child{margin-bottom:0}
