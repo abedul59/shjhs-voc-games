@@ -6,7 +6,7 @@ import { applyChoiceAnswerKey, csvRowsToSection, exportSectionData, extractChoic
 import { detectOutOfScopeVocabulary, formatVocabularyGlossary, listInScopeVocabulary, lookupVocabularyMeaning } from '~/lib/regular-exam-vocabulary';
 import { findRegularExamAnswerLeaks } from '~/lib/regular-exam-answer-leaks';
 import { sentenceTokens, buildTranslationFill, chooseTranslationBlanks, splitTranslationText } from '~/lib/regular-exam-translation';
-import { groupTitle, orderExamGroups, writtenTitle, scoreSlots, sectionOrdinal } from '~/lib/regular-exam-sections';
+import { groupTitle, orderExamGroups, writtenTitle, scoreSlots } from '~/lib/regular-exam-sections';
 import { lessonKey, sortLessons, cumulativeLessonKeys, cumulativeLessonKeysForSelection } from '~/lib/regular-exam-scope';
 
 definePageMeta({ middleware: 'auth' });
@@ -75,8 +75,8 @@ const sections = computed(() => [
   { id: 'comprehension', title: '三、言談理解', items: listening.value.comprehension },
   { id: 'grammar', title: '四、文法選擇', items: grammarQuestions.value },
   ...groups.value.map((group, index) => ({ id: group.id, title: groupTitle(group, index, groups.value), items: group.questions })),
-  { id: 'vocabulary', title: writtenTitle('單字與文意字彙', groups.value.length, 0), items: nonChoice.value.vocabulary },
-  ...nonChoice.value.sections.map((section, index) => ({ id: section.id, title: writtenTitle(section.title, groups.value.length, index + 1), items: section.items }))
+  { id: 'vocabulary', title: writtenTitle('單字與文意字彙', groups.value, 0), items: nonChoice.value.vocabulary },
+  ...nonChoice.value.sections.map((section, index) => ({ id: section.id, title: writtenTitle(section.title, groups.value, index + 1), items: section.items }))
 ]);
 const scoreTotal = computed(() => Math.round(sections.value.reduce((sum, section) => sum + (Number(sectionPoints.value[section.id]) || 0), 0) * 100) / 100);
 const scoreDifference = computed(() => Math.round((100 - scoreTotal.value) * 100) / 100);
@@ -273,7 +273,7 @@ const selectedVocabCount = computed(() => allVocabulary.value.filter(item => eff
 const selectedGrammarCount = computed(() => allGrammar.value.filter(item => selectedGrammarLessons.value.includes(lessonKey(item))).length);
 const examData = computed(() => ({
   metadata: metadata.value, preset: { ...preset.value, ...scoring.value }, listening: listening.value,
-  grammarQuestions: grammarQuestions.value, groups: groups.value, nonChoice: nonChoice.value, sectionPoints: sectionPoints.value
+  grammarQuestions: grammarQuestions.value, groups: groups.value, nonChoice: nonChoice.value, sectionPoints: sectionPoints.value, questionCounts: questionCounts.value
 }));
 const answerLeaks = computed(() => generated.value ? findRegularExamAnswerLeaks(examData.value) : []);
 const inScopeVocabulary = computed(() => listInScopeVocabulary(allVocabulary.value, referenceVocabLessons.value, lessonKey));
@@ -315,15 +315,15 @@ const resetBlueprint = (spec = null) => {
   const remainder = current.readingCount % readingGroupCount;
   for (let groupIndex = 0; groupIndex < readingGroupCount; groupIndex += 1) {
     const count = base + (groupIndex < remainder ? 1 : 0);
-    nextGroups.push({ id: crypto.randomUUID(), type: 'reading', title: `${sectionOrdinal(4 + nextGroups.length)}、閱讀測驗（題組 ${groupIndex + 1}）`, passage: '', images: ['', ''], glossary: '', autoGlossary: true, outOfScopeCount: 0, unknownWordCount: 0, startNewPage: false, questions: Array.from({ length: count }, (_, index) => makeQuestion(nextNumber + index)) });
+    nextGroups.push({ id: crypto.randomUUID(), type: 'reading', title: `閱讀測驗（題組 ${groupIndex + 1}）`, passage: '', images: ['', ''], glossary: '', autoGlossary: true, outOfScopeCount: 0, unknownWordCount: 0, startNewPage: false, questions: Array.from({ length: count }, (_, index) => makeQuestion(nextNumber + index)) });
     nextNumber += count;
   }
   if (Array.isArray(spec?.groups)) {
     nextNumber = 16 + questionCounts.value.grammar;
-    nextGroups.splice(0, nextGroups.length, ...spec.groups.map((item, groupIndex) => {
+    nextGroups.splice(0, nextGroups.length, ...spec.groups.map(item => {
       const questions = Array.from({ length: Math.max(0, Number(item.count) || 0) }, (_, index) => makeQuestion(nextNumber + index));
       nextNumber += questions.length;
-      return { id: crypto.randomUUID(), type: item.type || 'reading', title: item.title || `${sectionOrdinal(4 + groupIndex)}、閱讀測驗`, passage: '', images: ['', ''], glossary: '', autoGlossary: true, outOfScopeCount: 0, unknownWordCount: 0, startNewPage: false, questions };
+      return { id: crypto.randomUUID(), type: item.type || 'reading', title: item.title || '閱讀測驗', passage: '', images: ['', ''], glossary: '', autoGlossary: true, outOfScopeCount: 0, unknownWordCount: 0, startNewPage: false, questions };
     }));
   }
   groups.value = nextGroups;
@@ -999,7 +999,7 @@ onMounted(async () => {
           <div class="lesson-grid"><label v-for="lesson in vocabLessons" :key="lesson.key" :class="{ selected: effectiveVocabLessons.includes(lesson.key) }"><input v-if="vocabScopeMode === 'manual'" v-model="selectedVocabLessons" type="checkbox" :value="lesson.key"><span><b>{{ lesson.version }} {{ lesson.volume }} {{ lesson.unit }}</b><small>{{ lesson.count }} 個單字</small></span></label></div></div>
         <div><div class="scope-heading"><h3>文法遊樂園題庫</h3><span>已選 {{ selectedGrammarCount }} 題</span></div><div class="lesson-grid"><label v-for="lesson in grammarLessons" :key="lesson.key" :class="{ selected: selectedGrammarLessons.includes(lesson.key) }"><input v-model="selectedGrammarLessons" type="checkbox" :value="lesson.key"><span><b>{{ lesson.version }} {{ lesson.volume }} {{ lesson.unit }}</b><small>{{ lesson.count }} 題</small></span></label></div></div>
       </div>
-      <div class="count-controls"><label>文法選擇題 <input v-model.number="questionCounts.grammar" type="number" min="0"></label><label>中翻英單字題 <input v-model.number="questionCounts.directVocab" type="number" min="0"></label><label>文意字彙題 <input v-model.number="questionCounts.contextVocab" type="number" min="0"></label><label>翻譯填充句數 <input v-model.number="questionCounts.translation" type="number" min="0"></label><label>每句預設空格數 <input v-model.number="questionCounts.blanksPerSentence" type="number" min="1"></label><label>翻譯填空每側底線數 <input v-model.number="questionCounts.translationBlankWidth" type="number" min="1" max="8"></label></div>
+      <div class="count-controls"><label>文法選擇題 <input v-model.number="questionCounts.grammar" type="number" min="0"></label><label>中翻英單字題 <input v-model.number="questionCounts.directVocab" type="number" min="0"></label><label>文意字彙題 <input v-model.number="questionCounts.contextVocab" type="number" min="0"></label><label>翻譯填充句數 <input v-model.number="questionCounts.translation" type="number" min="0"></label><label>每句預設空格數 <input v-model.number="questionCounts.blanksPerSentence" type="number" min="1"></label><label>全卷填空每側底線數（克漏字／翻譯）<input v-model.number="questionCounts.translationBlankWidth" type="number" min="1" max="8"></label></div>
       <div class="translation-source"><b>翻譯填充來源</b><label><input v-model="translationMode" type="radio" value="bank">單字例句題庫</label><label><input v-model="translationMode" type="radio" value="auto">貼上文字並自動挖空</label><label><input v-model="translationMode" type="radio" value="manual">貼上文字後親自點字挖空</label><textarea v-if="translationMode !== 'bank'" v-model="translationSourceText" rows="5" placeholder="貼上英文課文或對話；可用 中文｜English 逐行對照"></textarea></div>
       <button class="generate-btn" :disabled="isGenerating || ((questionCounts.directVocab || questionCounts.contextVocab || (translationMode === 'bank' && questionCounts.translation)) && !effectiveVocabLessons.length) || (questionCounts.grammar && !selectedGrammarLessons.length)" @click="generateExam">{{ isGenerating ? '產生中…' : generated ? '🎲 重新抽題' : '🎲 產生段考草稿' }}</button>
     </section>
@@ -1072,7 +1072,7 @@ onMounted(async () => {
               <div class="translation-source"><b>翻譯填充來源</b><label><input v-model="translationMode" type="radio" value="bank">單字例句題庫</label><label><input v-model="translationMode" type="radio" value="auto">貼上課文／對話，自動挖空</label><label><input v-model="translationMode" type="radio" value="manual">貼上課文／對話，親自點字挖空</label>
                 <template v-if="translationMode !== 'bank'"><textarea v-model="translationSourceText" rows="7" placeholder="每行一句或一段英文；可用 中文｜English 逐行貼上中文與英文"></textarea><button type="button" @click="updatePastedTranslation">從貼上文字建立／重建翻譯題</button></template>
               </div>
-              <p>例句與中文可編輯；點擊英文單字可切換空格，系統會重新編排格號與答案。</p><label class="translation-blank-control">全卷翻譯填空每側底線數（1～8）<input v-model.number="questionCounts.translationBlankWidth" type="number" min="1" max="8"></label>
+              <p>例句與中文可編輯；點擊英文單字可切換空格，系統會重新編排格號與答案。</p><label class="translation-blank-control">全卷填空每側底線數（克漏字／翻譯，1～8）<input v-model.number="questionCounts.translationBlankWidth" type="number" min="1" max="8"></label>
               <div v-for="(item,index) in section.items" :key="item.id" class="translation-editor"><b>第 {{ index + 1 }} 句</b><label>英文例句<textarea v-model="item.sourceEn" @change="refreshTranslation"></textarea></label><label>中文翻譯<input v-model="item.sourceZh" @change="refreshTranslation"></label><div class="token-list"><button v-for="(token,tokenIndex) in sentenceTokens(item.sourceEn)" :key="tokenIndex" type="button" :class="{ selected: item.blankIndices?.includes(tokenIndex) }" @click="chooseBlank(item,tokenIndex)">{{ token }}</button></div><small>目前 {{ item.blankIndices?.length || 0 }} 格；格號：{{ item.answer }}</small></div>
             </template><div v-else class="written-grid"><div v-for="(item,index) in section.items" :key="item.id"><b>{{ index + 1 }}</b><textarea v-model="item.prompt" placeholder="題目"></textarea><input v-model="item.answer" placeholder="正確答案"></div></div>
           </article>
