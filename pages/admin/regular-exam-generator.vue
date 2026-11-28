@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { parseRegularExamQuestion } from '~/lib/regular-exam-question-parser';
 import Papa from 'papaparse';
-import { csvRowsToSection, exportSectionData, normalizeImportedItems, parseDocumentQuestions, pdfTextToPlain, sectionCsvRows } from '~/lib/regular-exam-import';
+import { applyChoiceAnswerKey, csvRowsToSection, exportSectionData, extractChoiceAnswerKey, normalizeImportedItems, parseDocumentQuestions, pdfTextToPlain, sectionCsvRows } from '~/lib/regular-exam-import';
 import { detectOutOfScopeVocabulary, formatVocabularyGlossary, listInScopeVocabulary, lookupVocabularyMeaning } from '~/lib/regular-exam-vocabulary';
 import { findRegularExamAnswerLeaks } from '~/lib/regular-exam-answer-leaks';
 import { sentenceTokens, buildTranslationFill, chooseTranslationBlanks, splitTranslationText } from '~/lib/regular-exam-translation';
@@ -45,6 +45,8 @@ const importMode = ref('replace');
 const importPreview = ref(null);
 const importedText = ref('');
 const importingFile = ref(false);
+const questionImportFiles = ref([]);
+const answerImportFiles = ref([]);
 const questionPreview = ref(null);
 const answerPreview = ref(null);
 const blankPreview = ref(null);
@@ -604,41 +606,87 @@ const extractPdfText = async file => {
   return pages.join('\n\n');
 };
 
-const importQuestionFile = async event => {
-  const file = event.target.files?.[0];
+const selectImportFiles = (event, role) => {
+  const files = Array.from(event.target.files || []);
+  if (role === 'questions') questionImportFiles.value = files;
+  else answerImportFiles.value = files;
   event.target.value = '';
-  if (!file) return;
+};
+
+const readImportDocument = async file => {
+  const extension = file.name.split('.').pop()?.toLowerCase();
+  if (extension === 'pdf') return extractPdfText(file);
+  if (extension === 'docx') {
+    const mammoth = await import('mammoth/mammoth.browser.js');
+    const result = await (mammoth.default || mammoth).extractRawText({ arrayBuffer: await file.arrayBuffer() });
+    return result.value;
+  }
+  if (extension === 'csv' || extension === 'json') return file.text();
+  throw new Error(`「${file.name}」格式不支援；請使用 CSV、JSON、PDF 或 DOCX。`);
+};
+
+const importQuestionFiles = async () => {
+  if (!questionImportFiles.value.length) { message.value = '請先選擇至少一份題目檔。'; return; }
+  const allFiles = [...questionImportFiles.value, ...answerImportFiles.value];
+  if (allFiles.length > 10 || allFiles.some(file => file.size > 20 * 1024 * 1024)) { message.value = '一次最多 10 個檔案，且每個檔案不得超過 20 MB。'; return; }
   importPreview.value = null;
   importedText.value = '';
-  if (file.size > 20 * 1024 * 1024) { message.value = '檔案超過 20 MB，請先拆成較小的題組檔案。'; return; }
   importingFile.value = true;
   try {
     const category = interchangeCategory.value;
-    const extension = file.name.split('.').pop()?.toLowerCase();
-    let items;
-    if (extension === 'json') {
-      const data = JSON.parse(await file.text());
-      if (data.category && data.category !== category) throw new Error(`檔案類型是 ${data.category}，請先切換匯入類型。`);
-      items = normalizeImportedItems(data, category);
-    } else if (extension === 'csv') {
-      const parsed = Papa.parse(await file.text(), { header: true, skipEmptyLines: true });
-      if (parsed.errors.length) throw new Error(parsed.errors[0].message);
-      items = csvRowsToSection(parsed.data, category);
-    } else if (extension === 'pdf' || extension === 'docx') {
-      if (extension === 'pdf') importedText.value = await extractPdfText(file);
-      else {
-        const mammoth = await import('mammoth/mammoth.browser.js');
-        const result = await (mammoth.default || mammoth).extractRawText({ arrayBuffer: await file.arrayBuffer() });
-        importedText.value = result.value;
+    const items = [];
+    const structuredItems = [];
+    const answers = {};
+    const conflicts = [];
+    const unparsed = [];
+    const questionTexts = [];
+    const addAnswers = found => Object.entries(found).forEach(([number, answer]) => {
+      const letter = String(answer ?? '').normalize('NFKC').replace(/[()]/g, '').trim().toUpperCase();
+      if (!/^[A-D]$/.test(letter) || !/^\d+$/.test(String(number))) return;
+      if (answers[number] && answers[number] !== letter) conflicts.push(number);
+      answers[number] = letter;
+    });
+    for (const file of allFiles) {
+      const extension = file.name.split('.').pop()?.toLowerCase();
+      const content = await readImportDocument(file);
+      const isAnswerFile = answerImportFiles.value.includes(file);
+      if (extension === 'json') {
+        const data = JSON.parse(content);
+        if (isAnswerFile || data.answers) {
+          const answerItems = Array.isArray(data.items) ? data.items.flatMap(item => item.questions || [item]) : [];
+          addAnswers(answerItems.length ? Object.fromEntries(answerItems.map(item => [item.sourceNumber || item.number, item.answer])) : data.answers || data);
+        }
+        else {
+          if (data.category && data.category !== category) throw new Error(`「${file.name}」題型是 ${data.category}，請先切換匯入題型。`);
+          const parsedItems = normalizeImportedItems(data, category);
+          items.push(...parsedItems);
+          structuredItems.push(...parsedItems);
+        }
+      } else if (extension === 'csv') {
+        const parsed = Papa.parse(content, { header: true, skipEmptyLines: true });
+        if (parsed.errors.length) throw new Error(`「${file.name}」：${parsed.errors[0].message}`);
+        if (isAnswerFile) addAnswers(Object.fromEntries(parsed.data.map(row => [row.number, row.answer])));
+        else {
+          const parsedItems = csvRowsToSection(parsed.data, category);
+          items.push(...parsedItems);
+          structuredItems.push(...parsedItems);
+        }
+      } else {
+        if (!content.trim()) throw new Error(`「${file.name}」沒有可選取的文字；掃描版 PDF 請先做 OCR。`);
+        addAnswers(extractChoiceAnswerKey(content));
+        if (!isAnswerFile) {
+          questionTexts.push(content);
+          try { items.push(...parseDocumentQuestions(content, category)); }
+          catch { unparsed.push(file.name); }
+        }
       }
-      if (!importedText.value.trim()) throw new Error('檔案沒有可選取的文字；掃描版 PDF 請先做 OCR 再匯入。');
-      try { items = parseDocumentQuestions(importedText.value, category); }
-      catch { items = []; }
-    } else throw new Error('請使用 CSV、JSON、PDF 或 DOCX；舊式 .doc 請先另存為 .docx。');
-    importPreview.value = { category, items, fileName: file.name, source: extension };
+    }
+    importedText.value = questionTexts.join('\n\n');
+    const appliedAnswers = applyChoiceAnswerKey(items, category, answers);
+    importPreview.value = { category, items, structuredItems, fileName: allFiles.map(file => file.name).join('、'), answers, appliedAnswers, answerCount: Object.keys(answers).length, conflicts, unparsed };
     message.value = items.length
-      ? `已解析「${file.name}」；請先核對下方題目與答案，再套用。`
-      : `已讀取「${file.name}」的文字，但未辨識出完整題目；請在下方整理題號與 A～D 選項後重新解析。`;
+      ? `已解析 ${items.length} ${category === 'grammar' ? '題' : '組'}，並從解答取得 ${appliedAnswers} 題答案；請核對預覽再套用。`
+      : '已讀取檔案，但未辨識出完整題目；請在下方整理題號與 A～D 選項後重新解析。';
   } catch (error) { message.value = `匯入失敗：${error.message}`; }
   finally { importingFile.value = false; }
 };
@@ -646,7 +694,8 @@ const importQuestionFile = async event => {
 const reparseImportedText = () => {
   if (!importPreview.value || !importedText.value) return;
   try {
-    importPreview.value.items = parseDocumentQuestions(importedText.value, importPreview.value.category);
+    importPreview.value.items = [...(importPreview.value.structuredItems || []), ...parseDocumentQuestions(importedText.value, importPreview.value.category)];
+    importPreview.value.appliedAnswers = applyChoiceAnswerKey(importPreview.value.items, importPreview.value.category, importPreview.value.answers);
     message.value = '已重新解析文字，請核對題目與答案。';
   } catch (error) { message.value = `重新解析失敗：${error.message}`; }
 };
@@ -880,11 +929,11 @@ onMounted(async () => {
     <section class="panel interchange-panel">
       <h2>題目匯入／匯出</h2>
       <p>文法以單題、克漏字和閱讀以題組處理。CSV／JSON 可往返編輯；PDF／Word（.docx）會擷取文字並嘗試拆分題目。圖片請在匯入後另外貼上。</p>
-      <div class="interchange-controls"><label>題型<select v-model="interchangeCategory"><option value="grammar">文法選擇（單題）</option><option value="cloze">克漏字選擇（題組）</option><option value="reading">閱讀測驗（題組）</option></select></label><button type="button" @click="downloadSection('csv')">匯出 CSV</button><button type="button" @click="downloadSection('json')">匯出 JSON</button><label>匯入方式<select v-model="importMode"><option value="replace">覆蓋此題型</option><option value="append">追加到此題型</option></select></label><label class="file-import">{{ importingFile ? '讀取中…' : '選擇 CSV／JSON／PDF／Word 檔案' }}<input type="file" accept=".csv,.json,.pdf,.docx" :disabled="importingFile" @change="importQuestionFile"></label></div>
-      <p class="scope-note">匯入的答案只認 A～D；PDF／Word 若沒有明確答案，會標為「未設定」。跨校版面可能需先修正擷取文字再重新解析；掃描版 PDF 須先做 OCR。</p>
-      <div v-if="importPreview" class="import-preview"><h3>匯入預覽：{{ importPreview.fileName }}</h3><p>辨識 {{ importPreview.items.length }} {{ importPreview.category === 'grammar' ? '題' : '組' }}、共 {{ importedQuestionCount }} 題；{{ missingImportedAnswers }} 題答案未設定。</p>
+      <div class="interchange-controls"><label>題型<select v-model="interchangeCategory"><option value="grammar">文法選擇（單題）</option><option value="cloze">克漏字選擇（題組）</option><option value="reading">閱讀測驗（題組）</option></select></label><button type="button" @click="downloadSection('csv')">匯出 CSV</button><button type="button" @click="downloadSection('json')">匯出 JSON</button><label>匯入方式<select v-model="importMode"><option value="replace">覆蓋此題型</option><option value="append">追加到此題型</option></select></label><label class="file-import">題目檔（可多選，{{ questionImportFiles.length }} 份）<input type="file" multiple accept=".csv,.json,.pdf,.docx" :disabled="importingFile" @change="selectImportFiles($event,'questions')"></label><label class="file-import">解答檔（可多選，{{ answerImportFiles.length }} 份）<input type="file" multiple accept=".csv,.json,.pdf,.docx" :disabled="importingFile" @change="selectImportFiles($event,'answers')"></label><button type="button" :disabled="importingFile || !questionImportFiles.length" @click="importQuestionFiles">{{ importingFile ? '讀取中…' : '解析所選檔案' }}</button></div>
+      <p class="scope-note">解答可與題目同檔，或另選解答檔；系統依原題號配對 A～D。沒有明確答案會標為「未設定」。跨校版面可修正擷取文字再重新解析；掃描版 PDF 須先做 OCR。</p>
+      <div v-if="importPreview" class="import-preview"><h3>匯入預覽：{{ importPreview.fileName }}</h3><p>辨識 {{ importPreview.items.length }} {{ importPreview.category === 'grammar' ? '題' : '組' }}、共 {{ importedQuestionCount }} 題；解答表辨識 {{ importPreview.answerCount }} 筆、套用 {{ importPreview.appliedAnswers }} 題，{{ missingImportedAnswers }} 題答案未設定。</p><p v-if="importPreview.unparsed.length" class="scope-warning">未辨識題目：{{ importPreview.unparsed.join('、') }}。請檢查下方擷取文字。</p><p v-if="importPreview.conflicts.length" class="scope-warning">解答檔有互相矛盾的題號：{{ importPreview.conflicts.join('、') }}；請人工核對。</p>
         <template v-if="importedText"><label>擷取文字（可修改題號、文章及 A～D 選項後重新解析）<textarea v-model="importedText" rows="10"></textarea></label><button type="button" @click="reparseImportedText">重新解析文字</button></template>
-        <div class="import-preview-list"><template v-if="importPreview.category === 'grammar'"><p v-for="(question,index) in importPreview.items" :key="index"><b>{{ index + 1 }}. {{ question.stem }}</b>　A {{ question.choices[0] }}／B {{ question.choices[1] }}／C {{ question.choices[2] }}／D {{ question.choices[3] }}　答案：{{ labels[question.answer] || '未設定' }}</p></template><article v-else v-for="(group,index) in importPreview.items" :key="index"><h4>{{ group.title }}（{{ group.questions.length }} 題）</h4><p>{{ group.passage || '（未辨識出文章，套用後可手動貼上）' }}</p><p v-for="(question,qIndex) in group.questions" :key="qIndex"><b>{{ qIndex + 1 }}. {{ question.stem }}</b>　A {{ question.choices[0] }}／B {{ question.choices[1] }}／C {{ question.choices[2] }}／D {{ question.choices[3] }}　答案：{{ labels[question.answer] || '未設定' }}</p></article></div>
+        <div class="import-preview-list"><template v-if="importPreview.category === 'grammar'"><p v-for="(question,index) in importPreview.items" :key="index"><b>{{ question.sourceNumber || index + 1 }}. {{ question.stem }}</b>　A {{ question.choices[0] }}／B {{ question.choices[1] }}／C {{ question.choices[2] }}／D {{ question.choices[3] }}　答案：{{ labels[question.answer] || '未設定' }}</p></template><article v-else v-for="(group,index) in importPreview.items" :key="index"><h4>{{ group.title }}（{{ group.questions.length }} 題）</h4><p>{{ group.passage || '（未辨識出文章，套用後可手動貼上）' }}</p><p v-for="(question,qIndex) in group.questions" :key="qIndex"><b>{{ question.sourceNumber || qIndex + 1 }}. {{ question.stem }}</b>　A {{ question.choices[0] }}／B {{ question.choices[1] }}／C {{ question.choices[2] }}／D {{ question.choices[3] }}　答案：{{ labels[question.answer] || '未設定' }}</p></article></div>
         <button type="button" :disabled="!importedQuestionCount" @click="applyImportedQuestions">確認{{ importMode === 'replace' ? '覆蓋' : '追加' }} {{ importedQuestionCount }} 題</button><button type="button" @click="importPreview = null; importedText = ''">取消</button>
       </div>
     </section>
