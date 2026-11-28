@@ -239,6 +239,7 @@ const clearGhostRooms = async () => {
       <NuxtLink v-if="canUseFeature('live-activity')" to="/admin/live-activity" class="retro-btn" style="background: linear-gradient(135deg, #43a047 0 50%, #1e3a8a 50%); color: white; border-color: #172554; box-shadow: 0 4px 0 #172554; grid-column: span 2;">📡🛡️ 學生動態與專注監控</NuxtLink>
       <NuxtLink v-if="canUseFeature('vocab-exam-generator')" to="/admin/vocab-exam-generator" class="retro-btn" style="background: #7c3aed; color: white; border-color: #4c1d95; box-shadow: 0 4px 0 #4c1d95;">📝 單字會考出題器</NuxtLink>
       <NuxtLink v-if="canUseFeature('regular-exam-generator')" to="/admin/regular-exam-generator" class="retro-btn" style="background: #0369a1; color: white; border-color: #075985; box-shadow: 0 4px 0 #075985;">📚 段考出題器</NuxtLink>
+      <NuxtLink v-if="canUseFeature('regular-exam-generator')" to="/admin/vocabulary-scope-reviewer" class="retro-btn" style="background: #0f766e; color: white; border-color: #115e59; box-shadow: 0 4px 0 #115e59;">🔎 英文單字超出範圍審題器</NuxtLink>
       
       <NuxtLink v-if="canUseFeature('grammar-stats')" to="/admin/grammar-stats" class="retro-btn nav-btn" style="background: #e65100; border-color: #e65100;">🎡 學生文法答題分析</NuxtLink>
       <NuxtLink v-if="canUseFeature('exam-stats')" to="/admin/exam-stats" class="retro-btn nav-btn" style="background: #00bcd4; border-color: #00838f;">📈 會考單題數據分析</NuxtLink>
